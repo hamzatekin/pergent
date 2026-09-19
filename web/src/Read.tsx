@@ -14,6 +14,9 @@ const md = new Marked({
   },
 });
 
+// Task directory names stay as they are; the tabs show these labels.
+const labels: Record<string, string> = { haberler: "news", "x-ai": "tech" };
+
 function host(url: string) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -151,7 +154,7 @@ export function ReadView({ tasks, task, runId }: { tasks: string[]; task: string
         <nav className="tabs">
           {tasks.map((t) => (
             <Link key={t} href={`/read/${t}`} className="tab" data-active={t === task}>
-              {t}
+              {labels[t] ?? t}
             </Link>
           ))}
         </nav>
