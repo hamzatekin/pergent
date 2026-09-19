@@ -1,0 +1,6 @@
+{
+  "schedule": "0 7 * * *",
+  "model": "sonnet",
+  "allowedTools": ["WebSearch", "WebFetch"],
+  "timeoutMinutes": 10
+}

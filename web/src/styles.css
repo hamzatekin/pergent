@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #fafafa;
+  --color-surface: #fff;
+  --color-line: #e5e5e5;
+  --color-ink: #171717;
+  --color-muted: #737373;
+  --color-accent: #171717;
+  --color-accent-text: #fff;
+  --color-ok: #16a34a;
+  --color-failed: #dc2626;
+  --color-running: #f59e0b;
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0a0a0a;
+    --color-surface: #141414;
+    --color-line: #262626;
+    --color-ink: #ededed;
+    --color-muted: #8a8a8a;
+    --color-accent: #ededed;
+    --color-accent-text: #0a0a0a;
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-ink text-sm antialiased;
+  }
+  button {
+    @apply cursor-pointer text-left;
+  }
+}
+
+/* Rendered markdown from a run's output. */
+.output {
+  @apply max-w-[72ch] leading-relaxed;
+}
+.output :is(h1, h2, h3) {
+  @apply mt-5 mb-2 font-semibold tracking-tight;
+}
+.output h1 {
+  @apply text-lg;
+}
+.output h2 {
+  @apply text-[15px];
+}
+.output p {
+  @apply my-2;
+}
+.output a {
+  @apply underline;
+}
+.output :is(ul, ol) {
+  @apply my-2 pl-5 list-disc;
+}
+.output ol {
+  @apply list-decimal;
+}
+.output li {
+  @apply my-1.5;
+}
+.output code {
+  @apply font-mono text-[13px];
+}
+.output pre {
+  @apply my-2 rounded-lg border border-line bg-surface p-3 overflow-x-auto;
+}
+
+/* Reading view: same markdown, sized for a morning read. */
+.output.read {
+  @apply max-w-none text-[17px] leading-[1.65];
+}
+.output.read h1 {
+  @apply mb-6 mt-0 text-[26px] leading-tight;
+}
+.output.read h2 {
+  @apply mb-3 mt-10 border-b border-line pb-1.5 text-lg;
+}
+.output.read h3 {
+  @apply mt-6 text-[17px];
+}
+.output.read :is(p, li) {
+  @apply my-3;
+}
+.output.read li {
+  @apply my-2;
+}
+.output.read a {
+  @apply decoration-line underline-offset-[3px] hover:decoration-ink;
+}
+.output.read a.src {
+  @apply ml-1 whitespace-nowrap text-[13px] text-muted no-underline hover:text-ink;
+}
+.output.read code {
+  @apply text-[15px];
+}

@@ -1,0 +1,23 @@
+# Coolify deploys this as a Docker Compose app: set the domain on the "app" service (port 4321) and fill
+# the variables below in Coolify's Environment Variables tab. Coolify's own proxy does HTTPS.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      TZ: ${TZ:-UTC}
+      # From `claude setup-token` on a machine that is logged in to your Claude subscription.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      # One login for the whole UI. Leave both empty to run without auth (local only).
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER}
+      BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD}
+    volumes:
+      - runs:/app/runs
+      - claude-home:/root/.claude
+    expose:
+      - "4321"
+
+volumes:
+  runs:
+  claude-home:
