@@ -8,6 +8,7 @@ export type RunMeta = {
   turns?: number;
 };
 export type Run = { meta: RunMeta; output: string; images: Record<string, string> };
+export type Status = { scheduler: "off" | "on" | "paused"; lastReadAt: string | null; pauseAfterDays: number };
 
 async function request<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`);
@@ -19,4 +20,5 @@ export const api = {
   tasks: () => request<string[]>("/tasks"),
   runs: (name: string) => request<RunMeta[]>(`/tasks/${name}/runs`),
   run: (name: string, runId: string) => request<Run>(`/tasks/${name}/runs/${runId}`),
+  status: () => request<Status>("/status"),
 };

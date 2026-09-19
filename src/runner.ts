@@ -3,10 +3,13 @@ import { createWriteStream } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { getRun, openDb, saveRun, listRuns as listRunRows } from "./db.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
 const RUNS_DIR = join(ROOT, "runs");
+await mkdir(RUNS_DIR, { recursive: true });
+openDb(RUNS_DIR);
 
 export type TaskConfig = {
   schedule?: string;
@@ -44,24 +47,14 @@ export async function loadTask(name: string): Promise<Task> {
   return { name, config, prompt };
 }
 
-export async function listRuns(name: string): Promise<RunMeta[]> {
-  const dir = join(RUNS_DIR, name);
-  const ids = await readdir(dir).catch(() => [] as string[]);
-  const metas = await Promise.all(
-    ids.map((id) => readFile(join(dir, id, "meta.json"), "utf8").then((s) => JSON.parse(s) as RunMeta, () => null)),
-  );
-  return metas.filter((m): m is RunMeta => m !== null).sort((a, b) => b.runId.localeCompare(a.runId));
+export function listRuns(name: string): RunMeta[] {
+  return listRunRows(name);
 }
 
 // What the reading view needs: the output, and the lead images the before scripts found
 // (images.json, article link -> image URL). The log and stderr stay on disk.
-export async function readRun(name: string, runId: string) {
-  const dir = join(RUNS_DIR, name, runId);
-  const read = (file: string) => readFile(join(dir, file), "utf8").catch(() => "");
-  const [metaText, output, imagesText] = await Promise.all([read("meta.json"), read("output.md"), read("images.json")]);
-  if (!metaText) return null;
-  const images: Record<string, string> = imagesText ? JSON.parse(imagesText) : {};
-  return { meta: JSON.parse(metaText) as RunMeta, output, images };
+export function readRun(name: string, runId: string) {
+  return getRun(name, runId);
 }
 
 function runBefore(command: string, cwd: string, taskDir: string): Promise<boolean> {
@@ -83,6 +76,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   await writeFile(join(dir, "prompt.md"), prompt);
   const running: RunMeta = { task: name, runId, startedAt: startedAt.toISOString(), status: "running" };
   await writeFile(join(dir, "meta.json"), JSON.stringify(running, null, 2));
+  saveRun(running);
 
   if (config.before) {
     const ok = await runBefore(config.before, dir, join(TASKS_DIR, name));
@@ -90,6 +84,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
       const meta: RunMeta = { ...running, finishedAt: new Date().toISOString(), status: "failed" };
       await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));
       await writeFile(join(dir, "output.md"), "");
+      saveRun(meta);
       return { meta, dir };
     }
   }
@@ -141,5 +136,8 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
     turns: result?.num_turns,
   };
   await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));
+  // The run directory keeps everything; the database gets what the API serves.
+  const images = await readFile(join(dir, "images.json"), "utf8").then(JSON.parse, () => ({}));
+  saveRun(meta, result?.result ?? "", images);
   return { meta, dir };
 }

@@ -1,0 +1,121 @@
+import { DatabaseSync } from "node:sqlite";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import type { RunMeta } from "./runner.ts";
+
+// The database is the index the API reads; each run directory stays the archive (log, stderr, inputs).
+// It lives under runs/ so it is on the same volume as the run directories.
+export type RunRow = { meta: RunMeta; output: string; images: Record<string, string> };
+
+let db: DatabaseSync | undefined;
+
+export function openDb(runsDir: string): DatabaseSync {
+  if (db) return db;
+  db = new DatabaseSync(join(runsDir, "pergent.db"));
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    CREATE TABLE IF NOT EXISTS runs (
+      task        TEXT NOT NULL,
+      run_id      TEXT NOT NULL,
+      started_at  TEXT NOT NULL,
+      finished_at TEXT,
+      status      TEXT NOT NULL,
+      exit_code   INTEGER,
+      timed_out   INTEGER,
+      cost_usd    REAL,
+      turns       INTEGER,
+      output      TEXT NOT NULL DEFAULT '',
+      images      TEXT NOT NULL DEFAULT '{}',
+      PRIMARY KEY (task, run_id)
+    );
+    CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `);
+  importRuns(runsDir);
+  return db;
+}
+
+function use(): DatabaseSync {
+  if (!db) throw new Error("openDb() first");
+  return db;
+}
+
+type Row = {
+  task: string; run_id: string; started_at: string; finished_at: string | null; status: RunMeta["status"];
+  exit_code: number | null; timed_out: number | null; cost_usd: number | null; turns: number | null;
+};
+
+function toMeta(r: Row): RunMeta {
+  return {
+    task: r.task,
+    runId: r.run_id,
+    startedAt: r.started_at,
+    finishedAt: r.finished_at ?? undefined,
+    status: r.status,
+    exitCode: r.exit_code,
+    timedOut: r.timed_out === null ? undefined : r.timed_out === 1,
+    costUsd: r.cost_usd ?? undefined,
+    turns: r.turns ?? undefined,
+  };
+}
+
+const META_COLUMNS = "task, run_id, started_at, finished_at, status, exit_code, timed_out, cost_usd, turns";
+
+export function saveRun(meta: RunMeta, output = "", images: Record<string, string> = {}) {
+  use().prepare(`
+    INSERT INTO runs (${META_COLUMNS}, output, images)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (task, run_id) DO UPDATE SET
+      finished_at = excluded.finished_at, status = excluded.status, exit_code = excluded.exit_code,
+      timed_out = excluded.timed_out, cost_usd = excluded.cost_usd, turns = excluded.turns,
+      output = excluded.output, images = excluded.images
+  `).run(
+    meta.task, meta.runId, meta.startedAt, meta.finishedAt ?? null, meta.status, meta.exitCode ?? null,
+    meta.timedOut === undefined ? null : Number(meta.timedOut), meta.costUsd ?? null, meta.turns ?? null,
+    output, JSON.stringify(images),
+  );
+}
+
+export function listRuns(task: string): RunMeta[] {
+  const rows = use().prepare(`SELECT ${META_COLUMNS} FROM runs WHERE task = ? ORDER BY run_id DESC`).all(task);
+  return (rows as Row[]).map(toMeta);
+}
+
+export function getRun(task: string, runId: string): RunRow | null {
+  const row = use().prepare(`SELECT ${META_COLUMNS}, output, images FROM runs WHERE task = ? AND run_id = ?`).get(task, runId);
+  if (!row) return null;
+  const r = row as Row & { output: string; images: string };
+  return { meta: toMeta(r), output: r.output, images: JSON.parse(r.images) };
+}
+
+export function lastRunStartedAt(task: string): string | null {
+  const row = use().prepare("SELECT MAX(started_at) AS at FROM runs WHERE task = ?").get(task) as { at: string | null };
+  return row.at;
+}
+
+// A few named values, e.g. last_read: when the UI last fetched a run, which gates the scheduler.
+export function getState(key: string): string | null {
+  const row = use().prepare("SELECT value FROM state WHERE key = ?").get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setState(key: string, value: string) {
+  use().prepare("INSERT INTO state (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value").run(key, value);
+}
+
+// Runs made before the database existed (or restored from a volume) are picked up from their
+// meta.json; rows already present are left alone, so this is cheap to run at every start.
+function importRuns(runsDir: string) {
+  const has = use().prepare("SELECT 1 FROM runs WHERE task = ? AND run_id = ?");
+  const read = (path: string) => { try { return readFileSync(path, "utf8"); } catch { return ""; } };
+  for (const task of readdirSync(runsDir, { withFileTypes: true })) {
+    if (!task.isDirectory()) continue;
+    for (const runId of readdirSync(join(runsDir, task.name))) {
+      if (has.get(task.name, runId)) continue;
+      const dir = join(runsDir, task.name, runId);
+      const metaText = read(join(dir, "meta.json"));
+      if (!metaText) continue;
+      const imagesText = read(join(dir, "images.json"));
+      saveRun(JSON.parse(metaText), read(join(dir, "output.md")), imagesText ? JSON.parse(imagesText) : {});
+    }
+  }
+}

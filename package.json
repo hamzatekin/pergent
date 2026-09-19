@@ -6,9 +6,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "task": "node src/cli.ts",
-    "serve": "node src/server.ts",
-    "dev": "vite",
+    "task": "node --disable-warning=ExperimentalWarning src/cli.ts",
+    "serve": "node --disable-warning=ExperimentalWarning src/server.ts",
+    "dev": "node --disable-warning=ExperimentalWarning src/server.ts & vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web"
   },
@@ -23,6 +23,8 @@
     "vite": "^8.3.0"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.8",
     "marked": "^18.0.13",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

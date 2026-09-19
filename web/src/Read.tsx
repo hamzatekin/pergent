@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Marked, type Token, type Tokens } from "marked";
-import { api, type Run, type RunMeta } from "./api.ts";
+import { api, type Run, type RunMeta, type Status } from "./api.ts";
 import { Link, navigate } from "./router.tsx";
 
 // Bare URLs on their own line (how the prompts ask for sources) render as a small "host ↗" chip
@@ -109,6 +109,12 @@ function Paper({ output, images }: { output: string; images: Record<string, stri
 export function ReadView({ tasks, task, runId }: { tasks: string[]; task: string; runId?: string }) {
   const [runs, setRuns] = useState<RunMeta[] | null>(null);
   const [run, setRun] = useState<Run | null>(null);
+  // Fetched once, before any run is read, so it shows whether runs were paused while the paper sat unread.
+  const [status, setStatus] = useState<Status | null>(null);
+
+  useEffect(() => {
+    api.status().then(setStatus, () => {});
+  }, []);
 
   useEffect(() => {
     setRuns(null);
@@ -160,12 +166,21 @@ export function ReadView({ tasks, task, runId }: { tasks: string[]; task: string
         </div>
       </header>
 
+      {status?.scheduler === "paused" && (
+        <p className="note">
+          Scheduled runs were paused: {status.lastReadAt ? `the paper was last read ${daysAgo(status.lastReadAt)} days ago` : "the paper had not been opened yet"}. Reading it turns them back on.
+        </p>
+      )}
       {runs && !current && <p className="note">No finished runs yet.</p>}
       {current?.status === "failed" && <p className="note failed">This run failed.</p>}
       {run && run.output && <Paper output={run.output} images={run.images} />}
       {run && !run.output && current?.status === "ok" && <p className="note">This run produced no output.</p>}
     </div>
   );
+}
+
+function daysAgo(iso: string) {
+  return Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
 }
 
 function formatDate(iso: string) {

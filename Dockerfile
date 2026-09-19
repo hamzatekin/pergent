@@ -11,14 +11,16 @@ FROM node:24-bookworm-slim
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=4321 \
+    SCHEDULER=1 \
     DISABLE_AUTOUPDATER=1
 # ca-certificates for the fetch scripts and claude; git because claude expects it around.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @anthropic-ai/claude-code
 WORKDIR /app
-# No node_modules in the runtime yet: src/ and scripts/ use only node built-ins. Add an npm ci --omit=dev here if that changes.
-COPY package.json ./
+# The server needs hono at runtime; scripts/ and the runner still use only node built-ins (sqlite included).
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 COPY src ./src
 COPY scripts ./scripts
 # Tasks ship in the image: edit prompts in the repo and push to deploy them. Runs live in a volume.
@@ -28,4 +30,4 @@ COPY --from=build /app/dist ./dist
 # Nothing here uses --dangerously-skip-permissions.
 RUN mkdir -p runs
 EXPOSE 4321
-CMD ["node", "src/server.ts"]
+CMD ["node", "--disable-warning=ExperimentalWarning", "src/server.ts"]

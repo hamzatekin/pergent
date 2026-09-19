@@ -1,6 +1,6 @@
 # pergent
 
-Personal agent runner. Each task is a prompt plus a small JSON config; running a task spawns headless `claude -p` on your Claude subscription and stores the result on disk. A small web app is the morning paper that reads the outputs; prompts and configs are edited in git.
+Personal agent runner. Each task is a prompt plus a small JSON config; running a task spawns headless `claude -p` on your Claude subscription and stores the result on disk, indexed in a SQLite file under `runs/`. A small web app is the morning paper that reads the outputs; prompts and configs are edited in git.
 
 ## Local
 
@@ -42,4 +42,4 @@ What lives where:
 - `runs` is a named volume, so run history and the newsletter delivery state survive redeploys. `claude-home` keeps claude's own state.
 - No `.env` file is used. Locally none of the variables are needed: claude uses your own login and the server binds to localhost without auth.
 
-There is no scheduler yet. `schedule` in `task.json` is display-only, so runs happen when you call the command above or `POST /api/tasks/<name>/run`.
+Tasks run on the cron `schedule` in their `task.json` (server local time, so set `TZ`), but only while the paper is being read: the server notes every run the UI opens, and after 7 days without one it stops scheduling until you open the paper again. A fresh deployment is quiet until the first visit. Locally the scheduler is off; run tasks with the command above or `POST /api/tasks/<name>/run`.
