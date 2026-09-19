@@ -17,6 +17,14 @@ services:
       - claude-home:/root/.claude
     expose:
       - "4321"
+    # Coolify reads this block (its Healthcheck page is ignored for compose apps) and Traefik only routes
+    # to healthy containers. The image has node but no curl, and 127.0.0.1 avoids the IPv6-localhost trap.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4321/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 volumes:
   runs:

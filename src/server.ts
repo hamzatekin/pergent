@@ -77,6 +77,11 @@ function readBody(req: IncomingMessage) {
 
 createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
+  // Open liveness endpoint for the container health check; everything else is behind auth.
+  if (url.pathname === "/healthz") {
+    res.writeHead(200, { "content-type": "text/plain" });
+    return res.end("ok");
+  }
   if (!authorized(req)) {
     res.writeHead(401, { "www-authenticate": 'Basic realm="pergent"', "content-type": "text/plain" });
     return res.end("unauthorized");
