@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { basicAuth } from "hono/basic-auth";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { relative, resolve } from "node:path";
@@ -34,16 +33,10 @@ app.use(async (c, next) => {
   c.header("referrer-policy", "no-referrer");
 });
 
-// Open liveness endpoint for the container health check; everything else is behind auth.
+// Liveness endpoint for the container health check.
 app.get("/healthz", (c) => c.text("ok"));
 
-// One basic-auth login in front of everything when BASIC_AUTH_USER and BASIC_AUTH_PASSWORD are set.
-// Deployed behind a proxy that does HTTPS this is the app's only protection; unset both for local use.
-if (process.env.BASIC_AUTH_USER && process.env.BASIC_AUTH_PASSWORD) {
-  app.use(basicAuth({ username: process.env.BASIC_AUTH_USER, password: process.env.BASIC_AUTH_PASSWORD, realm: "pergent" }));
-}
-
-// Read-only apart from the run trigger: prompts and configs live in git and deploy by push.
+// Read-only: prompts and configs live in git and deploy by push; runs are started by the scheduler or the CLI.
 app.get("/api/tasks", async (c) => c.json(await listTasks()));
 app.get("/api/tasks/:name/runs", (c) => c.json(listRuns(c.req.param("name"))));
 // Fetching a run is what counts as reading the paper, which keeps the scheduler alive.
@@ -53,8 +46,6 @@ app.get("/api/tasks/:name/runs/:runId", (c) => {
   markRead();
   return c.json(run);
 });
-// Manual trigger for curl; the UI has no run button.
-app.post("/api/tasks/:name/run", (c) => startRun(c.req.param("name")) ? c.json({ started: true }, 202) : c.json({ error: "already running" }, 409));
 app.get("/api/status", (c) => c.json({
   scheduler: !SCHEDULER ? "off" : paused() ? "paused" : "on",
   lastReadAt: lastReadAt(),
@@ -67,7 +58,7 @@ app.use(serveStatic({ root: DIST }));
 app.use(serveStatic({ path: `${DIST}/index.html` }));
 
 app.onError((err, c) => {
-  if (err instanceof HTTPException) return err.getResponse(); // basic auth's 401
+  if (err instanceof HTTPException) return err.getResponse(); // keep Hono's own status instead of a 500
   console.error(err);
   return c.json({ error: String(err) }, 500);
 });

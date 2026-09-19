@@ -15,7 +15,7 @@ const md = new Marked({
 });
 
 // Task directory names stay as they are; the tabs show these labels.
-const labels: Record<string, string> = { haberler: "news", "x-ai": "tech" };
+const labels: Record<string, string> = { haberler: "news" };
 
 function host(url: string) {
   try {
