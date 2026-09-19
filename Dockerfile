@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @anthropic-ai/claude-code
 WORKDIR /app
-# The runtime imports nothing from node_modules: src/ and scripts/ use only node built-ins.
+# No node_modules in the runtime yet: src/ and scripts/ use only node built-ins. Add an npm ci --omit=dev here if that changes.
 COPY package.json ./
 COPY src ./src
 COPY scripts ./scripts

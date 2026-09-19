@@ -1,101 +1,120 @@
 @import "tailwindcss";
 
+/* Paper: warm, light, one theme. Serif for reading, the system sans only for the small chrome. */
 @theme {
-  --color-bg: #fafafa;
-  --color-surface: #fff;
-  --color-line: #e5e5e5;
-  --color-ink: #171717;
-  --color-muted: #737373;
-  --color-accent: #171717;
-  --color-accent-text: #fff;
-  --color-ok: #16a34a;
-  --color-failed: #dc2626;
-  --color-running: #f59e0b;
+  --color-bg: #f3eee4;
+  --color-surface: #fbf8f1;
+  --color-inset: #f1ebdf;
+  --color-line: #ddd3c2;
+  --color-ink: #2a2520;
+  --color-muted: #7d7265;
+  --color-accent: #8c5a2b;
+  --color-failed: #a83a2a;
+  --font-serif: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, "Times New Roman", serif;
   --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #0a0a0a;
-    --color-surface: #141414;
-    --color-line: #262626;
-    --color-ink: #ededed;
-    --color-muted: #8a8a8a;
-    --color-accent: #ededed;
-    --color-accent-text: #0a0a0a;
-  }
 }
 
 @layer base {
-  body {
-    @apply bg-bg text-ink text-sm antialiased;
+  html {
+    color-scheme: light;
   }
-  button {
-    @apply cursor-pointer text-left;
+  body {
+    @apply bg-bg text-ink font-serif antialiased;
+    font-size: 17px;
+    line-height: 1.55;
   }
 }
 
-/* Rendered markdown from a run's output. */
-.output {
-  @apply max-w-[72ch] leading-relaxed;
+/* Chrome around the paper. */
+.page {
+  @apply mx-auto max-w-[640px] px-4 pb-20 pt-3;
 }
-.output :is(h1, h2, h3) {
-  @apply mt-5 mb-2 font-semibold tracking-tight;
+.topbar {
+  @apply mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 font-sans text-[13px] text-muted;
 }
-.output h1 {
-  @apply text-lg;
+.tabs {
+  @apply -ml-2 flex min-w-0 gap-0.5 overflow-x-auto;
 }
-.output h2 {
-  @apply text-[15px];
+.tab {
+  @apply shrink-0 rounded-md px-2 py-1 transition-colors hover:text-ink data-[active=true]:bg-surface data-[active=true]:text-ink data-[active=true]:shadow-[inset_0_0_0_1px_var(--color-line)];
 }
-.output p {
+.runnav {
+  @apply -mr-2 flex items-center gap-1;
+}
+.arrow {
+  @apply rounded-md px-2 py-1 transition-colors hover:text-ink aria-disabled:pointer-events-none aria-disabled:opacity-30;
+}
+.stamp {
+  @apply tabular-nums;
+}
+.note {
+  @apply font-sans text-[14px] text-muted;
+}
+.note.failed {
+  @apply text-failed;
+}
+
+/* The paper itself. */
+.masthead {
+  @apply mb-2 text-[28px] font-bold leading-tight tracking-tight;
+}
+.section {
+  @apply mt-9;
+}
+.section-head {
+  @apply mb-4 border-b-2 border-ink pb-1.5 font-sans text-[13px] font-semibold uppercase tracking-[0.12em];
+}
+.story {
+  @apply mb-5 overflow-hidden rounded-xl border border-line bg-surface;
+}
+.story-image {
+  @apply block aspect-[16/9] w-full object-cover;
+}
+.story .prose {
+  @apply px-4 pb-4 pt-3.5;
+}
+.prose h3 {
+  @apply mb-2 text-[21px] font-bold leading-[1.25] tracking-tight;
+}
+.prose p {
   @apply my-2;
 }
-.output a {
-  @apply underline;
+.prose :is(ul, ol) {
+  @apply my-2 list-disc pl-5;
 }
-.output :is(ul, ol) {
-  @apply my-2 pl-5 list-disc;
-}
-.output ol {
+.prose ol {
   @apply list-decimal;
 }
-.output li {
+.prose li {
   @apply my-1.5;
 }
-.output code {
-  @apply font-mono text-[13px];
+.prose a {
+  @apply text-accent underline decoration-line underline-offset-[3px] hover:decoration-accent;
 }
-.output pre {
-  @apply my-2 rounded-lg border border-line bg-surface p-3 overflow-x-auto;
+.prose code {
+  @apply font-mono text-[15px];
 }
-
-/* Reading view: same markdown, sized for a morning read. */
-.output.read {
-  @apply max-w-none text-[17px] leading-[1.65];
+.prose pre {
+  @apply my-2 overflow-x-auto rounded-lg border border-line bg-inset p-3 font-mono text-[14px];
 }
-.output.read h1 {
-  @apply mb-6 mt-0 text-[26px] leading-tight;
+/* The "Ne olmuştu?" / "Context" aside under a story. */
+.prose blockquote {
+  @apply my-3 rounded-lg bg-inset px-3.5 py-2.5 text-[15px] leading-[1.5] text-muted;
 }
-.output.read h2 {
-  @apply mb-3 mt-10 border-b border-line pb-1.5 text-lg;
+.prose blockquote p {
+  @apply my-0;
 }
-.output.read h3 {
-  @apply mt-6 text-[17px];
+.prose blockquote strong {
+  @apply text-ink;
 }
-.output.read :is(p, li) {
-  @apply my-3;
+/* Source chip: the bare-URL paragraph at the end of a story. */
+.prose p:has(> a.src:only-child) {
+  @apply mb-0 mt-3;
 }
-.output.read li {
-  @apply my-2;
+.prose a.src {
+  @apply inline-block rounded-full border border-line bg-bg px-2.5 py-0.5 font-sans text-[12px] text-muted no-underline hover:border-muted hover:text-ink;
 }
-.output.read a {
-  @apply decoration-line underline-offset-[3px] hover:decoration-ink;
-}
-.output.read a.src {
-  @apply ml-1 whitespace-nowrap text-[13px] text-muted no-underline hover:text-ink;
-}
-.output.read code {
-  @apply text-[15px];
+/* Section lead without stories, e.g. a TL;DR list. */
+.lead {
+  @apply mb-5;
 }

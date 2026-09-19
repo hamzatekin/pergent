@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, statSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { listRuns, listTasks, loadTask, readRun, runTask, saveTask } from "./runner.ts";
+import { listRuns, listTasks, readRun, runTask } from "./runner.ts";
 
 const PORT = Number(process.env.PORT ?? 4321);
 // Loopback by default; the container sets HOST=0.0.0.0 and stays unpublished behind the reverse proxy.
@@ -33,24 +33,22 @@ function authorized(req: IncomingMessage): boolean {
   return given.length === AUTH.length && timingSafeEqual(given, AUTH);
 }
 
-async function api(method: string, path: string, body: string): Promise<{ status: number; data: unknown }> {
+// Read-only apart from the run trigger: prompts and configs live in git and deploy by push.
+async function api(method: string, path: string): Promise<{ status: number; data: unknown }> {
   const parts = path.split("/").filter(Boolean).slice(1); // drop "api"
   const [resource, name, sub, runId] = parts;
 
   if (resource === "tasks" && !name && method === "GET") {
-    const tasks = await Promise.all((await listTasks()).map(loadTask));
-    return { status: 200, data: tasks };
-  }
-  if (resource === "tasks" && name && !sub && method === "PUT") {
-    await saveTask(name, JSON.parse(body));
-    return { status: 200, data: await loadTask(name) };
+    return { status: 200, data: await listTasks() };
   }
   if (resource === "tasks" && name && sub === "runs" && !runId && method === "GET") {
     return { status: 200, data: await listRuns(name) };
   }
   if (resource === "tasks" && name && sub === "runs" && runId && method === "GET") {
-    return { status: 200, data: await readRun(name, runId) };
+    const run = await readRun(name, runId);
+    return run ? { status: 200, data: run } : { status: 404, data: { error: "not found" } };
   }
+  // Kept for curl until there is a scheduler; the UI has no run button.
   if (resource === "tasks" && name && sub === "run" && method === "POST") {
     if (running.has(name)) return { status: 409, data: { error: "already running" } };
     running.add(name);
@@ -60,23 +58,29 @@ async function api(method: string, path: string, body: string): Promise<{ status
   return { status: 404, data: { error: "not found" } };
 }
 
+// Files under dist/, index.html for anything else (SPA routes, directories, missing files).
+// URL parsing already resolves ".." segments; the prefix check is belt and braces.
 function serveStatic(path: string, res: ServerResponse) {
-  const file = join(DIST, path === "/" ? "index.html" : path);
-  const target = existsSync(file) ? file : join(DIST, "index.html");
+  const file = resolve(DIST, "." + path);
+  const isFile = file.startsWith(DIST + "/") && statSync(file, { throwIfNoEntry: false })?.isFile();
+  const target = isFile ? file : join(DIST, "index.html");
   res.writeHead(200, { "content-type": MIME[extname(target)] ?? "application/octet-stream" });
-  createReadStream(target).pipe(res);
+  createReadStream(target)
+    .on("error", () => res.destroy())
+    .pipe(res);
 }
 
-function readBody(req: IncomingMessage) {
-  return new Promise<string>((done) => {
-    let data = "";
-    req.on("data", (chunk) => (data += chunk));
-    req.on("end", () => done(data));
-  });
-}
+// The reading view injects the model's markdown as HTML unsanitized; the CSP keeps a script tag in a
+// model output (a prompt injection through a headline, say) from running. Images come from anywhere.
+const HEADERS = {
+  "content-security-policy": "default-src 'self'; img-src https: data:; style-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "no-referrer",
+};
 
 createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
+  for (const [name, value] of Object.entries(HEADERS)) res.setHeader(name, value);
   // Open liveness endpoint for the container health check; everything else is behind auth.
   if (url.pathname === "/healthz") {
     res.writeHead(200, { "content-type": "text/plain" });
@@ -88,7 +92,7 @@ createServer(async (req, res) => {
   }
   if (!url.pathname.startsWith("/api/")) return serveStatic(url.pathname, res);
   try {
-    const { status, data } = await api(req.method ?? "GET", url.pathname, await readBody(req));
+    const { status, data } = await api(req.method ?? "GET", url.pathname);
     res.writeHead(status, { "content-type": "application/json" });
     res.end(JSON.stringify(data));
   } catch (err) {

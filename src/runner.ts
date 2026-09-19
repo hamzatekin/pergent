@@ -44,13 +44,6 @@ export async function loadTask(name: string): Promise<Task> {
   return { name, config, prompt };
 }
 
-export async function saveTask(name: string, task: Pick<Task, "config" | "prompt">) {
-  const dir = join(TASKS_DIR, name);
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, "task.json"), JSON.stringify(task.config, null, 2) + "\n");
-  await writeFile(join(dir, "prompt.md"), task.prompt);
-}
-
 export async function listRuns(name: string): Promise<RunMeta[]> {
   const dir = join(RUNS_DIR, name);
   const ids = await readdir(dir).catch(() => [] as string[]);
@@ -60,11 +53,15 @@ export async function listRuns(name: string): Promise<RunMeta[]> {
   return metas.filter((m): m is RunMeta => m !== null).sort((a, b) => b.runId.localeCompare(a.runId));
 }
 
+// What the reading view needs: the output, and the lead images the before scripts found
+// (images.json, article link -> image URL). The log and stderr stay on disk.
 export async function readRun(name: string, runId: string) {
   const dir = join(RUNS_DIR, name, runId);
   const read = (file: string) => readFile(join(dir, file), "utf8").catch(() => "");
-  const [metaText, output, log, stderr, before] = await Promise.all([read("meta.json"), read("output.md"), read("log.jsonl"), read("stderr.log"), read("before.log")]);
-  return { meta: JSON.parse(metaText) as RunMeta, output, log, stderr, before };
+  const [metaText, output, imagesText] = await Promise.all([read("meta.json"), read("output.md"), read("images.json")]);
+  if (!metaText) return null;
+  const images: Record<string, string> = imagesText ? JSON.parse(imagesText) : {};
+  return { meta: JSON.parse(metaText) as RunMeta, output, images };
 }
 
 function runBefore(command: string, cwd: string, taskDir: string): Promise<boolean> {

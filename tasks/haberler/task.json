@@ -1,0 +1,132 @@
+{
+  "schedule": "30 7 * * *",
+  "model": "sonnet",
+  "allowedTools": [
+    "Read",
+    "WebFetch"
+  ],
+  "timeoutMinutes": 10,
+  "before": "node ../../../scripts/fetch-rss.ts && node ../../../scripts/fetch-bundle.ts",
+  "rss": {
+    "hours": 24,
+    "maxChars": 38000,
+    "feeds": [
+      {
+        "group": "Uluslararası Türkçe servisler",
+        "name": "BBC Türkçe",
+        "url": "https://feeds.bbci.co.uk/turkce/rss.xml"
+      },
+      {
+        "group": "Uluslararası Türkçe servisler",
+        "name": "DW Türkçe",
+        "url": "https://rss.dw.com/rdf/rss-tur-all"
+      },
+      {
+        "group": "Bağımsız",
+        "name": "Medyascope",
+        "url": "https://medyascope.tv/feed/"
+      },
+      {
+        "group": "Bağımsız",
+        "name": "bianet",
+        "url": "https://bianet.org/bianet/rss"
+      },
+      {
+        "group": "Bağımsız",
+        "name": "Diken",
+        "url": "https://www.diken.com.tr/feed/"
+      },
+      {
+        "group": "Sol",
+        "name": "BirGün",
+        "url": "https://www.birgun.net/xml/rss.xml"
+      },
+      {
+        "group": "Sol",
+        "name": "Evrensel",
+        "url": "https://www.evrensel.net/rss/haber.xml"
+      },
+      {
+        "group": "Sol",
+        "name": "soL",
+        "url": "https://haber.sol.org.tr/rss.xml"
+      },
+      {
+        "group": "Sol",
+        "name": "Artı Gerçek",
+        "url": "https://artigercek.com/rss"
+      },
+      {
+        "group": "Sol",
+        "name": "Kısa Dalga",
+        "url": "https://kisadalga.net/rss"
+      },
+      {
+        "group": "Sol",
+        "name": "Özgür Gelecek",
+        "url": "https://ozgurgelecek.net/feed/"
+      },
+      {
+        "group": "Muhalif ana akım",
+        "name": "Sözcü",
+        "url": "https://www.sozcu.com.tr/feeds-rss-category-sozcu"
+      },
+      {
+        "group": "Muhalif ana akım",
+        "name": "Cumhuriyet",
+        "url": "https://www.cumhuriyet.com.tr/rss"
+      },
+      {
+        "group": "Muhalif ana akım",
+        "name": "Halk TV",
+        "url": "https://halktv.com.tr/service/rss.php"
+      },
+      {
+        "group": "Ekonomi",
+        "name": "Dünya",
+        "url": "https://www.dunya.com/rss"
+      },
+      {
+        "group": "Ekonomi",
+        "name": "Ekonomim",
+        "url": "https://www.ekonomim.com/rss"
+      },
+      {
+        "group": "İktidara yakın ve resmi kaynaklar (sadece olgu için)",
+        "name": "Anadolu Ajansı",
+        "url": "https://www.aa.com.tr/tr/rss/default?cat=gundem"
+      },
+      {
+        "group": "İktidara yakın ve resmi kaynaklar (sadece olgu için)",
+        "name": "Hürriyet",
+        "url": "https://www.hurriyet.com.tr/rss/anasayfa"
+      },
+      {
+        "group": "İktidara yakın ve resmi kaynaklar (sadece olgu için)",
+        "name": "Sabah",
+        "url": "https://www.sabah.com.tr/rss/anasayfa.xml"
+      },
+      {
+        "group": "Magazin",
+        "name": "Hürriyet Kelebek",
+        "url": "https://www.hurriyet.com.tr/rss/kelebek"
+      },
+      {
+        "group": "Magazin",
+        "name": "Sabah Magazin",
+        "url": "https://www.sabah.com.tr/rss/magazin.xml"
+      },
+      {
+        "group": "Google News manşetler (kaç kaynağın işlediği yazıyor)",
+        "name": "Google News Türkiye",
+        "url": "https://news.google.com/rss?hl=tr&gl=TR&ceid=TR:tr"
+      }
+    ],
+    "files": 3
+  },
+  "bundle": {
+    "hours": 24,
+    "maxPages": 8,
+    "maxChars": 38000
+  }
+}

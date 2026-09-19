@@ -1,6 +1,6 @@
 # pergent
 
-Personal agent runner. Each task is a prompt plus a small JSON config; running a task spawns headless `claude -p` on your Claude subscription and stores the result on disk. A small web UI edits prompts, triggers runs, and has a reading view for the morning.
+Personal agent runner. Each task is a prompt plus a small JSON config; running a task spawns headless `claude -p` on your Claude subscription and stores the result on disk. A small web app is the morning paper that reads the outputs; prompts and configs are edited in git.
 
 ## Local
 
@@ -9,13 +9,13 @@ Requires Node 24 and a logged-in `claude`.
 ```sh
 npm install
 npm run build          # web UI -> dist/
-npm run serve          # http://localhost:4321  (editor at /, reading view at /read)
+npm run serve          # http://localhost:4321
 npm run task -- run x-ai
 ```
 
 ## Deploy (Coolify)
 
-The image bundles node, `claude`, the server, the fetch scripts and the tasks. Coolify's proxy does HTTPS; the app does its own basic-auth login, since the UI has no other protection.
+The image bundles node, `claude`, the server, the fetch scripts and the tasks. Coolify's proxy does HTTPS; the app does its own basic-auth login.
 
 Once, on your Mac:
 
@@ -38,8 +38,8 @@ node src/cli.ts run x-ai
 
 What lives where:
 
-- Tasks ship inside the image. Edit `tasks/<name>/prompt.md` in the repo and push; Coolify redeploys. Prompt edits made in the UI on the server last until the next deploy.
+- Tasks ship inside the image. Edit `tasks/<name>/prompt.md` in the repo and push; Coolify redeploys. The site is read-only.
 - `runs` is a named volume, so run history and the newsletter delivery state survive redeploys. `claude-home` keeps claude's own state.
 - No `.env` file is used. Locally none of the variables are needed: claude uses your own login and the server binds to localhost without auth.
 
-There is no scheduler yet. `schedule` in `task.json` is display-only, so runs happen when you press "Run now" or call the command above.
+There is no scheduler yet. `schedule` in `task.json` is display-only, so runs happen when you call the command above or `POST /api/tasks/<name>/run`.

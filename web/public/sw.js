@@ -1,5 +1,5 @@
 // App shell cache: precache the shell, serve static files cache-first, never touch /api.
-const CACHE = "pergent-v1";
+const CACHE = "pergent-v2";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
