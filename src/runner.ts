@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { getRun, openDb, saveRun, listRuns as listRunRows } from "./db.ts";
-import { fromMarkdown, type Paper } from "./paper.ts";
+import { PAPER_SCHEMA, fromMarkdown, parsePaper, toMarkdown, type Paper } from "./paper.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -62,7 +62,7 @@ export function listRuns(name: string): RunMeta[] {
 // The log and stderr stay on disk.
 export function readRun(name: string, runId: string): { meta: RunMeta; output: string; images: Record<string, string>; paper: Paper } | null {
   const row = getRun(name, runId);
-  return row && { ...row, paper: fromMarkdown(row.output) };
+  return row && { ...row, paper: row.paper ?? fromMarkdown(row.output) };
 }
 
 function runBefore(command: string, cwd: string, taskDir: string): Promise<boolean> {
@@ -98,7 +98,8 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   }
 
   // strict-mcp-config: ignore the user-level MCP servers; a task gets only what its own config names.
-  const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config"];
+  // json-schema: the paper comes back as structured output, held to the schema on the model's side.
+  const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--json-schema", JSON.stringify(PAPER_SCHEMA)];
   if (config.model) args.push("--model", config.model);
   if (config.allowedTools?.length) args.push("--allowedTools", config.allowedTools.join(","));
 
@@ -117,7 +118,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   }, (config.timeoutMinutes ?? 15) * 60_000);
 
   const log = createWriteStream(join(dir, "log.jsonl"));
-  let result: { result?: string; is_error?: boolean; total_cost_usd?: number; num_turns?: number } | undefined;
+  let result: { result?: string; structured_output?: unknown; is_error?: boolean; total_cost_usd?: number; num_turns?: number } | undefined;
   for await (const line of createInterface({ input: child.stdout })) {
     log.write(line + "\n");
     try {
@@ -132,8 +133,13 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   const exitCode = await new Promise<number | null>((done) => child.on("close", done));
   clearTimeout(timer);
 
-  await writeFile(join(dir, "output.md"), result?.result ?? "");
-  const ok = exitCode === 0 && !timedOut && !!result && !result.is_error;
+  // The paper is the structured output; output.md is its markdown rendering, kept so a run stays
+  // readable with cat. A result without a valid paper (the model answered in text) is a failed run.
+  const paper = parsePaper(result?.structured_output);
+  const output = paper ? toMarkdown(paper, { contextLabel: config.contextLabel }) : (result?.result ?? "");
+  await writeFile(join(dir, "output.md"), output);
+  if (paper) await writeFile(join(dir, "output.json"), JSON.stringify(paper, null, 2));
+  const ok = exitCode === 0 && !timedOut && !!result && !result.is_error && !!paper;
   const meta: RunMeta = {
     ...running,
     finishedAt: new Date().toISOString(),
@@ -146,6 +152,6 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));
   // The run directory keeps everything; the database gets what the API serves.
   const images = await readFile(join(dir, "images.json"), "utf8").then(JSON.parse, () => ({}));
-  saveRun(meta, result?.result ?? "", images);
+  saveRun(meta, output, images, paper);
   return { meta, dir };
 }

@@ -13,15 +13,12 @@ Ekonomi haberlerinde rakam varsa rakamı yaz: kur, enflasyon, faiz kararı, zam 
 
 Arka plan: bir haber devam eden bir sürecin parçasıysa (bir soruşturma, bir dava, bir siyasi süreç, bir ekonomik program, bir tartışma) ve başlığı ilk kez duyan biri ne olduğunu anlamayacaksa, haberin altına "Ne olmuştu?" bloğu ekle: süreç ne, ne zaman ve nasıl başladı, taraflar kim, bugüne kadar ne oldu. İki veya üç sade cümle. Sadece gerektiğinde; kendi başına anlaşılan bir habere ekleme. Emin olmadığın arka planı uydurma: `WebFetch` ile haberin bağlantısını aç, çoğu haberde arka plan paragrafı olur; oradan da çıkmıyorsa bloğu yazma. En büyük 3-4 haberin olgularını da aynı şekilde kontrol et. Google News bağlantıları yönlendirme olduğundan mümkünse gazetenin kendi bağlantısını tercih et.
 
-Format: markdown, Türkçe. Bölüm başlıklarında bir emoji, sırayla: 🏛️ Gündem ve Siyaset, 💸 Ekonomi, 🏙️ Toplum ve Yaşam, 🌍 Dünya (Türkiye'yi ilgilendirdiği kadar), 🎭 Kültür, Sanat ve Magazin, ⚽ Spor. Boş kalan bölümü yazma. Her bölümde 3-6 haber. Her haber kendi "### " başlığı altında, tam olarak şu düzende:
+Gazeteyi yapılandırılmış çıktı olarak ver: bir `title`, sonra sırayla `sections`; her bölümün bir `heading` ve `stories` listesi var. Her haberde `headline` (sade, tek cümlelik başlık), `body` (ne olduğunu ve neden önemli olduğunu anlatan iki veya üç sade cümle, markdown), gerekiyorsa `context` (yukarıda anlatılan "Ne olmuştu?" arka planı, iki veya üç cümle; gerekmiyorsa alanı hiç yazma) ve `source` (kaynağın bağlantısı, çıplak URL) var.
 
-### Haberin sade bir cümlelik başlığı
-Ne olduğunu ve neden önemli olduğunu anlatan iki veya üç sade cümle.
+`title`: "📰 Türkiye Gazetesi, <tarih>" (örnek: "📰 Türkiye Gazetesi, 19 Eylül 2026").
 
-> **Ne olmuştu?** Sadece gerekiyorsa, iki veya üç cümlelik arka plan.
+Bölüm başlıkları, sırayla: 🏛️ Gündem ve Siyaset, 💸 Ekonomi, 🏙️ Toplum ve Yaşam, 🌍 Dünya (Türkiye'yi ilgilendirdiği kadar), 🎭 Kültür, Sanat ve Magazin, ⚽ Spor. Boş kalan bölümü yazma. Her bölümde 3-6 haber. `lead` alanını kullanma.
 
-https://kaynagin-bağlantısı
+Dil Türkçe, sade ve gazete gibi, yorum yok, süs yok. Metnin içinde emoji kullanma, sadece bölüm başlıklarında. Her haberin bir `source` bağlantısı olmalı.
 
-Kaynak bağlantısı her haberin sonunda, tek başına bir satırda, çıplak URL olarak. Dil sade ve gazete gibi, yorum yok, süs yok. Metnin içinde emoji kullanma, sadece bölüm başlıklarında.
-
-Son mesajına "# 📰 " ile başlayan bir başlık satırıyla başla (örnek: "# 📰 Türkiye Gazetesi, 19 Eylül 2026"), sonra "## " bölüm başlıkları. Başlıktan önce hiçbir cümle, son haberden sonra hiçbir kapanış yazma.
+Yalnızca yapılandırılmış çıktıyı ver; öncesinde veya sonrasında metin yazma.

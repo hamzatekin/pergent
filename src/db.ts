@@ -2,10 +2,13 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { RunMeta } from "./runner.ts";
+import type { Paper } from "./paper.ts";
 
 // The database is the index the API reads; each run directory stays the archive (log, stderr, inputs).
-// It lives under runs/ so it is on the same volume as the run directories.
-export type RunRow = { meta: RunMeta; output: string; images: Record<string, string> };
+// It lives under runs/ so it is on the same volume as the run directories. `paper` is the structured
+// output of a run, `output` its markdown rendering (or, for runs from before structured output, the
+// markdown the model wrote, with no paper).
+export type RunRow = { meta: RunMeta; output: string; images: Record<string, string>; paper: Paper | null };
 
 let db: DatabaseSync | undefined;
 
@@ -30,6 +33,9 @@ export function openDb(runsDir: string): DatabaseSync {
     );
     CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
+  // Added after the first deployments; a database from before gets the column on start.
+  const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
+  if (!columns.some((c) => c.name === "paper")) db.exec("ALTER TABLE runs ADD COLUMN paper TEXT");
   importRuns(runsDir);
   return db;
 }
@@ -60,18 +66,18 @@ function toMeta(r: Row): RunMeta {
 
 const META_COLUMNS = "task, run_id, started_at, finished_at, status, exit_code, timed_out, cost_usd, turns";
 
-export function saveRun(meta: RunMeta, output = "", images: Record<string, string> = {}) {
+export function saveRun(meta: RunMeta, output = "", images: Record<string, string> = {}, paper: Paper | null = null) {
   use().prepare(`
-    INSERT INTO runs (${META_COLUMNS}, output, images)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO runs (${META_COLUMNS}, output, images, paper)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (task, run_id) DO UPDATE SET
       finished_at = excluded.finished_at, status = excluded.status, exit_code = excluded.exit_code,
       timed_out = excluded.timed_out, cost_usd = excluded.cost_usd, turns = excluded.turns,
-      output = excluded.output, images = excluded.images
+      output = excluded.output, images = excluded.images, paper = excluded.paper
   `).run(
     meta.task, meta.runId, meta.startedAt, meta.finishedAt ?? null, meta.status, meta.exitCode ?? null,
     meta.timedOut === undefined ? null : Number(meta.timedOut), meta.costUsd ?? null, meta.turns ?? null,
-    output, JSON.stringify(images),
+    output, JSON.stringify(images), paper && JSON.stringify(paper),
   );
 }
 
@@ -81,10 +87,10 @@ export function listRuns(task: string): RunMeta[] {
 }
 
 export function getRun(task: string, runId: string): RunRow | null {
-  const row = use().prepare(`SELECT ${META_COLUMNS}, output, images FROM runs WHERE task = ? AND run_id = ?`).get(task, runId);
+  const row = use().prepare(`SELECT ${META_COLUMNS}, output, images, paper FROM runs WHERE task = ? AND run_id = ?`).get(task, runId);
   if (!row) return null;
-  const r = row as Row & { output: string; images: string };
-  return { meta: toMeta(r), output: r.output, images: JSON.parse(r.images) };
+  const r = row as Row & { output: string; images: string; paper: string | null };
+  return { meta: toMeta(r), output: r.output, images: JSON.parse(r.images), paper: r.paper ? JSON.parse(r.paper) : null };
 }
 
 export function lastRunStartedAt(task: string): string | null {
@@ -115,7 +121,8 @@ function importRuns(runsDir: string) {
       const metaText = read(join(dir, "meta.json"));
       if (!metaText) continue;
       const imagesText = read(join(dir, "images.json"));
-      saveRun(JSON.parse(metaText), read(join(dir, "output.md")), imagesText ? JSON.parse(imagesText) : {});
+      const paperText = read(join(dir, "output.json"));
+      saveRun(JSON.parse(metaText), read(join(dir, "output.md")), imagesText ? JSON.parse(imagesText) : {}, paperText ? JSON.parse(paperText) : null);
     }
   }
 }
