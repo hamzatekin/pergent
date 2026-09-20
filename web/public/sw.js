@@ -1,5 +1,5 @@
 // App shell cache: precache the shell, serve static files cache-first, never touch /api.
-const CACHE = "pergent-v2";
+const CACHE = "pergent-v3";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -19,7 +19,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
 
-  // Navigations: network first so a new build is picked up, shell from cache when offline.
+  // Navigations: network first, the last cached front page when offline (pages are server-rendered).
   if (event.request.mode === "navigate") {
     event.respondWith(fetch(event.request).catch(() => caches.match("/")));
     return;

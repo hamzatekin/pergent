@@ -4,6 +4,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { getRun, openDb, saveRun, listRuns as listRunRows } from "./db.ts";
+import { fromMarkdown, type Paper } from "./paper.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -19,6 +20,10 @@ export type TaskConfig = {
   timeoutMinutes?: number;
   /** Shell command run in the run directory before claude starts. Gets TASK_DIR in its env. */
   before?: string;
+  /** How the reading view shows the task: the tab's text, the html lang, the background aside's handle. */
+  label?: string;
+  lang?: string;
+  contextLabel?: string;
   [extra: string]: unknown;
 };
 
@@ -52,10 +57,12 @@ export function listRuns(name: string): RunMeta[] {
   return listRunRows(name);
 }
 
-// What the reading view needs: the output, and the lead images the before scripts found
-// (images.json, article link -> image URL). The log and stderr stay on disk.
-export function readRun(name: string, runId: string) {
-  return getRun(name, runId);
+// What the reading view needs: the paper, and the lead images the before scripts found (images.json,
+// article link -> image URL). Runs from before structured output are parsed out of their markdown.
+// The log and stderr stay on disk.
+export function readRun(name: string, runId: string): { meta: RunMeta; output: string; images: Record<string, string>; paper: Paper } | null {
+  const row = getRun(name, runId);
+  return row && { ...row, paper: fromMarkdown(row.output) };
 }
 
 function runBefore(command: string, cwd: string, taskDir: string): Promise<boolean> {

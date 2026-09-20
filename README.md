@@ -8,7 +8,7 @@ Requires Node 24 and a logged-in `claude`.
 
 ```sh
 npm install
-npm run build          # web UI -> dist/
+npm run build          # stylesheet and static files -> dist/
 npm run serve          # http://localhost:4321
 npm run task -- run tech
 ```

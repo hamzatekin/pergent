@@ -1,6 +1,9 @@
 {
   "schedule": "30 7 * * *",
   "timezone": "Europe/London",
+  "label": "news",
+  "lang": "tr",
+  "contextLabel": "Ne olmuştu?",
   "model": "sonnet",
   "allowedTools": [
     "Read",

@@ -1,6 +1,9 @@
 {
   "schedule": "30 7 * * *",
   "timezone": "Europe/London",
+  "label": "tech",
+  "lang": "en",
+  "contextLabel": "Context",
   "model": "haiku",
   "allowedTools": [
     "Read"

@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* The markup is built in src/paper.ts and src/server.ts; scan them for the utilities they use. */
+@source "../src";
 
 /* Paper: warm, light, one theme. Serif for reading, the system sans only for the small chrome. */
 @theme {

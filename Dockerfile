@@ -1,10 +1,11 @@
-# Build the web UI, then ship a small runtime with node, claude, and the source (no build step for the Node side).
+# Build the stylesheet and gather the static files, then ship a small runtime with node, claude, and
+# the source (no build step for the Node side). Tailwind scans src/ for the classes the page uses.
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY vite.config.ts tsconfig.json ./
 COPY web ./web
+COPY src ./src
 RUN npm run build
 
 FROM node:24-bookworm-slim
