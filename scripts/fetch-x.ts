@@ -3,12 +3,17 @@
 // techtwitter.com's public API into discourse.md. All land in the current directory.
 // Config comes from $TASK_DIR/task.json under "x":
 //   hours       lookback window (default 24)
-//   lists       [{ url, categories? }] JSON exports in the awesome-ai-x-accounts format
-//               ({ categories: [{id,title}], accounts: [{handle,category}] }); categories filters by id
+//   lists       [{ url | file, categories? }] JSON exports in the awesome-ai-x-accounts format
+//               ({ categories: [{id,title}], accounts: [{handle,category}] }); categories filters by id.
+//               `file` is relative to the task directory: the committed base list. A remote list can
+//               vanish (it did), so it only ever adds accounts on top of the file.
 //   handles     { "group name": ["handle", ...] } hand-picked accounts, or a plain array
 //   techtwitter set false to skip discourse.md
 //   maxChars    per-file size cap (default 60000). claude's Read returns at most ~25k tokens, so each file
 //               is trimmed under the cap by dropping the least-liked posts first; post text is cut at 600 chars.
+// The merged list goes to accounts.json in the run directory, so a lost source can be recovered from
+// any run. It also writes posts.json: every status fetched, including the replies the markdown drops, with what
+// each one replies to or quotes. The fights task's before script reads it to rebuild conversations.
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -20,8 +25,25 @@ type Status = {
   likes: number;
   views: number;
   replies: number;
+  quotes?: number;
   author: { screen_name: string; name: string };
-  replying_to?: { screen_name: string } | null;
+  replying_to?: { screen_name: string; status?: string; url?: string } | null;
+  quote?: Status | null;
+};
+
+// One entry of posts.json. `handle` is the tracked account the status was fetched for; `author` differs on a repost.
+export type PostRecord = {
+  id: string;
+  url: string;
+  handle: string;
+  author: string;
+  text: string;
+  created: string;
+  likes: number;
+  replies: number;
+  quotes: number;
+  replyTo: { id: string; handle: string } | null;
+  quote: { id: string; url: string; author: string; text: string; likes: number; replies: number } | null;
 };
 
 type ListExport = {
@@ -44,11 +66,16 @@ function add(group: string, handle: string) {
   groups.set(group, [...(groups.get(group) ?? []), handle]);
 }
 
-for (const list of (config.x?.lists ?? []) as { url: string; categories?: string[] }[]) {
+for (const list of (config.x?.lists ?? []) as { url?: string; file?: string; categories?: string[] }[]) {
+  const source = list.file ? join(process.env.TASK_DIR!, list.file) : list.url!;
   try {
-    const res = await fetch(list.url, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    const body = (await res.json()) as ListExport;
+    let body: ListExport;
+    if (list.file) body = JSON.parse(await readFile(source, "utf8"));
+    else {
+      const res = await fetch(source, { signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      body = (await res.json()) as ListExport;
+    }
     const titles = new Map((body.categories ?? []).map((c) => [c.id, c.title ?? c.id]));
     // Seed groups in config order so the output follows list.categories, not the export's account order.
     for (const id of list.categories ?? []) if (!groups.has(titles.get(id) ?? id)) groups.set(titles.get(id) ?? id, []);
@@ -59,9 +86,9 @@ for (const list of (config.x?.lists ?? []) as { url: string; categories?: string
       add(titles.get(cat) ?? cat, a.handle);
       n++;
     }
-    console.log(`list ${list.url}: ${n} accounts`);
+    console.log(`list ${source}: ${n} accounts`);
   } catch (err) {
-    console.log(`list ${list.url} failed: ${err instanceof Error ? err.message : String(err)}`);
+    console.log(`list ${source} failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -71,6 +98,16 @@ for (const [group, handles] of Array.isArray(picked) ? [["Hand-picked", picked]]
   pickedGroups.add(group as string);
   for (const h of handles as string[]) add(group as string, h);
 }
+
+// Everything that was fetched this run, in the list export format, so the base list can be rebuilt
+// from any run directory if a source disappears.
+await writeFile(
+  "accounts.json",
+  JSON.stringify({
+    categories: [...groups.keys()].map((title) => ({ id: title, title })),
+    accounts: [...groups.entries()].flatMap(([title, hs]) => hs.map((handle) => ({ handle, category: title }))),
+  }),
+);
 
 async function fetchRecent(handle: string): Promise<Status[]> {
   const out: Status[] = [];
@@ -91,6 +128,27 @@ async function fetchRecent(handle: string): Promise<Status[]> {
 
 type Post = { group: string; handle: string; likes: number; text: string };
 
+const clip = (text: string, max: number) => {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length > max ? t.slice(0, max) + "…" : t;
+};
+
+function toRecord(handle: string, s: Status): PostRecord {
+  return {
+    id: s.id,
+    url: s.url,
+    handle,
+    author: s.author.screen_name,
+    text: clip(s.text, 600),
+    created: new Date(s.created_timestamp * 1000).toISOString(),
+    likes: s.likes,
+    replies: s.replies,
+    quotes: s.quotes ?? 0,
+    replyTo: s.replying_to?.status ? { id: s.replying_to.status, handle: s.replying_to.screen_name } : null,
+    quote: s.quote ? { id: s.quote.id, url: s.quote.url, author: s.quote.author.screen_name, text: clip(s.quote.text, 600), likes: s.quote.likes, replies: s.quote.replies } : null,
+  };
+}
+
 function toPosts(group: string, handle: string, statuses: Status[]): Post[] {
   // Drop replies to other people; keep self-replies (threads).
   const kept = statuses.filter((s) => !s.replying_to || s.replying_to.screen_name.toLowerCase() === handle.toLowerCase());
@@ -108,6 +166,7 @@ function toPosts(group: string, handle: string, statuses: Status[]): Post[] {
 // Fetch all handles with a small worker pool so ~130 accounts finish in well under a minute.
 const all = [...groups.entries()].flatMap(([group, hs]) => hs.map((h) => ({ group, handle: h })));
 const posts: Post[] = [];
+const records: PostRecord[] = [];
 const failed: string[] = [];
 let next = 0;
 await Promise.all(
@@ -115,7 +174,9 @@ await Promise.all(
     while (next < all.length) {
       const { group, handle } = all[next++];
       try {
-        posts.push(...toPosts(group, handle, await fetchRecent(handle)));
+        const statuses = await fetchRecent(handle);
+        posts.push(...toPosts(group, handle, statuses));
+        records.push(...statuses.map((s) => toRecord(handle, s)));
       } catch (err) {
         failed.push(`${handle}: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -207,5 +268,8 @@ const a = renderFile("Posts from AI accounts", listPosts);
 const b = renderFile("Posts from hand-picked accounts", webPosts);
 await writeFile("tweets.md", a.body);
 await writeFile("tweets-web.md", b.body);
+// A post reposted by another tracked account was fetched twice; keep the first record per id.
+const ids = new Set<string>();
+await writeFile("posts.json", JSON.stringify(records.filter((r) => !ids.has(r.id) && ids.add(r.id))));
 console.log(`tweets.md: ${a.kept} posts from ${a.accounts} accounts (${a.dropped} dropped for size); tweets-web.md: ${b.kept} posts from ${b.accounts} accounts (${b.dropped} dropped); ${all.length} accounts fetched, ${failed.length} failed`);
 for (const f of failed) console.log(`  failed ${f}`);

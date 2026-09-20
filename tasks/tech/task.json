@@ -11,6 +11,18 @@
     "hours": 24,
     "lists": [
       {
+        "file": "accounts.json",
+        "categories": [
+          "labs",
+          "coding",
+          "agents",
+          "infra",
+          "research",
+          "llm",
+          "founders"
+        ]
+      },
+      {
         "url": "https://raw.githubusercontent.com/everclear077/awesome-ai-x-accounts/main/data/accounts.json",
         "categories": [
           "labs",

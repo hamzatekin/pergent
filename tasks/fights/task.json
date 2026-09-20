@@ -1,0 +1,15 @@
+{
+  "schedule": "0 8 * * *",
+  "timezone": "Europe/London",
+  "model": "sonnet",
+  "allowedTools": [
+    "Read",
+    "WebSearch"
+  ],
+  "timeoutMinutes": 10,
+  "before": "node ../../../scripts/build-fights.ts",
+  "fights": {
+    "source": "tech",
+    "section": "fighting about"
+  }
+}

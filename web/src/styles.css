@@ -107,6 +107,26 @@
 .prose blockquote strong {
   @apply text-ink;
 }
+/* The same aside as a closed disclosure when it opens with a bold label. */
+.prose details.aside {
+  @apply my-3 rounded-lg bg-inset px-3.5 py-2 text-[15px] leading-[1.5] text-muted;
+}
+.prose details.aside > summary {
+  @apply cursor-pointer select-none list-none font-semibold text-ink hover:text-accent;
+}
+.prose details.aside > summary::before {
+  content: "▸";
+  @apply mr-1.5 inline-block transition-transform;
+}
+.prose details.aside[open] > summary::before {
+  transform: rotate(90deg);
+}
+.prose details.aside > summary::-webkit-details-marker {
+  display: none;
+}
+.prose details.aside > p {
+  @apply mb-0.5 mt-1.5;
+}
 /* Source chip: the bare-URL paragraph at the end of a story. */
 .prose p:has(> a.src:only-child) {
   @apply mb-0 mt-3;
@@ -117,4 +137,53 @@
 /* Section lead without stories, e.g. a TL;DR list. */
 .lead {
   @apply mb-5;
+}
+/* Deeper headings, when a dive is read as its own paper. */
+.prose h4 {
+  @apply mb-1 mt-4 font-sans text-[13px] font-semibold uppercase tracking-[0.08em] text-muted;
+}
+.prose h5 {
+  @apply mb-1 mt-3 text-[16px] font-bold;
+}
+
+/* The "dive deeper" panel under a story. */
+.dive {
+  @apply border-t border-line bg-inset;
+}
+.dive-bar {
+  @apply flex justify-between px-4 py-1.5;
+}
+.dive-toggle {
+  @apply -mx-1.5 rounded-md px-1.5 py-0.5 font-sans text-[13px] font-medium text-accent hover:bg-bg;
+}
+.dive-body {
+  @apply border-t border-line/60 px-4 pb-3 pt-1;
+}
+.dive-body .prose {
+  @apply p-0 text-[16px];
+}
+.dive-sec {
+  @apply mt-2 border-t border-line/60 pt-2;
+}
+.dive-sec > summary {
+  @apply cursor-pointer select-none list-none font-sans text-[13px] font-semibold uppercase tracking-[0.08em] text-muted hover:text-ink;
+}
+.dive-sec > summary::before {
+  content: "▸";
+  @apply mr-1.5 inline-block transition-transform;
+}
+.dive-sec[open] > summary::before {
+  transform: rotate(90deg);
+}
+.dive-item {
+  @apply my-2 rounded-lg border border-line bg-surface px-3 py-2;
+}
+.dive-item > summary {
+  @apply cursor-pointer select-none list-none text-[15px] font-semibold hover:text-accent;
+}
+.dive-item[open] > summary {
+  @apply mb-1;
+}
+.dive summary::-webkit-details-marker {
+  display: none;
 }

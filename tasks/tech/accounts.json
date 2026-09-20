@@ -1,0 +1,234 @@
+{
+  "categories": [
+    {
+      "id": "labs",
+      "title": "🏛️ Labs & model teams"
+    },
+    {
+      "id": "coding",
+      "title": "💻 AI coding & development"
+    },
+    {
+      "id": "agents",
+      "title": "🤖 Agents & evaluation"
+    },
+    {
+      "id": "infra",
+      "title": "⚙️ Open source & infrastructure"
+    },
+    {
+      "id": "research",
+      "title": "🧠 AI research"
+    },
+    {
+      "id": "llm",
+      "title": "📚 LLMs & learning"
+    },
+    {
+      "id": "founders",
+      "title": "🚀 Products & founders"
+    }
+  ],
+  "accounts": [
+    {
+      "handle": "AIatMeta",
+      "category": "labs"
+    },
+    {
+      "handle": "Alibaba_Qwen",
+      "category": "labs"
+    },
+    {
+      "handle": "AnthropicAI",
+      "category": "labs"
+    },
+    {
+      "handle": "GoogleAI",
+      "category": "labs"
+    },
+    {
+      "handle": "MIT_CSAIL",
+      "category": "labs"
+    },
+    {
+      "handle": "NVIDIAAI",
+      "category": "labs"
+    },
+    {
+      "handle": "StanfordHAI",
+      "category": "labs"
+    },
+    {
+      "handle": "cohere",
+      "category": "labs"
+    },
+    {
+      "handle": "bcherny",
+      "category": "coding"
+    },
+    {
+      "handle": "mattshumer_",
+      "category": "coding"
+    },
+    {
+      "handle": "nutlope",
+      "category": "coding"
+    },
+    {
+      "handle": "rauchg",
+      "category": "coding"
+    },
+    {
+      "handle": "sarah_edo",
+      "category": "coding"
+    },
+    {
+      "handle": "steipete",
+      "category": "coding"
+    },
+    {
+      "handle": "trq212",
+      "category": "coding"
+    },
+    {
+      "handle": "HamelHusain",
+      "category": "agents"
+    },
+    {
+      "handle": "cognition",
+      "category": "agents"
+    },
+    {
+      "handle": "eugeneyan",
+      "category": "agents"
+    },
+    {
+      "handle": "hwchase17",
+      "category": "agents"
+    },
+    {
+      "handle": "jerryjliu0",
+      "category": "agents"
+    },
+    {
+      "handle": "jxnlco",
+      "category": "agents"
+    },
+    {
+      "handle": "sh_reya",
+      "category": "agents"
+    },
+    {
+      "handle": "simonw",
+      "category": "agents"
+    },
+    {
+      "handle": "swyx",
+      "category": "agents"
+    },
+    {
+      "handle": "LangChain",
+      "category": "infra"
+    },
+    {
+      "handle": "PyTorch",
+      "category": "infra"
+    },
+    {
+      "handle": "Teknium",
+      "category": "infra"
+    },
+    {
+      "handle": "Thom_Wolf",
+      "category": "infra"
+    },
+    {
+      "handle": "abacaj",
+      "category": "infra"
+    },
+    {
+      "handle": "huggingface",
+      "category": "infra"
+    },
+    {
+      "handle": "llama_index",
+      "category": "infra"
+    },
+    {
+      "handle": "vllm_project",
+      "category": "infra"
+    },
+    {
+      "handle": "drfeifei",
+      "category": "research"
+    },
+    {
+      "handle": "lmsysorg",
+      "category": "research"
+    },
+    {
+      "handle": "ylecun",
+      "category": "research"
+    },
+    {
+      "handle": "claudeai",
+      "category": "llm"
+    },
+    {
+      "handle": "natolambert",
+      "category": "llm"
+    },
+    {
+      "handle": "omarsar0",
+      "category": "llm"
+    },
+    {
+      "handle": "rasbt",
+      "category": "llm"
+    },
+    {
+      "handle": "AravSrinivas",
+      "category": "founders"
+    },
+    {
+      "handle": "ClementDelangue",
+      "category": "founders"
+    },
+    {
+      "handle": "ID_AA_Carmack",
+      "category": "founders"
+    },
+    {
+      "handle": "a16z",
+      "category": "founders"
+    },
+    {
+      "handle": "amasad",
+      "category": "founders"
+    },
+    {
+      "handle": "gdb",
+      "category": "founders"
+    },
+    {
+      "handle": "levelsio",
+      "category": "founders"
+    },
+    {
+      "handle": "mustafasuleyman",
+      "category": "founders"
+    },
+    {
+      "handle": "saranormous",
+      "category": "founders"
+    },
+    {
+      "handle": "tibo_maker",
+      "category": "founders"
+    },
+    {
+      "handle": "ycombinator",
+      "category": "founders"
+    }
+  ]
+}
