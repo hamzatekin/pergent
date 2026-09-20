@@ -26,7 +26,7 @@ claude setup-token     # prints a long-lived subscription token for headless cla
 In Coolify:
 
 1. New resource, Docker Compose, from this Git repo. It picks up `compose.yaml`.
-2. Environment Variables: `CLAUDE_CODE_OAUTH_TOKEN` (the token), `TZ`.
+2. Environment Variables: `CLAUDE_CODE_OAUTH_TOKEN` (the token). `TZ` is optional (compose defaults it to Europe/London); it sets the clock the prompts see, not the schedule.
 3. Set the domain on the `app` service, port 4321.
 4. Deploy. Then open `https://<domain>/read` and add it to your phone's home screen; it opens straight into the reading view.
 
@@ -42,4 +42,4 @@ What lives where:
 - `runs` is a named volume, so run history and the newsletter delivery state survive redeploys. `claude-home` keeps claude's own state.
 - No `.env` file is used. Locally none of the variables are needed: claude uses your own login and the server binds to localhost without auth.
 
-Tasks run on the cron `schedule` in their `task.json` (server local time, so set `TZ`), but only while the paper is being read: the server notes every run the UI opens, and after 7 days without one it stops scheduling until you open the paper again. A fresh deployment is quiet until the first visit. Locally the scheduler is off; run tasks with the command above.
+Tasks run on the cron `schedule` in their `task.json`, read in the task's `timezone` (IANA name; without one, the server's `TZ`), but only while the paper is being read: the server notes every run the UI opens, and after 7 days without one it stops scheduling until you open the paper again. A fresh deployment is quiet until the first visit. A slot missed while the server was down, deploying or paused is caught up on the next tick, as long as it was in the last 24 hours. To run a task by hand on the server, open the container (Coolify's terminal button, or `docker exec -it <container> sh` over SSH) and run `node --disable-warning=ExperimentalWarning src/cli.ts run <task>`. Locally the scheduler is off; run tasks with the command above.

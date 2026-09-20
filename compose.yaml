@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       HOST: 0.0.0.0
-      TZ: ${TZ:-UTC}
+      TZ: ${TZ:-Europe/London}
       # From `claude setup-token` on a machine that is logged in to your Claude subscription.
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
     volumes:

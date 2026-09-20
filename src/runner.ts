@@ -13,6 +13,7 @@ openDb(RUNS_DIR);
 
 export type TaskConfig = {
   schedule?: string;
+  timezone?: string; // IANA zone the schedule is read in; defaults to the process TZ
   model?: string;
   allowedTools?: string[];
   timeoutMinutes?: number;

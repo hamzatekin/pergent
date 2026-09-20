@@ -1,5 +1,6 @@
 {
   "schedule": "30 7 * * *",
+  "timezone": "Europe/London",
   "model": "sonnet",
   "allowedTools": [
     "Read",

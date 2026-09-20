@@ -21,8 +21,9 @@ export function paused(now = Date.now()): boolean {
 }
 
 // Five-field cron (minute hour day-of-month month day-of-week) with *, lists, ranges and steps,
-// matched against local time (TZ). Day-of-month and day-of-week are OR-ed when both are restricted,
-// like Vixie cron.
+// matched against wall-clock time in `timeZone` (an IANA name from the task's config) or, without one,
+// the process's local time (TZ). Day-of-month and day-of-week are OR-ed when both are restricted, like
+// Vixie cron.
 function field(spec: string, min: number, max: number): Set<number> {
   const out = new Set<number>();
   for (const part of spec.split(",")) {
@@ -40,22 +41,52 @@ function field(spec: string, min: number, max: number): Set<number> {
   return out;
 }
 
-export function cronMatches(expr: string, date: Date): boolean {
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const formats = new Map<string, Intl.DateTimeFormat>();
+
+function wallClock(date: Date, timeZone?: string) {
+  if (!timeZone) {
+    return { minute: date.getMinutes(), hour: date.getHours(), day: date.getDate(), month: date.getMonth() + 1, weekday: date.getDay() };
+  }
+  let format = formats.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", minute: "numeric", hour: "numeric", day: "numeric", month: "numeric", weekday: "short" });
+    formats.set(timeZone, format);
+  }
+  const p = Object.fromEntries(format.formatToParts(date).map(({ type, value }) => [type, value]));
+  return { minute: Number(p.minute), hour: Number(p.hour), day: Number(p.day), month: Number(p.month), weekday: WEEKDAYS.indexOf(p.weekday) };
+}
+
+export function cronMatches(expr: string, date: Date, timeZone?: string): boolean {
   const parts = expr.trim().split(/\s+/);
   if (parts.length !== 5) throw new Error(`bad cron: ${expr}`);
   const [minute, hour, dom, month, dow] = parts;
-  if (!field(minute, 0, 59).has(date.getMinutes())) return false;
-  if (!field(hour, 0, 23).has(date.getHours())) return false;
-  if (!field(month, 1, 12).has(date.getMonth() + 1)) return false;
-  const domOk = field(dom, 1, 31).has(date.getDate());
+  const now = wallClock(date, timeZone);
+  if (!field(minute, 0, 59).has(now.minute)) return false;
+  if (!field(hour, 0, 23).has(now.hour)) return false;
+  if (!field(month, 1, 12).has(now.month)) return false;
+  const domOk = field(dom, 1, 31).has(now.day);
   const days = field(dow, 0, 7);
-  const dowOk = days.has(date.getDay()) || (date.getDay() === 0 && days.has(7));
+  const dowOk = days.has(now.weekday) || (now.weekday === 0 && days.has(7));
   return dom !== "*" && dow !== "*" ? domOk || dowOk : domOk && dowOk;
 }
 
-// Ticks just after every minute boundary. A task whose latest run started in this same minute is
-// skipped, so a restart mid-minute does not fire it twice. `start` is the server's run trigger,
-// which already refuses to overlap a running task.
+// The most recent minute at or before `now` that the cron matched, looking back `windowMinutes`;
+// null when it did not fire in that window.
+export function lastSlot(expr: string, now: Date, timeZone?: string, windowMinutes = 24 * 60): Date | null {
+  const minute = Math.floor(now.getTime() / 60_000) * 60_000;
+  for (let i = 0; i < windowMinutes; i++) {
+    const at = new Date(minute - i * 60_000);
+    if (cronMatches(expr, at, timeZone)) return at;
+  }
+  return null;
+}
+
+// Ticks just after every minute boundary. A task is due when its cron fired within the last 24h and
+// its latest run (any status) started before that slot. This is what fires it at the scheduled
+// minute, and it is also the catch-up: a server that was down, deploying or paused at 7:30 starts
+// the task on its first tick after, and a run that already happened (or failed) is not repeated.
+// `start` is the server's run trigger, which already refuses to overlap a running task.
 export function startScheduler(start: (name: string) => void) {
   const tick = async () => {
     const now = new Date();
@@ -63,10 +94,12 @@ export function startScheduler(start: (name: string) => void) {
     for (const name of await listTasks()) {
       try {
         const { config } = await loadTask(name);
-        if (!config.schedule || !cronMatches(config.schedule, now)) continue;
+        if (!config.schedule) continue;
+        const slot = lastSlot(config.schedule, now, config.timezone);
+        if (!slot) continue;
         const last = lastRunStartedAt(name);
-        if (last && Math.floor(Date.parse(last) / 60_000) === Math.floor(now.getTime() / 60_000)) continue;
-        console.log(`schedule: starting ${name} (${config.schedule})`);
+        if (last && Date.parse(last) >= slot.getTime()) continue;
+        console.log(`schedule: starting ${name} (${config.schedule} ${config.timezone ?? "local"}, slot ${slot.toISOString()})`);
         start(name);
       } catch (err) {
         console.error(`schedule: ${name}:`, err);
