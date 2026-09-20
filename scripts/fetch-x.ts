@@ -12,8 +12,7 @@
 //   maxChars    per-file size cap (default 60000). claude's Read returns at most ~25k tokens, so each file
 //               is trimmed under the cap by dropping the least-liked posts first; post text is cut at 600 chars.
 // The merged list goes to accounts.json in the run directory, so a lost source can be recovered from
-// any run. It also writes posts.json: every status fetched, including the replies the markdown drops, with what
-// each one replies to or quotes. The fights task's before script reads it to rebuild conversations.
+// any run.
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -25,25 +24,8 @@ type Status = {
   likes: number;
   views: number;
   replies: number;
-  quotes?: number;
   author: { screen_name: string; name: string };
-  replying_to?: { screen_name: string; status?: string; url?: string } | null;
-  quote?: Status | null;
-};
-
-// One entry of posts.json. `handle` is the tracked account the status was fetched for; `author` differs on a repost.
-export type PostRecord = {
-  id: string;
-  url: string;
-  handle: string;
-  author: string;
-  text: string;
-  created: string;
-  likes: number;
-  replies: number;
-  quotes: number;
-  replyTo: { id: string; handle: string } | null;
-  quote: { id: string; url: string; author: string; text: string; likes: number; replies: number } | null;
+  replying_to?: { screen_name: string } | null;
 };
 
 type ListExport = {
@@ -128,27 +110,6 @@ async function fetchRecent(handle: string): Promise<Status[]> {
 
 type Post = { group: string; handle: string; likes: number; text: string };
 
-const clip = (text: string, max: number) => {
-  const t = text.replace(/\s+/g, " ").trim();
-  return t.length > max ? t.slice(0, max) + "…" : t;
-};
-
-function toRecord(handle: string, s: Status): PostRecord {
-  return {
-    id: s.id,
-    url: s.url,
-    handle,
-    author: s.author.screen_name,
-    text: clip(s.text, 600),
-    created: new Date(s.created_timestamp * 1000).toISOString(),
-    likes: s.likes,
-    replies: s.replies,
-    quotes: s.quotes ?? 0,
-    replyTo: s.replying_to?.status ? { id: s.replying_to.status, handle: s.replying_to.screen_name } : null,
-    quote: s.quote ? { id: s.quote.id, url: s.quote.url, author: s.quote.author.screen_name, text: clip(s.quote.text, 600), likes: s.quote.likes, replies: s.quote.replies } : null,
-  };
-}
-
 function toPosts(group: string, handle: string, statuses: Status[]): Post[] {
   // Drop replies to other people; keep self-replies (threads).
   const kept = statuses.filter((s) => !s.replying_to || s.replying_to.screen_name.toLowerCase() === handle.toLowerCase());
@@ -166,7 +127,6 @@ function toPosts(group: string, handle: string, statuses: Status[]): Post[] {
 // Fetch all handles with a small worker pool so ~130 accounts finish in well under a minute.
 const all = [...groups.entries()].flatMap(([group, hs]) => hs.map((h) => ({ group, handle: h })));
 const posts: Post[] = [];
-const records: PostRecord[] = [];
 const failed: string[] = [];
 let next = 0;
 await Promise.all(
@@ -174,9 +134,7 @@ await Promise.all(
     while (next < all.length) {
       const { group, handle } = all[next++];
       try {
-        const statuses = await fetchRecent(handle);
-        posts.push(...toPosts(group, handle, statuses));
-        records.push(...statuses.map((s) => toRecord(handle, s)));
+        posts.push(...toPosts(group, handle, await fetchRecent(handle)));
       } catch (err) {
         failed.push(`${handle}: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -268,8 +226,5 @@ const a = renderFile("Posts from AI accounts", listPosts);
 const b = renderFile("Posts from hand-picked accounts", webPosts);
 await writeFile("tweets.md", a.body);
 await writeFile("tweets-web.md", b.body);
-// A post reposted by another tracked account was fetched twice; keep the first record per id.
-const ids = new Set<string>();
-await writeFile("posts.json", JSON.stringify(records.filter((r) => !ids.has(r.id) && ids.add(r.id))));
 console.log(`tweets.md: ${a.kept} posts from ${a.accounts} accounts (${a.dropped} dropped for size); tweets-web.md: ${b.kept} posts from ${b.accounts} accounts (${b.dropped} dropped); ${all.length} accounts fetched, ${failed.length} failed`);
 for (const f of failed) console.log(`  failed ${f}`);
