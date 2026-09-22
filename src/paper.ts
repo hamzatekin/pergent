@@ -108,6 +108,8 @@ export function renderPaper(paper: Paper, images: Record<string, string> = {}, l
     out.push('<section class="section">');
     if (section.heading) out.push(`<h2 class="section-head">${escapeHtml(section.heading)}</h2>`);
     if (section.lead) out.push(`<div class="prose lead">${render(section.lead)}</div>`);
+    // The stories of a section flow in newspaper columns on a wide screen (styles.css); one column on a phone.
+    if (section.stories.length) out.push('<div class="stories">');
     for (const story of section.stories) {
       const image = story.source ? byLink.get(canonical(story.source)) : undefined;
       out.push('<article class="story">');
@@ -122,6 +124,7 @@ export function renderPaper(paper: Paper, images: Record<string, string> = {}, l
       if (story.source && isHttp(story.source)) out.push(`<p>${chip(story.source)}</p>`);
       out.push("</div></article>");
     }
+    if (section.stories.length) out.push("</div>");
     out.push("</section>");
   }
   out.push("</div>");
