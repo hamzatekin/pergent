@@ -20,10 +20,11 @@ export type TaskConfig = {
   timeoutMinutes?: number;
   /** Shell command run in the run directory before claude starts. Gets TASK_DIR in its env. */
   before?: string;
-  /** How the reading view shows the task: the tab's text, the html lang, the background aside's handle. */
+  /** How the reading view shows the task: the tab's text, the html lang, the background aside's handle, the briefs' heading. */
   label?: string;
   lang?: string;
   contextLabel?: string;
+  briefsLabel?: string;
   [extra: string]: unknown;
 };
 

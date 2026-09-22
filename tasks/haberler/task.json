@@ -4,6 +4,7 @@
   "label": "news",
   "lang": "tr",
   "contextLabel": "Ne olmuştu?",
+  "briefsLabel": "Kısaca",
   "model": "sonnet",
   "allowedTools": [
     "Read",

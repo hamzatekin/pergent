@@ -123,7 +123,7 @@ ${arrow(newer, "Newer run", "→", "ArrowRight")}
 </div>
 </header>
 ${notes.map((n) => `<p class="note">${n}</p>`).join("\n")}
-${run ? renderPaper(run.paper, run.images, { contextLabel: config.contextLabel }) : ""}
+${run ? renderPaper(run.paper, run.images, { contextLabel: config.contextLabel, briefsLabel: config.briefsLabel }) : ""}
 </div>
 <script src="/app.js?v=${version("app.js")}"></script>
 </body>
