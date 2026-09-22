@@ -28,7 +28,7 @@
 }
 
 /* Chrome around the paper. One reading column on a phone; from md up the page widens and each
-   section's stories flow in two, then three, newspaper columns (see .stories). */
+   section's cards sit in a two, then three, column grid (see .stories). */
 .page {
   @apply mx-auto max-w-[640px] px-4 pb-20 pt-3 md:max-w-[1000px] xl:max-w-[1400px];
 }
@@ -67,16 +67,52 @@
 .section-head {
   @apply mb-4 border-b-2 border-ink pb-1.5 font-sans text-[13px] font-semibold uppercase tracking-[0.12em];
 }
+/* The cards of a section. A lead story (importance 3) is two columns wide; dense packing lets a later
+   single card fill the hole a lead leaves, so the grid reads as a mosaic rather than rows. */
 .stories {
-  @apply md:columns-2 md:gap-5 xl:columns-3;
+  @apply md:grid md:grid-cols-2 md:gap-5 xl:grid-cols-3;
+  grid-auto-flow: dense;
 }
 .story {
-  @apply mb-5 overflow-hidden rounded-xl border border-line bg-surface;
-  /* A card never splits across columns; the column keeps whole stories. */
-  break-inside: avoid;
+  @apply mb-5 overflow-hidden rounded-xl border border-line bg-surface md:mb-0;
+}
+.story[data-importance="3"] {
+  @apply md:col-span-2;
+}
+.story[data-importance="3"] .prose h3 {
+  @apply text-[25px] md:text-[28px];
 }
 .story-image {
   @apply block aspect-[16/9] w-full object-cover;
+}
+.story[data-importance="3"] .story-image {
+  @apply md:aspect-[2/1];
+}
+/* The section's briefs (importance 1): one band of short lines after the cards, the headline run into
+   the first sentence, flowing in text columns on a wide screen. */
+.briefs {
+  @apply mt-5 rounded-xl border border-line bg-surface px-4 py-2 md:columns-2 md:gap-8 xl:columns-3;
+}
+.briefs-head {
+  @apply mb-1 mt-1 font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-muted;
+  column-span: all;
+}
+.brief {
+  @apply border-b border-line py-2.5 text-[15px] leading-[1.5] last:border-0;
+  break-inside: avoid;
+}
+.brief h3,
+.brief h3 + p {
+  @apply my-0 inline text-[15px] leading-[1.5];
+}
+.brief h3 {
+  @apply mr-1.5 font-bold;
+}
+.brief p:has(> a.src:only-child) {
+  @apply mt-1;
+}
+.brief details.aside {
+  @apply my-2 text-[14px];
 }
 .story .prose {
   @apply px-4 pb-4 pt-3.5;

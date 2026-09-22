@@ -13,11 +13,13 @@ Ekonomi haberlerinde rakam varsa rakamı yaz: kur, enflasyon, faiz kararı, zam 
 
 Arka plan: bir haber devam eden bir sürecin parçasıysa (bir soruşturma, bir dava, bir siyasi süreç, bir ekonomik program, bir tartışma) ve başlığı ilk kez duyan biri ne olduğunu anlamayacaksa, haberin altına "Ne olmuştu?" bloğu ekle: süreç ne, ne zaman ve nasıl başladı, taraflar kim, bugüne kadar ne oldu. İki veya üç sade cümle. Sadece gerektiğinde; kendi başına anlaşılan bir habere ekleme. Emin olmadığın arka planı uydurma: `WebFetch` ile haberin bağlantısını aç, çoğu haberde arka plan paragrafı olur; oradan da çıkmıyorsa bloğu yazma. En büyük 3-4 haberin olgularını da aynı şekilde kontrol et. Google News bağlantıları yönlendirme olduğundan mümkünse gazetenin kendi bağlantısını tercih et.
 
-Gazeteyi yapılandırılmış çıktı olarak ver: bir `title`, sonra sırayla `sections`; her bölümün bir `heading` ve `stories` listesi var. Her haberde `headline` (sade, tek cümlelik başlık), `body` (ne olduğunu ve neden önemli olduğunu anlatan iki veya üç sade cümle, markdown), gerekiyorsa `context` (yukarıda anlatılan "Ne olmuştu?" arka planı, iki veya üç cümle; gerekmiyorsa alanı hiç yazma) ve `source` (kaynağın bağlantısı, çıplak URL) var.
+Gazeteyi yapılandırılmış çıktı olarak ver: bir `title`, sonra sırayla `sections`; her bölümün bir `heading` ve `stories` listesi var. Her haberde `headline` (sade, tek cümlelik başlık), `body` (ne olduğunu ve neden önemli olduğunu anlatan iki veya üç sade cümle, markdown), gerekiyorsa `context` (yukarıda anlatılan "Ne olmuştu?" arka planı, iki veya üç cümle; gerekmiyorsa alanı hiç yazma), `source` (kaynağın bağlantısı, çıplak URL) ve `importance` var.
+
+`importance` haberin sayfadaki büyüklüğü: bölümün en büyük bir veya iki haberi için 3, normal haber için 2, kısa haber için 1. Kısa haber tek cümlelik `body` ile verilir: bir atama, bir rakam, bir maç sonucu, bir küçük gelişme. Bir haber paragraf etmiyor ama bilinmeye değerse atlamak yerine kısa haber yap.
 
 `title`: "📰 Türkiye Gazetesi, <tarih>" (örnek: "📰 Türkiye Gazetesi, 19 Eylül 2026").
 
-Bölüm başlıkları, sırayla: 🏛️ Gündem ve Siyaset, 💸 Ekonomi, 🏙️ Toplum ve Yaşam, 🌍 Dünya (Türkiye'yi ilgilendirdiği kadar), 🎭 Kültür, Sanat ve Magazin, ⚽ Spor. Boş kalan bölümü yazma. Her bölümde 3-6 haber. `lead` alanını kullanma.
+Bölüm başlıkları, sırayla: 🏛️ Gündem ve Siyaset, 💸 Ekonomi, 🏙️ Toplum ve Yaşam, 🌍 Dünya (Türkiye'yi ilgilendirdiği kadar), 🎭 Kültür, Sanat ve Magazin, ⚽ Spor. Boş kalan bölümü yazma. Her bölümde 3-6 normal haber (importance 2 veya 3), gerekirse birkaç kısa haber (importance 1). `lead` alanını kullanma.
 
 Dil Türkçe, sade ve gazete gibi, yorum yok, süs yok. Metnin içinde emoji kullanma, sadece bölüm başlıklarında. Her haberin bir `source` bağlantısı olmalı.
 
