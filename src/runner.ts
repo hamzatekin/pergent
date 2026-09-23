@@ -54,6 +54,11 @@ export async function loadTask(name: string): Promise<Task> {
   return { name, config, prompt };
 }
 
+// Where a run's files live: the log, stderr, before.log and the fetched inputs.
+export function runDir(name: string, runId: string): string {
+  return join(RUNS_DIR, name, runId);
+}
+
 export function listRuns(name: string): RunMeta[] {
   return listRunRows(name);
 }
@@ -80,7 +85,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   const { config, prompt } = await loadTask(name);
   const startedAt = new Date();
   const runId = startedAt.toISOString().replace(/[:.]/g, "-");
-  const dir = join(RUNS_DIR, name, runId);
+  const dir = runDir(name, runId);
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, "prompt.md"), prompt);
   const running: RunMeta = { task: name, runId, startedAt: startedAt.toISOString(), status: "running" };

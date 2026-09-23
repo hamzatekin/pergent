@@ -6,6 +6,7 @@ import { statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { listRuns, listTasks, loadTask, readRun, runTask, type RunMeta, type TaskConfig } from "./runner.ts";
 import { escapeHtml, renderPaper } from "./paper.ts";
+import { adminRoutes } from "./admin.ts";
 import { PAUSE_AFTER_DAYS, lastReadAt, markRead, paused, startScheduler } from "./scheduler.ts";
 
 const PORT = Number(process.env.PORT ?? 4321);
@@ -39,8 +40,11 @@ app.use(async (c, next) => {
 // Liveness endpoint for the container health check.
 app.get("/healthz", (c) => c.text("ok"));
 
+// The dashboard under /admin: costs, logs and a run button, behind ADMIN_PASSWORD.
+adminRoutes(app, { startRun, isRunning: (name) => running.has(name), stylesheet: () => `/styles.css?v=${version("styles.css")}`, status });
+
 // Read-only, kept for curl and debugging: prompts and configs live in git and deploy by push; runs are
-// started by the scheduler or the CLI. The page itself is rendered by the server, below.
+// started by the scheduler, the dashboard or the CLI. The page itself is rendered by the server, below.
 app.get("/api/tasks", async (c) => c.json(await listTasks()));
 app.get("/api/tasks/:name/runs", (c) => c.json(listRuns(c.req.param("name"))));
 app.get("/api/tasks/:name/runs/:runId", (c) => {

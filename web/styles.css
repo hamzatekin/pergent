@@ -182,3 +182,109 @@
 .lead {
   @apply mb-5;
 }
+
+/* The dashboard under /admin: the same paper palette, in the sans of the chrome. */
+.admin {
+  @apply font-sans text-[14px] md:max-w-[1000px] xl:max-w-[1000px];
+}
+.admin a {
+  @apply text-accent underline decoration-line underline-offset-[3px] hover:decoration-accent;
+}
+.admin .tab {
+  @apply text-muted no-underline;
+}
+.admin-title {
+  @apply mb-3 text-[20px] font-semibold;
+}
+.admin-head {
+  @apply mb-2 mt-7 text-[12px] font-semibold uppercase tracking-[0.12em] text-muted;
+}
+.btn {
+  @apply cursor-pointer rounded-md border border-line bg-surface px-3 py-1.5 font-semibold text-ink hover:border-muted disabled:cursor-default disabled:opacity-50;
+}
+.linkbtn {
+  @apply cursor-pointer text-muted hover:text-ink;
+}
+.login {
+  @apply mx-auto mt-24 flex max-w-[320px] flex-col gap-3;
+}
+.login input {
+  @apply rounded-md border border-line bg-surface px-3 py-2;
+}
+.task-cards {
+  @apply my-4 grid gap-4 md:grid-cols-2;
+}
+.task-card {
+  @apply rounded-xl border border-line bg-surface p-4;
+}
+.task-card-head {
+  @apply mb-3 flex items-center justify-between;
+}
+.task-card-head h2 {
+  @apply text-[17px] font-semibold;
+}
+.stats {
+  @apply my-3 flex flex-wrap gap-x-6 gap-y-2;
+}
+.stats dt {
+  @apply text-[12px] text-muted;
+}
+.stats dd {
+  @apply tabular-nums;
+}
+.badge {
+  @apply rounded-full border border-line px-2 py-px text-[12px];
+}
+.badge[data-status="ok"] {
+  @apply border-transparent bg-inset;
+}
+.badge[data-status="failed"],
+.badge[data-status="stopped"] {
+  @apply border-failed text-failed;
+}
+.badge[data-status="running"] {
+  @apply border-accent text-accent;
+}
+.table-wrap {
+  @apply overflow-x-auto;
+}
+.runs {
+  @apply w-full border-collapse whitespace-nowrap;
+}
+.runs th {
+  @apply border-b border-line px-2 py-1.5 text-left text-[12px] font-semibold text-muted;
+}
+.runs td {
+  @apply border-b border-line px-2 py-1.5;
+}
+.runs .num {
+  @apply text-right tabular-nums;
+}
+/* On a phone the runs table keeps date, task, status and cost. */
+.runs .wide {
+  @apply hidden md:table-cell;
+}
+.log {
+  @apply max-h-[400px] overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-inset p-3 font-mono text-[12px];
+}
+.trace {
+  @apply flex flex-col gap-1;
+}
+.step {
+  @apply flex gap-3 border-b border-line py-1.5;
+}
+.step-kind {
+  @apply w-[120px] shrink-0 truncate text-[12px] text-muted;
+}
+.step-kind.tool {
+  @apply font-semibold text-accent;
+}
+.step-kind.failed {
+  @apply text-failed;
+}
+.step-body {
+  @apply min-w-0 whitespace-pre-wrap break-words font-mono text-[12px];
+}
+.step-body.muted {
+  @apply text-muted;
+}
