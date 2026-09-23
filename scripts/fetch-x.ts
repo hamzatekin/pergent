@@ -11,6 +11,13 @@
 //   techtwitter set false to skip discourse.md
 //   maxChars    per-file size cap (default 60000). claude's Read returns at most ~25k tokens, so each file
 //               is trimmed under the cap by dropping the least-liked posts first; post text is cut at 600 chars.
+//   trim        "busiest" drops the least-liked post of the account with the most posts in the file instead,
+//               so a handful of high-volume, high-like accounts cannot crowd everyone else out
+//   out         base name of the hand-picked file (default "tweets-web")
+//   files       number of hand-picked files (default 1): with more, handles are dealt round-robin over
+//               <out>-1.md … <out>-N.md, each under maxChars
+//   images      true writes the first photo (or video thumbnail) of each post to images.json, post URL to
+//               image, merged with what is there, for the reading view
 // The merged list goes to accounts.json in the run directory, so a lost source can be recovered from
 // any run.
 import { readFile, writeFile } from "node:fs/promises";
@@ -26,6 +33,7 @@ type Status = {
   replies: number;
   author: { screen_name: string; name: string };
   replying_to?: { screen_name: string } | null;
+  media?: { photos?: { url: string }[]; videos?: { thumbnail_url?: string }[] } | null;
 };
 
 type ListExport = {
@@ -36,6 +44,9 @@ type ListExport = {
 const config = JSON.parse(await readFile(join(process.env.TASK_DIR!, "task.json"), "utf8"));
 const hours: number = config.x?.hours ?? 24;
 const maxChars: number = config.x?.maxChars ?? 60_000;
+const trimBusiest = config.x?.trim === "busiest";
+const out: string = config.x?.out ?? "tweets-web";
+const files: number = config.x?.files ?? 1;
 const since = Date.now() / 1000 - hours * 3600;
 
 // Build group -> handles, first from remote lists, then hand-picked handles. First mention wins.
@@ -109,6 +120,7 @@ async function fetchRecent(handle: string): Promise<Status[]> {
 }
 
 type Post = { group: string; handle: string; likes: number; text: string };
+const images: Record<string, string> = {};
 
 function toPosts(group: string, handle: string, statuses: Status[]): Post[] {
   // Drop replies to other people; keep self-replies (threads).
@@ -116,6 +128,8 @@ function toPosts(group: string, handle: string, statuses: Status[]): Post[] {
   return kept
     .sort((a, b) => b.created_timestamp - a.created_timestamp)
     .map((s) => {
+      const image = s.media?.photos?.[0]?.url ?? s.media?.videos?.[0]?.thumbnail_url;
+      if (image) images[s.url] = image;
       const when = new Date(s.created_timestamp * 1000).toISOString().slice(0, 16).replace("T", " ");
       const rt = s.author.screen_name.toLowerCase() !== handle.toLowerCase() ? ` (repost of @${s.author.screen_name})` : "";
       let text = s.text.replace(/\s+/g, " ").trim();
@@ -148,8 +162,15 @@ function renderFile(title: string, input: Post[]): { body: string; kept: number;
   let dropped = 0;
   const size = () => kept.reduce((n, p) => n + p.text.length + 2, 0);
   const byLikes = [...input].sort((a, b) => a.likes - b.likes);
-  while (size() > maxChars && byLikes.length) {
-    const victim = byLikes.shift()!;
+  while (size() > maxChars && kept.length) {
+    let victim = byLikes[0];
+    if (trimBusiest) {
+      const counts = new Map<string, number>();
+      for (const p of kept) counts.set(p.handle, (counts.get(p.handle) ?? 0) + 1);
+      const busiest = [...counts].reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+      victim = byLikes.find((p) => p.handle === busiest)!;
+    }
+    byLikes.splice(byLikes.indexOf(victim), 1);
     kept = kept.filter((p) => p !== victim);
     dropped++;
   }
@@ -220,11 +241,26 @@ if (config.x?.techtwitter !== false) {
   }
 }
 
-const listPosts = posts.filter((p) => !pickedGroups.has(p.group));
-const webPosts = posts.filter((p) => pickedGroups.has(p.group));
-const a = renderFile("Posts from AI accounts", listPosts);
-const b = renderFile("Posts from hand-picked accounts", webPosts);
-await writeFile("tweets.md", a.body);
-await writeFile("tweets-web.md", b.body);
-console.log(`tweets.md: ${a.kept} posts from ${a.accounts} accounts (${a.dropped} dropped for size); tweets-web.md: ${b.kept} posts from ${b.accounts} accounts (${b.dropped} dropped); ${all.length} accounts fetched, ${failed.length} failed`);
+if (config.x?.lists?.length) {
+  const a = renderFile("Posts from AI accounts", posts.filter((p) => !pickedGroups.has(p.group)));
+  await writeFile("tweets.md", a.body);
+  console.log(`tweets.md: ${a.kept} posts from ${a.accounts} accounts (${a.dropped} dropped for size)`);
+}
+
+// Hand-picked handles in config order, dealt round-robin so every file mixes the groups.
+const picks = all.filter((x) => pickedGroups.has(x.group)).map((x) => x.handle);
+for (let i = 0; i < files; i++) {
+  const mine = new Set(picks.filter((_, j) => j % files === i));
+  const name = files > 1 ? `${out}-${i + 1}.md` : `${out}.md`;
+  const b = renderFile(files > 1 ? `Posts from hand-picked accounts, part ${i + 1} of ${files}` : "Posts from hand-picked accounts", posts.filter((p) => mine.has(p.handle)));
+  await writeFile(name, b.body);
+  console.log(`${name}: ${b.kept} posts from ${b.accounts} accounts (${b.dropped} dropped for size)`);
+}
+console.log(`${all.length} accounts fetched, ${failed.length} failed`);
 for (const f of failed) console.log(`  failed ${f}`);
+
+if (config.x?.images) {
+  const merged: Record<string, string> = JSON.parse(await readFile("images.json", "utf8").catch(() => "{}"));
+  await writeFile("images.json", JSON.stringify({ ...images, ...merged }));
+  console.log(`images.json: ${Object.keys(images).length} post images`);
+}
