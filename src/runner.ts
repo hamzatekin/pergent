@@ -54,6 +54,11 @@ export async function loadTask(name: string): Promise<Task> {
   return { name, config, prompt };
 }
 
+// Where a run's files live: the log, stderr, before.log and the fetched inputs.
+export function runDir(name: string, runId: string): string {
+  return join(RUNS_DIR, name, runId);
+}
+
 export function listRuns(name: string): RunMeta[] {
   return listRunRows(name);
 }
@@ -80,7 +85,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   const { config, prompt } = await loadTask(name);
   const startedAt = new Date();
   const runId = startedAt.toISOString().replace(/[:.]/g, "-");
-  const dir = join(RUNS_DIR, name, runId);
+  const dir = runDir(name, runId);
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, "prompt.md"), prompt);
   const running: RunMeta = { task: name, runId, startedAt: startedAt.toISOString(), status: "running" };
@@ -102,7 +107,9 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   // json-schema: the paper comes back as structured output, held to the schema on the model's side.
   const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--json-schema", JSON.stringify(PAPER_SCHEMA)];
   if (config.model) args.push("--model", config.model);
-  if (config.allowedTools?.length) args.push("--allowedTools", config.allowedTools.join(","));
+  // --tools is what the model gets to see; --allowedTools only pre-approves, and on its own leaves the
+  // rest of the built-in set (Bash, Edit, ...) available wherever settings let them through.
+  if (config.allowedTools?.length) args.push("--tools", config.allowedTools.join(","), "--allowedTools", config.allowedTools.join(","));
 
   // No API key in the child env, so claude falls back to the subscription login.
   const env = { ...process.env };

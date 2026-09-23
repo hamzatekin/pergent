@@ -2,7 +2,7 @@
 
 Ordered. One item per step, each verified with a real run before the next.
 
-1. **Scheduler.** A minute tick in the server matches each task's cron string (`schedule` in task.json) against the current time and calls the same run function the API uses, skipping a task that is already running. No dependency. Until this exists nothing runs on the server by itself.
+1. **Scheduler.** A minute tick in the server matches each task's cron string (`schedule` in task.json) against the current time and calls the same run function the API uses, skipping a task that is already running. Until this exists nothing runs on the server by itself.
 
 2. **Cluster headlines across feeds.** The RSS fetcher drops roughly half of the day's headlines by age to fit the read limit, so an early run mostly sees late-night items. Group near-identical titles across outlets into one line with the outlet count and names. Smaller input, and the count is the strongest importance signal there is. Google News and Bundle popular stay as extra signals.
 
