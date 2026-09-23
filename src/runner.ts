@@ -107,7 +107,9 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   // json-schema: the paper comes back as structured output, held to the schema on the model's side.
   const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--json-schema", JSON.stringify(PAPER_SCHEMA)];
   if (config.model) args.push("--model", config.model);
-  if (config.allowedTools?.length) args.push("--allowedTools", config.allowedTools.join(","));
+  // --tools is what the model gets to see; --allowedTools only pre-approves, and on its own leaves the
+  // rest of the built-in set (Bash, Edit, ...) available wherever settings let them through.
+  if (config.allowedTools?.length) args.push("--tools", config.allowedTools.join(","), "--allowedTools", config.allowedTools.join(","));
 
   // No API key in the child env, so claude falls back to the subscription login.
   const env = { ...process.env };
