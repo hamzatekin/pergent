@@ -15,6 +15,7 @@ Requires Node >= 24 (TypeScript runs directly via type stripping, so `.ts` files
 ```sh
 npm run task -- list            # list tasks in tasks/
 npm run task -- run <name>      # run one task, print output.md and a status line; exit 1 on failure
+npm run task -- costs [name]    # last 20 runs per task from the database: status, turns, minutes, cost, and the average
 npm run serve                   # site + API on http://localhost:4321 (serves dist/ for the stylesheet and static files, so build first)
 npm run dev                     # the same with the server restarting on src/ changes and Tailwind rebuilding the stylesheet on save
 npm run build                   # Tailwind CLI -> dist/styles.css, plus web/public/ and web/app.js copied into dist/

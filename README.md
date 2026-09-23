@@ -11,6 +11,7 @@ npm install
 npm run build          # stylesheet and static files -> dist/
 npm run serve          # http://localhost:4321
 npm run task -- run tech
+npm run task -- costs  # cost, turns and duration of recent runs
 ```
 
 ## Deploy (Coolify)
