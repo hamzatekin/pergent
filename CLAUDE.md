@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 pergent is a personal agent runner. Each task is a prompt plus a small JSON config; running a task spawns headless `claude -p` and stores the result, a structured "paper", on disk and in a SQLite index. The server renders the paper as a plain HTML page, installable as a PWA, that is the morning paper. Prompts and configs are edited in git only. No build step for the Node side; the only build is the stylesheet.
 
-Keep it minimal: no new runtime dependencies without a clear reason, one feature per step, verified with a real run.
+Keep it minimal: one feature per step, verified with a real run.
 
 ## Commands
 
