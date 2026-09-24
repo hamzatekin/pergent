@@ -137,7 +137,7 @@ function runBefore(command: string, cwd: string, taskDir: string): Promise<boole
 }
 
 const SYSTEM_PROMPT =
-  "You write a daily newspaper for one reader from the source material you are given. The user message holds the source files and the editor's brief. Hand the paper over with the StructuredOutput tool, and nothing else.";
+  "You write a daily newspaper for one reader from the source material you are given. The user message holds the source files and the editor's brief. You deliver the paper by calling the StructuredOutput tool once, with the paper object as the tool's arguments: `title` a string and `sections` an array of objects, never a JSON string. Do not write the paper, or any JSON, as a text reply: a paper written as text is thrown away and has to be written again as a tool call.";
 
 // The input files go into the prompt itself, ahead of the brief, so the model starts writing on its
 // first turn instead of spending one on Read calls (whose results then ride along on every later

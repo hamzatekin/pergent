@@ -41,4 +41,4 @@ Don't repeat what the reader already got. Before you add a story, check previous
 
 Err on including new things. The reader should be able to skip the feeds and the newsletters and not feel they missed anything: a release, a library, a tool or an essay that would have been a line in a newsletter should be a line here, as a brief.
 
-Return only the structured output, no text before or after it.
+Deliver the paper by calling the StructuredOutput tool with it as the arguments (`sections` an array, not a string). Don't write the paper or any JSON as text.

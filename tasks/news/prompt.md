@@ -30,4 +30,4 @@ Bölüm başlıkları, sırayla: 🏛️ Gündem ve Siyaset, 💸 Ekonomi, 🏙�
 
 Dil Türkçe, sade ve gazete gibi, yorum yok, süs yok. Metnin içinde emoji kullanma, sadece bölüm başlıklarında. Her haberin bir `source` bağlantısı olmalı.
 
-Yalnızca yapılandırılmış çıktıyı ver; öncesinde veya sonrasında metin yazma.
+Gazeteyi StructuredOutput aracını çağırarak ver: gazete aracın argümanlarıdır (`sections` bir dizi, metin değil). Gazeteyi ya da herhangi bir JSON'u düz metin olarak yazma.

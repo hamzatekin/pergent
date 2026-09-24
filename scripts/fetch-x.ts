@@ -102,13 +102,28 @@ await writeFile(
   }),
 );
 
+// FxTwitter answers 404, not 429, when it pushes back: with both tasks fetching at the same minute
+// big live accounts (bbcturkce, bpthaber) came back 404 and were missing from the paper. Try each
+// page three times, 3s then 6s apart; an account that has really gone still fails, just later.
+async function fetchRetrying(url: string): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+    if (res?.ok || attempt === 2) return res ?? new Response(null, { status: 599, statusText: "fetch failed" });
+    await new Promise((r) => setTimeout(r, 3000 * 2 ** attempt));
+  }
+}
+
 async function fetchRecent(handle: string): Promise<Status[]> {
   const out: Status[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < 3; page++) {
     const url = `https://api.fxtwitter.com/2/profile/${handle}/statuses${cursor ? `?cursor=${cursor}` : ""}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const res = await fetchRetrying(url);
+    if (!res.ok) {
+      // A later page failing still leaves the posts already fetched.
+      if (page > 0) break;
+      throw new Error(`${res.status} ${res.statusText}`);
+    }
     const body = (await res.json()) as { results: Status[]; cursor?: { bottom?: string } };
     const results = body.results ?? [];
     out.push(...results.filter((s) => s.created_timestamp >= since));
