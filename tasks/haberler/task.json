@@ -11,7 +11,7 @@
     "WebFetch"
   ],
   "timeoutMinutes": 10,
-  "before": "node ../../../scripts/fetch-x.ts && node ../../../scripts/fetch-bundle.ts",
+  "before": "node ../../../scripts/previous.ts && node ../../../scripts/fetch-x.ts && node ../../../scripts/fetch-bundle.ts",
   "x": {
     "hours": 24,
     "maxChars": 38000,
