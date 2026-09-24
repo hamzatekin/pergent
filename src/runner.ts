@@ -26,6 +26,10 @@ export type TaskConfig = {
   lang?: string;
   contextLabel?: string;
   briefsLabel?: string;
+  /** Files the before scripts wrote into the run directory, joined into the prompt ahead of prompt.md, each in a `<file name>` tag. */
+  inputs?: string[];
+  /** Replaces Claude Code's built-in system prompt, which is written for a coding agent. */
+  systemPrompt?: string;
   /** false turns off Jev's per-story rating (src/rate.ts), which otherwise runs whenever TYPESAFE_API_KEY is set. */
   rate?: boolean;
   /** Output token cap for one claude reply (CLAUDE_CODE_MAX_OUTPUT_TOKENS); the whole paper is one reply. */
@@ -132,6 +136,22 @@ function runBefore(command: string, cwd: string, taskDir: string): Promise<boole
   });
 }
 
+const SYSTEM_PROMPT =
+  "You write a daily newspaper for one reader from the source material you are given. The user message holds the source files and the editor's brief. Hand the paper over with the StructuredOutput tool, and nothing else.";
+
+// The input files go into the prompt itself, ahead of the brief, so the model starts writing on its
+// first turn instead of spending one on Read calls (whose results then ride along on every later
+// turn) and so no file is cut off at Read's ~25k-token limit. Each file sits in a <file> tag rather
+// than under a heading, since the files have # and ## headings of their own. A missing file is said
+// to be missing.
+async function withInputs(dir: string, inputs: string[], prompt: string): Promise<string> {
+  if (!inputs.length) return prompt;
+  const files = await Promise.all(
+    inputs.map(async (f) => `<file name="${f}">\n${(await readFile(join(dir, f), "utf8").catch(() => "(missing: the fetch for this file failed)")).trim()}\n</file>`),
+  );
+  return `${files.join("\n\n")}\n\n${prompt}`;
+}
+
 export async function runTask(name: string): Promise<{ meta: RunMeta; dir: string }> {
   const { config, prompt } = await loadTask(name);
   const startedAt = new Date();
@@ -160,7 +180,13 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   if (config.model) args.push("--model", config.model);
   // --tools is what the model gets to see; --allowedTools only pre-approves, and on its own leaves the
   // rest of the built-in set (Bash, Edit, ...) available wherever settings let them through.
-  if (config.allowedTools?.length) args.push("--tools", config.allowedTools.join(","), "--allowedTools", config.allowedTools.join(","));
+  // An empty list is `--tools ""`: no built-in tools at all, only the StructuredOutput that
+  // --json-schema adds.
+  const tools = (config.allowedTools ?? []).join(",");
+  args.push("--tools", tools);
+  if (tools) args.push("--allowedTools", tools);
+  // Claude Code's own system prompt is written for editing software and rides along on every turn.
+  args.push("--system-prompt", config.systemPrompt ?? SYSTEM_PROMPT);
 
   // No API key in the child env, so claude falls back to the subscription login.
   const env = { ...process.env };
@@ -170,7 +196,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   if (config.maxOutputTokens) env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(config.maxOutputTokens);
 
   const child = track(spawn("claude", args, { cwd: dir, env, stdio: ["pipe", "pipe", "pipe"], detached: true }));
-  child.stdin.end(prompt);
+  child.stdin.end(await withInputs(dir, config.inputs ?? [], prompt));
   child.stderr.pipe(createWriteStream(join(dir, "stderr.log")));
 
   let timedOut = false;
