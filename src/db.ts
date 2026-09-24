@@ -126,3 +126,10 @@ function importRuns(runsDir: string) {
     }
   }
 }
+
+// A run still marked running when the server starts was cut off: a deploy or restart replaces the
+// container and every process in it. Close those rows as failed so they stop looking alive. A CLI run
+// going at the same moment (only possible locally) is marked too, and put right when it saves its end.
+export function closeStaleRuns(): number {
+  return Number(use().prepare("UPDATE runs SET status = 'failed' WHERE status = 'running'").run().changes);
+}

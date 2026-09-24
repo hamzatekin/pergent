@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -74,13 +74,59 @@ export function readRun(name: string, runId: string): { meta: RunMeta; output: s
   return row && { ...row, paper: row.paper ?? fromMarkdown(row.output) };
 }
 
+// A before command gets this long; the fetches inside it have their own, shorter timeouts.
+const BEFORE_TIMEOUT_MS = 5 * 60_000;
+// How long a child gets to exit after SIGTERM before it is killed outright.
+const KILL_GRACE_MS = 30_000;
+
+// Children are spawned detached, each the leader of its own process group, and stopped as a group:
+// SIGTERM, then SIGKILL after the grace period. Killing only the child is not enough: a process it
+// started (a `sh -c "a && b"` script, a tool claude ran) can outlive it holding the output pipe open,
+// and the run then waits on that pipe forever, stuck at "running".
+const live = new Set<ChildProcess>();
+function signalGroup(child: ChildProcess, sig: NodeJS.Signals) {
+  try {
+    if (child.pid) process.kill(-child.pid, sig);
+  } catch {
+    // already gone
+  }
+}
+function track<T extends ChildProcess>(child: T): T {
+  live.add(child);
+  child.once("exit", () => live.delete(child));
+  return child;
+}
+// Detached groups do not get the terminal's hangup, so when this process is told to stop (the CLI's
+// terminal closes, the container stops) it takes the groups down with it.
+for (const [sig, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]] as const) {
+  process.once(sig, () => {
+    for (const child of live) signalGroup(child, "SIGKILL");
+    process.exit(code);
+  });
+}
+
+function stop(child: ChildProcess) {
+  const signal = (sig: NodeJS.Signals) => signalGroup(child, sig);
+  signal("SIGTERM");
+  const kill = setTimeout(() => signal("SIGKILL"), KILL_GRACE_MS);
+  kill.unref();
+  child.once("close", () => clearTimeout(kill));
+}
+
 function runBefore(command: string, cwd: string, taskDir: string): Promise<boolean> {
   return new Promise((done) => {
-    const child = spawn("sh", ["-c", command], { cwd, env: { ...process.env, TASK_DIR: taskDir }, stdio: ["ignore", "pipe", "pipe"] });
+    const child = track(spawn("sh", ["-c", command], { cwd, env: { ...process.env, TASK_DIR: taskDir }, stdio: ["ignore", "pipe", "pipe"], detached: true }));
     const log = createWriteStream(join(cwd, "before.log"));
     child.stdout.pipe(log);
     child.stderr.pipe(log);
-    child.on("close", (code) => done(code === 0));
+    const timer = setTimeout(() => {
+      log.write(`\ntimed out after ${BEFORE_TIMEOUT_MS / 60_000} minutes\n`);
+      stop(child);
+    }, BEFORE_TIMEOUT_MS);
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      done(code === 0);
+    });
   });
 }
 
@@ -118,20 +164,23 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   const env = { ...process.env };
   delete env.ANTHROPIC_API_KEY;
 
-  const child = spawn("claude", args, { cwd: dir, env, stdio: ["pipe", "pipe", "pipe"] });
+  const child = track(spawn("claude", args, { cwd: dir, env, stdio: ["pipe", "pipe", "pipe"], detached: true }));
   child.stdin.end(prompt);
   child.stderr.pipe(createWriteStream(join(dir, "stderr.log")));
 
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
-    child.kill("SIGTERM");
+    stop(child);
   }, (config.timeoutMinutes ?? 15) * 60_000);
 
   const log = createWriteStream(join(dir, "log.jsonl"));
   let result: { result?: string; structured_output?: unknown; is_error?: boolean; total_cost_usd?: number; num_turns?: number } | undefined;
+  const spawnedAt = Date.now();
   for await (const line of createInterface({ input: child.stdout })) {
-    log.write(line + "\n");
+    // Each event gets `t`, seconds since claude started, so the dashboard can show where the time went.
+    const t = ((Date.now() - spawnedAt) / 1000).toFixed(1);
+    log.write((line.startsWith("{") ? `{"t":${t},${line.slice(1)}` : line) + "\n");
     try {
       const event = JSON.parse(line);
       if (event.type === "result") result = event;

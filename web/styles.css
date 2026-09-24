@@ -305,6 +305,9 @@
 .step-kind.failed {
   @apply text-failed;
 }
+.step-time {
+  @apply font-normal tabular-nums text-muted;
+}
 .step-body {
   @apply min-w-0 whitespace-pre-wrap break-words font-mono text-[12px];
 }

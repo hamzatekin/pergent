@@ -7,6 +7,7 @@ import { join, relative, resolve } from "node:path";
 import { listRuns, listTasks, loadTask, readRun, runTask, type RunMeta, type TaskConfig } from "./runner.ts";
 import { escapeHtml, renderPaper } from "./paper.ts";
 import { adminRoutes } from "./admin.ts";
+import { closeStaleRuns } from "./db.ts";
 import { PAUSE_AFTER_DAYS, lastReadAt, markRead, paused, startScheduler } from "./scheduler.ts";
 
 const PORT = Number(process.env.PORT ?? 4321);
@@ -165,5 +166,7 @@ app.onError((err, c) => {
   return c.json({ error: String(err) }, 500);
 });
 
+const stale = closeStaleRuns();
+if (stale) console.log(`closed ${stale} run(s) cut off by the last restart`);
 if (SCHEDULER) startScheduler(startRun);
 serve({ fetch: app.fetch, port: PORT, hostname: HOST }, () => console.log(`pergent on http://${HOST}:${PORT}`));
