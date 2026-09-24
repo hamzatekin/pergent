@@ -18,6 +18,12 @@ services:
       - claude-home:/root/.claude
     expose:
       - "4321"
+    # A ceiling for the whole container, so a run that goes wrong cannot take the server down with it:
+    # both tasks fire at 07:30 and each is a claude process plus the server. Runs have their own
+    # wall-clock limits on top (timeoutMinutes, 5 minutes for a before command).
+    cpus: 2
+    mem_limit: 2g
+    pids_limit: 512
     # Coolify reads this block (its Healthcheck page is ignored for compose apps) and Traefik only routes
     # to healthy containers. The image has node but no curl, and 127.0.0.1 avoids the IPv6-localhost trap.
     healthcheck:

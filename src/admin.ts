@@ -125,13 +125,14 @@ ${c.req.query("failed") !== undefined ? '<p class="note failed">Wrong password.<
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
       .slice(0, 100);
     const rows = latest.map((r) => {
-      const busy = r.status === "running" && isRunning(r.task);
+      // The server runs one of a task at a time, so only the task's newest run can be the live one.
+      const busy = r.status === "running" && isRunning(r.task) && runs.get(r.task)![0] === r;
       return `<tr>
 <td><a href="/admin/runs/${encodeURIComponent(r.task)}/${encodeURIComponent(r.runId)}">${formatDate(r.startedAt, zones.get(r.task))}</a></td>
 <td>${escapeHtml(r.task)}</td>
 <td>${statusBadge(r, busy)}</td>
 <td class="num wide">${r.turns ?? ""}</td>
-<td class="num wide">${duration(r)}</td>
+<td class="num wide">${duration(r, busy)}</td>
 <td class="num">${r.costUsd === undefined ? "" : money(r.costUsd)}</td>
 </tr>`;
     });
@@ -162,7 +163,7 @@ ${latest.length ? "" : '<p class="note">No runs yet.</p>'}`,
     const timezone = await loadTask(task).then((t) => t.config.timezone, () => undefined);
     const [before, stderr, log] = await Promise.all([text("before.log"), text("stderr.log"), text("log.jsonl")]);
     const { steps, result } = parseLog(log);
-    const busy = meta.status === "running" && isRunning(task);
+    const busy = meta.status === "running" && isRunning(task) && listRuns(task)[0]?.runId === runId;
     const fileLink = (f: string) => `<a href="/admin/runs/${encodeURIComponent(task)}/${encodeURIComponent(runId)}/files/${encodeURIComponent(f)}">${escapeHtml(f)}</a>`;
 
     const models = Object.entries(result?.modelUsage ?? {}).map(
@@ -178,7 +179,7 @@ ${latest.length ? "" : '<p class="note">No runs yet.</p>'}`,
 <div><dt>Status</dt><dd>${statusBadge(meta, busy)}${meta.timedOut ? " (timed out)" : ""}${meta.exitCode ? ` (exit ${meta.exitCode})` : ""}</dd></div>
 <div><dt>Cost</dt><dd>${meta.costUsd === undefined ? "–" : money(meta.costUsd)}</dd></div>
 <div><dt>Turns</dt><dd>${meta.turns ?? "–"}</dd></div>
-<div><dt>Time</dt><dd>${duration(meta) || "–"}</dd></div>
+<div><dt>Time</dt><dd>${duration(meta, busy) || "–"}</dd></div>
 </dl>
 <p class="note">${meta.status === "ok" ? `<a href="/read/${encodeURIComponent(task)}/${encodeURIComponent(runId)}">Read the paper</a> · ` : ""}Files: ${files.sort().map(fileLink).join(", ") || "none"}</p>
 ${models.length ? `<h2 class="admin-head">Cost by model</h2>
@@ -224,15 +225,21 @@ function parseLog(log: string) {
     }
     if (event.type === "result") result = event;
     if (event.type !== "assistant" && event.type !== "user") continue;
+    // `t` (seconds since claude started) is stamped by the runner; logs from before it have none.
+    const at = typeof event.t === "number" ? ` <span class="step-time">${Math.round(event.t)}s</span>` : "";
     for (const part of event.message?.content ?? []) {
       if (part.type === "text" && part.text.trim()) {
-        steps.push(`<li class="step"><span class="step-kind">said</span><div class="step-body">${escapeHtml(clip(part.text, 1500))}</div></li>`);
+        steps.push(`<li class="step"><span class="step-kind">said${at}</span><div class="step-body">${escapeHtml(clip(part.text, 1500))}</div></li>`);
       } else if (part.type === "tool_use") {
-        const input = part.name === "StructuredOutput" ? "(the paper)" : JSON.stringify(part.input);
-        steps.push(`<li class="step"><span class="step-kind tool">${escapeHtml(part.name)}</span><div class="step-body">${escapeHtml(clip(input, 400))}</div></li>`);
+        // The paper: its size and why the reply ended; max_tokens means it was cut off, and an empty
+        // input means claude could not parse what it got.
+        const usage = event.message?.usage?.output_tokens;
+        const paper = `(the paper${usage ? `, ${tokens(usage)} output tokens` : ""}${event.message?.stop_reason ? `, stop: ${event.message.stop_reason}` : ""}${part.input && Object.keys(part.input).length === 0 ? ", empty input" : ""})`;
+        const input = part.name === "StructuredOutput" ? paper : JSON.stringify(part.input);
+        steps.push(`<li class="step"><span class="step-kind tool">${escapeHtml(part.name)}${at}</span><div class="step-body">${escapeHtml(clip(input, 400))}</div></li>`);
       } else if (part.type === "tool_result") {
         const content = typeof part.content === "string" ? part.content : (part.content ?? []).map((p: { text?: string }) => p.text ?? "").join("\n");
-        steps.push(`<li class="step"><span class="step-kind${part.is_error ? " failed" : ""}">result</span><div class="step-body muted">${escapeHtml(clip(content, 300))}</div></li>`);
+        steps.push(`<li class="step"><span class="step-kind${part.is_error ? " failed" : ""}">result${at}</span><div class="step-body muted">${escapeHtml(clip(content, 300))}</div></li>`);
       }
     }
   }
@@ -250,8 +257,9 @@ const avg = (xs: number[]) => (xs.length ? sum(xs) / xs.length : 0);
 const money = (usd: number) => `$${usd.toFixed(2)}`;
 const tokens = (n: number) => (n ?? 0).toLocaleString("en");
 
-function duration(r: RunMeta) {
-  const end = r.finishedAt ? Date.parse(r.finishedAt) : r.status === "running" ? Date.now() : NaN;
+// A live run counts up to now; a run cut off before it finished has no end, so no time.
+function duration(r: RunMeta, busy = false) {
+  const end = r.finishedAt ? Date.parse(r.finishedAt) : busy ? Date.now() : NaN;
   const secs = Math.round((end - Date.parse(r.startedAt)) / 1000);
   if (!Number.isFinite(secs)) return "";
   return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, "0")}s`;
