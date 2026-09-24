@@ -32,6 +32,8 @@ export type TaskConfig = {
   systemPrompt?: string;
   /** false turns off Jev's per-story rating (src/rate.ts), which otherwise runs whenever TYPESAFE_API_KEY is set. */
   rate?: boolean;
+  /** Reasoning effort (low, medium, high, xhigh, max) passed as --effort; the thinking is billed as output. */
+  effort?: string;
   /** Output token cap for one claude reply (CLAUDE_CODE_MAX_OUTPUT_TOKENS); the whole paper is one reply. */
   maxOutputTokens?: number;
   [extra: string]: unknown;
@@ -178,6 +180,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   // json-schema: the paper comes back as structured output, held to the schema on the model's side.
   const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--json-schema", JSON.stringify(PAPER_SCHEMA)];
   if (config.model) args.push("--model", config.model);
+  if (config.effort) args.push("--effort", config.effort);
   // --tools is what the model gets to see; --allowedTools only pre-approves, and on its own leaves the
   // rest of the built-in set (Bash, Edit, ...) available wherever settings let them through.
   // An empty list is `--tools ""`: no built-in tools at all, only the StructuredOutput that
