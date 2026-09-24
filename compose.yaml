@@ -11,6 +11,8 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       # The password for the dashboard at /admin (costs, logs, run button). Unset, /admin is off.
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # TypeSafe API key (console.typesafe.ai/keys). Set, every story gets a 0-10 rating from Jev.
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
     volumes:
       - runs:/app/runs
       - claude-home:/root/.claude

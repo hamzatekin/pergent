@@ -28,7 +28,7 @@ claude setup-token     # prints a long-lived subscription token for headless cla
 In Coolify:
 
 1. New resource, Docker Compose, from this Git repo. It picks up `compose.yaml`.
-2. Environment Variables: `CLAUDE_CODE_OAUTH_TOKEN` (the token) and `ADMIN_PASSWORD` (for the dashboard; leave it unset and `/admin` does not exist). `TZ` is optional (compose defaults it to Europe/London); it sets the clock the prompts see, not the schedule.
+2. Environment Variables: `CLAUDE_CODE_OAUTH_TOKEN` (the token) and `ADMIN_PASSWORD` (for the dashboard; leave it unset and `/admin` does not exist). `TZ` is optional (compose defaults it to Europe/London); it sets the clock the prompts see, not the schedule. `TYPESAFE_API_KEY` is optional: set it (from console.typesafe.ai/keys) and every story gets a 0-10 rating from Jev for sourcing, hype and substance.
 3. Set the domain on the `app` service, port 4321.
 4. Deploy. Then open `https://<domain>/read` and add it to your phone's home screen; it opens straight into the reading view.
 

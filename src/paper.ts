@@ -5,7 +5,10 @@ import { Marked, type Token, type Tokens } from "marked";
 // that sizes it on the page (3 leads a section, 2 is a card, 1 is a one-line brief). New runs return
 // it as structured output against PAPER_SCHEMA; runs from before that are parsed out of their markdown
 // with fromMarkdown, so both go through the one renderer below.
-export type Story = { headline: string; body: string; context?: string; source?: string; importance?: number };
+export type Story = { headline: string; body: string; context?: string; source?: string; importance?: number; rating?: Rating };
+// Added after the run by src/rate.ts, not by the model: 0-10 overall and per part (sourcing,
+// neutrality, substance). Not in PAPER_SCHEMA.
+export type Rating = { score: number; parts: Record<string, number> };
 export type Section = { heading?: string; lead?: string; stories: Story[] };
 export type Paper = { title?: string; sections: Section[] };
 
@@ -102,6 +105,17 @@ function canonical(url: string) {
   }
 }
 
+// The rating as a ten-cell bar and its number, the parts in the tooltip. Cells and colour are classes,
+// since the CSP allows no inline style.
+const PART_NAMES: Record<string, string> = { sourcing: "sourcing", neutrality: "no hype", substance: "substance" };
+function meter(rating: Rating) {
+  const level = rating.score >= 7 ? "high" : rating.score >= 4.5 ? "mid" : "low";
+  const filled = Math.round(rating.score);
+  const cells = Array.from({ length: 10 }, (_, i) => `<i${i < filled ? ' class="on"' : ""}></i>`).join("");
+  const title = Object.entries(rating.parts).map(([k, v]) => `${PART_NAMES[k] ?? k} ${v}`).join(" · ");
+  return `<span class="rating" data-level="${level}" title="${escapeHtml(`Rated by Jev: ${title}`)}"><span class="cells">${cells}</span>${rating.score.toFixed(1)}</span>`;
+}
+
 const isHttp = (url: string) => /^https?:\/\//i.test(url);
 const render = (markdown: string) => md.parse(markdown, { async: false }) as string;
 
@@ -123,7 +137,8 @@ export function renderPaper(paper: Paper, images: Record<string, string> = {}, l
     if (story.context) {
       parts.push(`<details class="aside"><summary>${escapeHtml(labels.contextLabel ?? "Context")}</summary>${render(story.context)}</details>`);
     }
-    if (story.source && isHttp(story.source)) parts.push(`<p>${chip(story.source)}</p>`);
+    const foot = [story.source && isHttp(story.source) ? chip(story.source) : "", story.rating ? meter(story.rating) : ""].filter(Boolean);
+    if (foot.length) parts.push(`<p class="foot">${foot.join(" ")}</p>`);
     return parts.join("\n");
   };
   for (const section of paper.sections) {

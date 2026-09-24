@@ -108,7 +108,8 @@
 .brief h3 {
   @apply mr-1.5 font-bold;
 }
-.brief p:has(> a.src:only-child) {
+.brief p:has(> a.src:only-child),
+.brief p.foot {
   @apply mt-1;
 }
 .brief details.aside {
@@ -175,8 +176,30 @@
 .prose p:has(> a.src:only-child) {
   @apply mb-0 mt-3;
 }
+.prose p.foot {
+  @apply mb-0 mt-3 flex flex-wrap items-center gap-2;
+}
 .prose a.src {
   @apply inline-block rounded-full border border-line bg-bg px-2.5 py-0.5 font-sans text-[12px] text-muted no-underline hover:border-muted hover:text-ink;
+}
+/* Jev's rating (src/rate.ts): ten cells and the number, green, amber or red by level. */
+.rating {
+  @apply inline-flex cursor-help items-center gap-1.5 font-sans text-[12px] tabular-nums text-muted;
+}
+.rating .cells {
+  @apply inline-flex gap-[2px];
+}
+.rating i {
+  @apply block h-2 w-1.5 rounded-[1px] bg-line;
+}
+.rating[data-level="high"] i.on {
+  @apply bg-[#4f7a3a];
+}
+.rating[data-level="mid"] i.on {
+  @apply bg-[#b8862b];
+}
+.rating[data-level="low"] i.on {
+  @apply bg-failed;
 }
 /* Section lead without stories, e.g. a TL;DR list. */
 .lead {
