@@ -19,7 +19,7 @@ const DIST = relative(process.cwd(), resolve(import.meta.dirname, "..", "dist"))
 const running = new Set<string>();
 // Only the container sets SCHEDULER=1; a local `npm run serve` never starts runs by itself.
 const SCHEDULER = process.env.SCHEDULER === "1";
-// Not strict: `/read/haberler/` is the same page as `/read/haberler`.
+// Not strict: `/read/news/` is the same page as `/read/news`.
 const app = new Hono({ strict: false });
 
 function startRun(name: string): boolean {
