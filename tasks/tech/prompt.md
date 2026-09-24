@@ -1,4 +1,4 @@
-Six files are in the working directory. Read all six before writing anything.
+The six files above, each in a `<file>` tag, are your sources. Read all six before writing anything.
 
 - tweets.md: posts from the last 24 hours by AI accounts, grouped by category: labs, AI coding tools, agent builders, open-source infra, researchers, founders.
 - tweets-web.md: posts from the last 24 hours by hand-picked web dev accounts: frameworks, runtimes, databases, and well-known frontend and backend people.
