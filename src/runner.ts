@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { getRun, openDb, saveRun, listRuns as listRunRows } from "./db.ts";
 import { PAPER_SCHEMA, fromMarkdown, parsePaper, toMarkdown, type Paper } from "./paper.ts";
+import { ratePaper } from "./rate.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -25,6 +26,8 @@ export type TaskConfig = {
   lang?: string;
   contextLabel?: string;
   briefsLabel?: string;
+  /** false turns off Jev's per-story rating (src/rate.ts), which otherwise runs whenever TYPESAFE_API_KEY is set. */
+  rate?: boolean;
   [extra: string]: unknown;
 };
 
@@ -144,6 +147,9 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   // The paper is the structured output; output.md is its markdown rendering, kept so a run stays
   // readable with cat. A result without a valid paper (the model answered in text) is a failed run.
   const paper = parsePaper(result?.structured_output);
+  if (paper && process.env.TYPESAFE_API_KEY && config.rate !== false) {
+    await ratePaper(paper, dir, process.env.TYPESAFE_API_KEY).catch((err) => writeFile(join(dir, "rate.log"), `failed: ${err}\n`));
+  }
   const output = paper ? toMarkdown(paper, { contextLabel: config.contextLabel }) : (result?.result ?? "");
   await writeFile(join(dir, "output.md"), output);
   if (paper) await writeFile(join(dir, "output.json"), JSON.stringify(paper, null, 2));
