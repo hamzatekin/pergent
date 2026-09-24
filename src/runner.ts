@@ -28,6 +28,8 @@ export type TaskConfig = {
   briefsLabel?: string;
   /** false turns off Jev's per-story rating (src/rate.ts), which otherwise runs whenever TYPESAFE_API_KEY is set. */
   rate?: boolean;
+  /** Output token cap for one claude reply (CLAUDE_CODE_MAX_OUTPUT_TOKENS); the whole paper is one reply. */
+  maxOutputTokens?: number;
   [extra: string]: unknown;
 };
 
@@ -163,6 +165,9 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   // No API key in the child env, so claude falls back to the subscription login.
   const env = { ...process.env };
   delete env.ANTHROPIC_API_KEY;
+  // The paper is one StructuredOutput call, and a reply past claude's output cap (32k tokens by
+  // default) is cut off mid-JSON and arrives as an empty object; a long Turkish paper got there.
+  if (config.maxOutputTokens) env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(config.maxOutputTokens);
 
   const child = track(spawn("claude", args, { cwd: dir, env, stdio: ["pipe", "pipe", "pipe"], detached: true }));
   child.stdin.end(prompt);

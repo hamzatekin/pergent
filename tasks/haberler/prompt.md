@@ -16,7 +16,7 @@ Ekonomi haberlerinde rakam varsa rakamı yaz: kur, enflasyon, faiz kararı, zam 
 
 Arka plan: bir haber devam eden bir sürecin parçasıysa (bir soruşturma, bir dava, bir siyasi süreç, bir ekonomik program, bir tartışma) ve başlığı ilk kez duyan biri ne olduğunu anlamayacaksa, haberin altına "Ne olmuştu?" bloğu ekle: süreç ne, ne zaman ve nasıl başladı, taraflar kim, bugüne kadar ne oldu. İki veya üç sade cümle. Sadece gerektiğinde; kendi başına anlaşılan bir habere ekleme. Emin olmadığın arka planı uydurma; dosyalardan da çıkmıyorsa bloğu yazma.
 
-`WebFetch` yavaştır, az ve toplu kullan: en fazla 5 haber bağlantısı seç (en büyük haberler ve arka planı dosyalardan çıkmayan "Ne olmuştu?" adayları), hepsini tek adımda aynı anda aç (beş `WebFetch` çağrısı bir arada), sonra bir daha açma. Çoğu haberin arka plan paragrafı olur; olguları da oradan kontrol et. Açılmayan bağlantıyı yeniden deneme. x.com bağlantıları `WebFetch` ile açılmaz, onları seçme.
+`WebFetch` yavaştır, az ve toplu kullan: en fazla 5 haber bağlantısı seç (en büyük haberler ve arka planı dosyalardan çıkmayan "Ne olmuştu?" adayları), hepsini tek adımda aynı anda aç (beş `WebFetch` çağrısı bir arada), sonra bir daha açma. Çoğu haberin arka plan paragrafı olur; olguları da oradan kontrol et. Açılmayan ya da yönlendiren (403, "unable to fetch", "REDIRECT DETECTED") bağlantıyı yeniden deneme, yönlendirmenin peşine düşme; kısaltılmış bağlantıları (bbc.in, trib.al, bit.ly gibi) hiç seçme. x.com bağlantıları `WebFetch` ile açılmaz, onları seçme.
 
 Tekrar etme: okuyucu `previous.md`'deki haberleri zaten okudu. Aynı olay orada varsa (aynı açıklama, aynı karar, aynı olay, aynı rakam) bugün hâlâ konuşuluyor olsa da tekrar yazma. Bir haberi yeniden ancak gerçekten yeni bir gelişme varsa ver: yeni bir karar, tutuklama, açıklama, rakam, sonuç. O zaman sadece yeni olanı yaz; eski kısmı bir yan cümleyle hatırlat ya da gerekiyorsa "Ne olmuştu?" bloğuna koy.
 
@@ -26,7 +26,7 @@ Gazeteyi yapılandırılmış çıktı olarak ver: bir `title`, sonra sırayla `
 
 `title`: "📰 Türkiye Gazetesi, <tarih>" (örnek: "📰 Türkiye Gazetesi, 19 Eylül 2026").
 
-Bölüm başlıkları, sırayla: 🏛️ Gündem ve Siyaset, 💸 Ekonomi, 🏙️ Toplum ve Yaşam, 🌍 Dünya (Türkiye'yi ilgilendirdiği kadar), 🎭 Kültür, Sanat ve Magazin, ⚽ Spor. Boş kalan bölümü yazma. Her bölümde 3-6 normal haber (importance 2 veya 3), gerekirse birkaç kısa haber (importance 1). `lead` alanını kullanma.
+Bölüm başlıkları, sırayla: 🏛️ Gündem ve Siyaset, 💸 Ekonomi, 🏙️ Toplum ve Yaşam, 🌍 Dünya (Türkiye'yi ilgilendirdiği kadar), 🎭 Kültür, Sanat ve Magazin, ⚽ Spor. Boş kalan bölümü yazma. Her bölümde 2-5 normal haber (importance 2 veya 3), gerekirse birkaç kısa haber (importance 1). Gazetenin tamamında en fazla 25 normal haber, 15 kısa haber ve 6 "Ne olmuştu?" bloğu olsun: gazete tek seferde yazılır ve bundan uzunu kesilir. Seçerken önemliyi tut, gerisini kısa habere çevir ya da bırak. `lead` alanını kullanma.
 
 Dil Türkçe, sade ve gazete gibi, yorum yok, süs yok. Metnin içinde emoji kullanma, sadece bölüm başlıklarında. Her haberin bir `source` bağlantısı olmalı.
 

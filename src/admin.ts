@@ -231,7 +231,11 @@ function parseLog(log: string) {
       if (part.type === "text" && part.text.trim()) {
         steps.push(`<li class="step"><span class="step-kind">said${at}</span><div class="step-body">${escapeHtml(clip(part.text, 1500))}</div></li>`);
       } else if (part.type === "tool_use") {
-        const input = part.name === "StructuredOutput" ? "(the paper)" : JSON.stringify(part.input);
+        // The paper: its size and why the reply ended; max_tokens means it was cut off, and an empty
+        // input means claude could not parse what it got.
+        const usage = event.message?.usage?.output_tokens;
+        const paper = `(the paper${usage ? `, ${tokens(usage)} output tokens` : ""}${event.message?.stop_reason ? `, stop: ${event.message.stop_reason}` : ""}${part.input && Object.keys(part.input).length === 0 ? ", empty input" : ""})`;
+        const input = part.name === "StructuredOutput" ? paper : JSON.stringify(part.input);
         steps.push(`<li class="step"><span class="step-kind tool">${escapeHtml(part.name)}${at}</span><div class="step-body">${escapeHtml(clip(input, 400))}</div></li>`);
       } else if (part.type === "tool_result") {
         const content = typeof part.content === "string" ? part.content : (part.content ?? []).map((p: { text?: string }) => p.text ?? "").join("\n");
