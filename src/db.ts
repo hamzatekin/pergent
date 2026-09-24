@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import type { RunMeta } from "./runner.ts";
 import type { Paper } from "./paper.ts";
@@ -36,6 +36,7 @@ export function openDb(runsDir: string): DatabaseSync {
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
   if (!columns.some((c) => c.name === "paper")) db.exec("ALTER TABLE runs ADD COLUMN paper TEXT");
+  renameTasks(runsDir);
   importRuns(runsDir);
   return db;
 }
@@ -110,6 +111,18 @@ export function setState(key: string, value: string) {
 
 // Runs made before the database existed (or restored from a volume) are picked up from their
 // meta.json; rows already present are left alone, so this is cheap to run at every start.
+// Tasks that were renamed: their run directories and rows move to the new name on start, so the tab
+// keeps its history and previous.ts its memory. The directory is the name that counts (importRuns
+// reads it, not the task in meta.json).
+const RENAMED: Record<string, string> = { haberler: "news" };
+
+function renameTasks(runsDir: string) {
+  for (const [from, to] of Object.entries(RENAMED)) {
+    if (existsSync(join(runsDir, from)) && !existsSync(join(runsDir, to))) renameSync(join(runsDir, from), join(runsDir, to));
+    use().prepare("UPDATE runs SET task = ? WHERE task = ?").run(to, from);
+  }
+}
+
 function importRuns(runsDir: string) {
   const has = use().prepare("SELECT 1 FROM runs WHERE task = ? AND run_id = ?");
   const read = (path: string) => { try { return readFileSync(path, "utf8"); } catch { return ""; } };
@@ -122,7 +135,7 @@ function importRuns(runsDir: string) {
       if (!metaText) continue;
       const imagesText = read(join(dir, "images.json"));
       const paperText = read(join(dir, "output.json"));
-      saveRun(JSON.parse(metaText), read(join(dir, "output.md")), imagesText ? JSON.parse(imagesText) : {}, paperText ? JSON.parse(paperText) : null);
+      saveRun({ ...JSON.parse(metaText), task: task.name }, read(join(dir, "output.md")), imagesText ? JSON.parse(imagesText) : {}, paperText ? JSON.parse(paperText) : null);
     }
   }
 }
