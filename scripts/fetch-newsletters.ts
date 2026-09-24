@@ -57,6 +57,17 @@ function resolveLink(url: string): Promise<string> {
   return p;
 }
 
+// utm_ parameters are noise to the model and long in tokens (The Deep View tags every link with three).
+function stripTracking(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const key of [...u.searchParams.keys()]) if (key.startsWith("utm_")) u.searchParams.delete(key);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 async function htmlToText(html: string): Promise<string> {
   const links: Promise<string>[] = [];
   const text = html
@@ -69,7 +80,7 @@ async function htmlToText(html: string): Promise<string> {
     })
     .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)>|<br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, "");
-  const urls = await Promise.all(links);
+  const urls = (await Promise.all(links)).map(stripTracking);
   return unescape(text)
     .replace(/\u0000(\d+)\u0000/g, (_, i) => urls[Number(i)])
     .replace(/[ \t​]+/g, " ")
@@ -106,6 +117,7 @@ found.sort((a, b) => b.date.getTime() - a.date.getTime());
 const issues: Issue[] = [];
 let size = 0;
 for (const i of found) {
+  i.text = withoutIssueLinks(i);
   if (issues.length && size + i.text.length > maxChars) break;
   issues.push(i);
   size += i.text.length;
@@ -113,8 +125,19 @@ for (const i of found) {
 const deferred = found.length - issues.length;
 
 const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
-const sections = issues.map((i) => `## ${i.feed}: ${i.title} (${i.date.toISOString().slice(0, 10)})\n\n${i.url}\n\n${i.text}`);
-const header = `# Newsletter issues not yet covered by a previous digest (fetched ${stamp} UTC)\n\n${issues.length ? `${issues.length} new issues.` : "No new issues since the last digest."}`;
+// The issue's own URL is left out of the text (the bare line under the heading, "Read on the Web
+// (<issue>)"): given an easy link to copy, the model sourced every newsletter story to the issue
+// instead of the article. Each item's link sits in parentheses after its title.
+function withoutIssueLinks(i: Issue): string {
+  const issue = stripTracking(i.url).replace(/\/$/, "");
+  return i.text
+    .split("\n")
+    .map((line) => line.replace(/ \((https?:\/\/[^)\s]+)\)/g, (m, url: string) => (url.replace(/\/$/, "") === issue ? "" : m)))
+    .filter((line) => !/^\s*Read on the Web\s*$/i.test(line))
+    .join("\n");
+}
+const sections = issues.map((i) => `## ${i.feed}: ${i.title} (${i.date.toISOString().slice(0, 10)})\n\n${i.text}`);
+const header = `# Newsletter issues not yet covered by a previous digest (fetched ${stamp} UTC)\n\n${issues.length ? `${issues.length} new issues. Each item's link is in parentheses after its title; that is the story's source.` : "No new issues since the last digest."}`;
 await writeFile("newsletters.md", [header, ...sections].join("\n\n") + "\n");
 await writeFile("newsletters.json", JSON.stringify(issues.map((i) => i.url)));
 console.log(`newsletters.md: ${issues.length} new issues from ${feeds.length} feeds, ${deferred} deferred to next run, ${failed.length} failed`);

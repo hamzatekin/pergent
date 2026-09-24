@@ -27,7 +27,7 @@ Sections:
 
 "🧑‍💻 Web dev corner": frontend, backend, databases, infrastructure, architecture. Framework releases, hot takes about how to build things, tooling changes, performance and security stories. Pull from all files.
 
-"📬 From the newsletters": only when newsletters.md has new issues. The reader does not open the newsletters; this page replaces them, so cover each issue rather than sampling it. Go through every item in every issue: skip sponsored items, job ads, and anything already covered above, and turn everything else into a story. The few items worth a paragraph get importance 2 (3 for a big one), the rest are importance 1 briefs, one per item, with the item's own link. On a day with issues expect 15 to 40 stories here, more when several issues arrive at once; that is fine. Never re-summarize an issue as one story. Link to the article itself, not the issue.
+"📬 From the newsletters": only when newsletters.md has new issues. The reader does not open the newsletters; this page replaces them, so cover each issue rather than sampling it. Go through every item in every issue: skip sponsored items, job ads, and anything already covered above, and turn everything else into a story. The few items worth a paragraph get importance 2 (3 for a big one), the rest are importance 1 briefs, one per item, with the item's own link. On a day with issues expect 15 to 40 stories here, more when several issues arrive at once; that is fine. Never re-summarize an issue as one story. Each item's `source` is its own link, the URL in parentheses right after the item's title in newsletters.md, never the newsletter's site or issue page.
 
 "🧪 Research & open source": papers, benchmarks, notable repos.
 
