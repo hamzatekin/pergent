@@ -88,6 +88,11 @@
 .story[data-importance="3"] .story-image {
   @apply md:aspect-[2/1];
 }
+/* Portrait or square (app.js marks it): shown whole on the inset colour, no taller than a card should be. */
+.story-image.tall,
+.story[data-importance="3"] .story-image.tall {
+  @apply aspect-auto max-h-[26rem] bg-inset object-contain;
+}
 /* The section's briefs (importance 1): one band of short lines after the cards, the headline run into
    the first sentence, flowing in text columns on a wide screen. */
 .briefs {

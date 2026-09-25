@@ -12,6 +12,7 @@
   "before": "node ../../../scripts/previous.ts && node ../../../scripts/fetch-x.ts && node ../../../scripts/fetch-hn.ts && node ../../../scripts/fetch-newsletters.ts",
   "x": {
     "hours": 24,
+    "images": true,
     "lists": [
       {
         "file": "accounts.json",
