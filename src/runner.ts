@@ -6,6 +6,7 @@ import { createInterface } from "node:readline";
 import { getRun, openDb, saveRun, listRuns as listRunRows } from "./db.ts";
 import { PAPER_SCHEMA, fromMarkdown, parsePaper, toMarkdown, type Paper } from "./paper.ts";
 import { ratePaper } from "./rate.ts";
+import { addPreviewImages } from "./images.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -248,6 +249,8 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   };
   await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));
   // The run directory keeps everything; the database gets what the API serves.
+  // Lead images for article sources (og:image), merged into images.json before it is read below.
+  if (paper) await addPreviewImages(paper, dir).catch((err) => writeFile(join(dir, "images.log"), `failed: ${err}\n`));
   const images = await readFile(join(dir, "images.json"), "utf8").then(JSON.parse, () => ({}));
   saveRun(meta, output, images, paper);
   return { meta, dir };

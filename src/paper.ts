@@ -105,15 +105,22 @@ function canonical(url: string) {
   }
 }
 
-// The rating as a ten-cell bar and its number, the parts in the tooltip. Cells and colour are classes,
-// since the CSP allows no inline style.
-const PART_NAMES: Record<string, string> = { sourcing: "sourcing", neutrality: "no hype", substance: "substance" };
+// The rating: the overall number large, then each part (src/rate.ts's questions) on its own line as a
+// name, a ten-cell bar and its number, with what it measures in the tooltip. Cells and colour are
+// classes, since the CSP allows no inline style.
+const PARTS: [key: string, name: string, meaning: string][] = [
+  ["sourcing", "Sourcing", "How well the claim is backed: a rumour, one account, a named outlet, or a primary source"],
+  ["neutrality", "Neutral tone", "How plain the original is: hype or propaganda, spun, mostly factual, or plain"],
+  ["substance", "Substance", "How much the story gives you: nothing concrete, one fact, some detail, or specifics and why it matters"],
+];
+const level = (score: number) => (score >= 7 ? "high" : score >= 4.5 ? "mid" : "low");
+const cells = (score: number) => Array.from({ length: 10 }, (_, i) => `<i${i < Math.round(score) ? ' class="on"' : ""}></i>`).join("");
 function meter(rating: Rating) {
-  const level = rating.score >= 7 ? "high" : rating.score >= 4.5 ? "mid" : "low";
-  const filled = Math.round(rating.score);
-  const cells = Array.from({ length: 10 }, (_, i) => `<i${i < filled ? ' class="on"' : ""}></i>`).join("");
-  const title = Object.entries(rating.parts).map(([k, v]) => `${PART_NAMES[k] ?? k} ${v}`).join(" · ");
-  return `<span class="rating" data-level="${level}" title="${escapeHtml(`Rated by Jev: ${title}`)}"><span class="cells">${cells}</span>${rating.score.toFixed(1)}</span>`;
+  const parts = PARTS.filter(([key]) => typeof rating.parts[key] === "number").map(([key, name, meaning]) => {
+    const v = rating.parts[key];
+    return `<span class="part" data-level="${level(v)}" title="${escapeHtml(meaning)}"><span class="name">${name}</span><span class="cells">${cells(v)}</span><span class="num">${v.toFixed(1)}</span></span>`;
+  });
+  return `<div class="rating" data-level="${level(rating.score)}"><span class="overall" title="Rated by Jev, 0-10"><span class="score">${rating.score.toFixed(1)}</span><span class="of">/10</span></span><span class="parts">${parts.join("")}</span></div>`;
 }
 
 const isHttp = (url: string) => /^https?:\/\//i.test(url);
@@ -137,8 +144,8 @@ export function renderPaper(paper: Paper, images: Record<string, string> = {}, l
     if (story.context) {
       parts.push(`<details class="aside"><summary>${escapeHtml(labels.contextLabel ?? "Context")}</summary>${render(story.context)}</details>`);
     }
-    const foot = [story.source && isHttp(story.source) ? chip(story.source) : "", story.rating ? meter(story.rating) : ""].filter(Boolean);
-    if (foot.length) parts.push(`<p class="foot">${foot.join(" ")}</p>`);
+    if (story.source && isHttp(story.source)) parts.push(`<p class="foot">${chip(story.source)}</p>`);
+    if (story.rating) parts.push(meter(story.rating));
     return parts.join("\n");
   };
   for (const section of paper.sections) {
