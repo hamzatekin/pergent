@@ -7,9 +7,12 @@
   });
 
   // A feed thumbnail too small for the card looks worse than no image, and a broken one worse still.
+  // A portrait or square image (a vertical video's thumbnail) is marked tall, and styles.css shows it
+  // whole instead of cutting its middle out to fill the wide frame.
   for (const img of document.querySelectorAll("img.story-image")) {
     const check = () => {
       if (img.naturalWidth > 0 && img.naturalWidth < 300) img.remove();
+      else if (img.naturalWidth > 0 && img.naturalHeight > img.naturalWidth * 0.9) img.classList.add("tall");
     };
     img.addEventListener("error", () => img.remove());
     img.addEventListener("load", check);
