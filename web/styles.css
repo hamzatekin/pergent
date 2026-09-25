@@ -187,9 +187,40 @@
 .prose a.src {
   @apply inline-block rounded-full border border-line bg-bg px-2.5 py-0.5 font-sans text-[12px] text-muted no-underline hover:border-muted hover:text-ink;
 }
-/* Jev's rating (src/rate.ts): ten cells and the number, green, amber or red by level. */
+/* Jev's rating (src/rate.ts): the overall number large, then its three parts as named ten-cell bars,
+   each green, amber or red by its own level. */
 .rating {
-  @apply inline-flex cursor-help items-center gap-1.5 font-sans text-[12px] tabular-nums text-muted;
+  @apply mt-3 flex items-center gap-4 font-sans tabular-nums text-muted;
+}
+.rating .overall {
+  @apply flex cursor-help items-baseline;
+}
+.rating .score {
+  @apply text-[30px] font-bold leading-none tracking-tight;
+}
+.rating .of {
+  @apply ml-0.5 text-[12px];
+}
+.rating[data-level="high"] .score {
+  @apply text-[#4f7a3a];
+}
+.rating[data-level="mid"] .score {
+  @apply text-[#b8862b];
+}
+.rating[data-level="low"] .score {
+  @apply text-failed;
+}
+.rating .parts {
+  @apply grid grid-cols-[auto_auto_auto] items-center gap-x-2 gap-y-0.5 border-l border-line pl-4 text-[11px] leading-[1.35];
+}
+.rating .part {
+  @apply contents cursor-help;
+}
+.rating .name {
+  @apply uppercase tracking-[0.06em];
+}
+.rating .num {
+  @apply text-right text-ink;
 }
 .rating .cells {
   @apply inline-flex gap-[2px];
@@ -197,13 +228,13 @@
 .rating i {
   @apply block h-2 w-1.5 rounded-[1px] bg-line;
 }
-.rating[data-level="high"] i.on {
+.rating .part[data-level="high"] i.on {
   @apply bg-[#4f7a3a];
 }
-.rating[data-level="mid"] i.on {
+.rating .part[data-level="mid"] i.on {
   @apply bg-[#b8862b];
 }
-.rating[data-level="low"] i.on {
+.rating .part[data-level="low"] i.on {
   @apply bg-failed;
 }
 /* Section lead without stories, e.g. a TL;DR list. */
