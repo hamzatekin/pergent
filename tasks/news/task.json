@@ -9,6 +9,7 @@
   "allowedTools": ["WebFetch"],
   "inputs": ["x-1.md", "x-2.md", "x-3.md", "x-4.md", "bundle.md", "previous.md"],
   "timeoutMinutes": 15,
+  "effort": "low",
   "maxOutputTokens": 64000,
   "before": "node ../../../scripts/previous.ts && node ../../../scripts/fetch-x.ts && node ../../../scripts/fetch-bundle.ts && node ../../../scripts/filter-jev.ts",
   "x": {
