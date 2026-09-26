@@ -27,6 +27,8 @@ export type TaskConfig = {
   lang?: string;
   contextLabel?: string;
   briefsLabel?: string;
+  /** Where the task's tab sits: lower first, default 0, ties by name. The first task is the front page. */
+  order?: number;
   /** Files the before scripts wrote into the run directory, joined into the prompt ahead of prompt.md, each in a `<file name>` tag. */
   inputs?: string[];
   /** Replaces Claude Code's built-in system prompt, which is written for a coding agent. */
@@ -56,7 +58,13 @@ export type Task = { name: string; config: TaskConfig; prompt: string };
 
 export async function listTasks(): Promise<string[]> {
   const entries = await readdir(TASKS_DIR, { withFileTypes: true });
-  return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  const names = entries.filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  const order = new Map(
+    await Promise.all(
+      names.map(async (n) => [n, await readFile(join(TASKS_DIR, n, "task.json"), "utf8").then((t) => Number(JSON.parse(t).order ?? 0), () => 0)] as const),
+    ),
+  );
+  return names.sort((a, b) => order.get(a)! - order.get(b)!);
 }
 
 export async function loadTask(name: string): Promise<Task> {
