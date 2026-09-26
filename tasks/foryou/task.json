@@ -1,0 +1,21 @@
+{
+  "schedule": "0 7 * * *",
+  "timezone": "Europe/London",
+  "label": "for you",
+  "order": 1,
+  "lang": "en",
+  "contextLabel": "Context",
+  "briefsLabel": "Also worth a look",
+  "model": "haiku",
+  "allowedTools": [],
+  "inputs": ["foryou.md"],
+  "timeoutMinutes": 15,
+  "rate": false,
+  "before": "node ../../../scripts/fetch-foryou.ts",
+  "foryou": {
+    "account": "AvvosMeyz",
+    "hours": 24,
+    "top": 150,
+    "perAuthor": 3
+  }
+}
