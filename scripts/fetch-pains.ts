@@ -14,6 +14,8 @@
 //   apps               Shopify App Store slugs
 //   perGroup           at most this many items per subreddit, category or app, newest first (default 30)
 //   maxChars           size cap for pains.md (default 200000); bodies are cut shorter until it fits
+//   budgetSeconds      when to stop starting new fetches (default 180), so the script ends well inside the
+//                      before command's 5 minutes; what was fetched by then is written
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
@@ -28,6 +30,7 @@ const apps: string[] = config.pains?.apps ?? [];
 const perGroup: number = config.pains?.perGroup ?? 30;
 const maxChars: number = config.pains?.maxChars ?? 200_000;
 const BODY = 1200;
+const deadline = Date.now() + (config.pains?.budgetSeconds ?? 180) * 1000;
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
 const since = Date.now() - hours * 3_600_000;
 const reviewSince = Date.now() - reviewDays * 86_400_000;
@@ -67,11 +70,12 @@ function text(html: string) {
     .trim();
 }
 
+// One retry on 429, and only when there is time for it.
 async function get(url: string) {
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(20_000) });
-    if (res.status === 429 && attempt < 2) {
-      await sleep(15_000 * (attempt + 1));
+    const res = await fetch(url, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(15_000) });
+    if (res.status === 429 && attempt < 1 && Date.now() + 25_000 < deadline) {
+      await sleep(10_000);
       continue;
     }
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -145,22 +149,38 @@ async function reviews(app: string): Promise<Item[]> {
 }
 
 const found: Item[] = [];
+// Each result is printed as it comes, so before.log shows how far a run got even when it is stopped.
 async function collect(label: string, run: () => Promise<Item[]>) {
-  try {
-    const items = await run();
-    found.push(...items);
-    log.push(`${label}: ${items.length}`);
-  } catch (err) {
-    log.push(`${label}: failed, ${err instanceof Error ? err.message : err}`);
-  }
+  let line: string;
+  let ok = false;
+  if (Date.now() > deadline) line = `${label}: skipped, out of time`;
+  else
+    try {
+      const items = await run();
+      found.push(...items);
+      line = `${label}: ${items.length}`;
+      ok = true;
+    } catch (err) {
+      line = `${label}: failed, ${err instanceof Error ? err.message : err}`;
+    }
+  log.push(line);
+  console.log(line);
+  return ok;
 }
 
 // Reddit one at a time, spaced out; the forum and the app store alongside it.
 await Promise.all([
   (async () => {
+    // Three failures in a row means Reddit is refusing this server; the rest would only fail too.
+    let failures = 0;
     for (const [i, sub] of subreddits.entries()) {
+      if (failures >= 3) {
+        log.push(`r/${sub}: skipped, Reddit refused the last 3`);
+        console.log(log.at(-1));
+        continue;
+      }
       if (i) await sleep(4000);
-      await collect(`r/${sub}`, () => reddit(sub));
+      failures = (await collect(`r/${sub}`, () => reddit(sub))) ? 0 : failures + 1;
     }
   })(),
   (async () => {
@@ -202,4 +222,3 @@ await writeFile("pains.md", out);
 await writeFile("pains.json", JSON.stringify(kept.map((i) => i.id)));
 await writeFile("pains.log", log.join("\n") + "\n");
 console.log(`pains.md: ${kept.length} new items (${found.length - fresh.length} seen before, ${fresh.length - kept.length} over the per-group cap), ${out.length} chars, bodies cut at ${limit}`);
-console.log(log.join("\n"));
