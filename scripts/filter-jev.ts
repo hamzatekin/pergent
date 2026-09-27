@@ -8,6 +8,9 @@
 // filtered. Config from $TASK_DIR/task.json under "filter":
 //   files      the input files to filter, in the fetch scripts' "- " item format
 //   threshold  how sure Jev must be of a drop kind to drop the item (default 0.8)
+//   kinds      the kinds Jev picks from, name to description (default: the news kinds below)
+//   drop       the kinds that are removed (default: clickbait, filler, praise)
+//   about      what an item is, for the question (default "Turkish news post")
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -20,7 +23,7 @@ const CONCURRENCY = 6;
 
 // The kinds Jev picks from. Only DROP kinds are removed; opinion stays, since the prompt already
 // tells the model to take a journalist's news and leave their comment.
-const KINDS: Record<string, string> = {
+const NEWS_KINDS: Record<string, string> = {
   event:
     "Reports something specific that happened or was announced: a decision, statement, arrest, court ruling, appointment, figure, match result, accident, disaster.",
   opinion: "Commentary, analysis or a personal view about the news, with no new fact of its own.",
@@ -31,7 +34,9 @@ const KINDS: Record<string, string> = {
   praise:
     "Praise or propaganda: celebrates a politician or the government ('müjde', thanks, slogans, 'tarihi başarı') without a new concrete fact.",
 };
-const DROP = new Set(["clickbait", "filler", "praise"]);
+const KINDS: Record<string, string> = config.filter?.kinds ?? NEWS_KINDS;
+const DROP = new Set<string>(config.filter?.drop ?? ["clickbait", "filler", "praise"]);
+const about: string = config.filter?.about ?? "Turkish news post";
 
 type Item = { file: string; start: number; end: number; text: string };
 type ChoiceAnswer = { type: "choice"; choice: string; probabilities: Record<string, number> };
@@ -53,7 +58,7 @@ async function classify(batch: Item[]): Promise<(ChoiceAnswer | undefined)[]> {
   const questions = Object.fromEntries(
     batch.map((_, i) => [
       `p${i}`,
-      { type: "choice", instructions: `What kind of Turkish news post is \`posts[${i}]\`? Judge the post's own text.`, criteria: KINDS },
+      { type: "choice", instructions: `What kind of ${about} is \`posts[${i}]\`? Judge the post's own text.`, criteria: KINDS },
     ]),
   );
   for (let attempt = 0; ; attempt++) {
