@@ -1,0 +1,70 @@
+{
+  "schedule": "0 6 * * *",
+  "timezone": "Europe/London",
+  "label": "pains",
+  "order": 2,
+  "lang": "en",
+  "contextLabel": "Why it might pay",
+  "briefsLabel": "Also mentioned",
+  "model": "haiku",
+  "allowedTools": [],
+  "inputs": ["pains.md", "previous.md"],
+  "timeoutMinutes": 15,
+  "rate": false,
+  "before": "node ../../../scripts/previous.ts && node ../../../scripts/fetch-pains.ts && node ../../../scripts/filter-jev.ts",
+  "previous": { "days": 14 },
+  "pains": {
+    "hours": 48,
+    "reviewDays": 14,
+    "subreddits": [
+      "smallbusiness",
+      "sweatystartup",
+      "UKLandlords",
+      "Landlord",
+      "PropertyManagement",
+      "ecommerce",
+      "shopify",
+      "FulfillmentByAmazon",
+      "EtsySellers",
+      "Accounting",
+      "Bookkeeping",
+      "restaurateur",
+      "realtors",
+      "HVAC"
+    ],
+    "shopifyCategories": {
+      "95": "Shopify Discussion",
+      "186": "Shopify Apps",
+      "217": "Payments + Shipping & Fulfilment",
+      "223": "Accounting & Taxes",
+      "180": "Retail & Point of Sale"
+    },
+    "apps": [
+      "quickbooks-online",
+      "a2x",
+      "taxjar",
+      "shipstation",
+      "shippo",
+      "easyship",
+      "shiphero",
+      "aftership",
+      "returns-center-by-aftership",
+      "inventory-planner",
+      "subscription-payments",
+      "klaviyo-email-marketing",
+      "judgeme"
+    ]
+  },
+  "filter": {
+    "files": ["pains.md"],
+    "threshold": 0.7,
+    "about": "post by a small business owner",
+    "kinds": {
+      "pain": "Describes a problem in running the business that keeps coming back or costs real time or money: a chore done by hand, a tool that fails or costs too much, a rule or deadline that is hard to meet, a workaround.",
+      "question": "A one-off question or request for advice, with no recurring problem behind it: how to start, which to choose, is this legal, feedback on my store.",
+      "promo": "Selling or promoting something: the poster's own product, service, agency or store, a survey or 'what are your pain points' post from someone building a product, hiring, a job ad.",
+      "other": "Anything else: news, celebration, venting about a customer, a rant with no problem to solve, off topic."
+    },
+    "drop": ["promo", "other"]
+  }
+}
