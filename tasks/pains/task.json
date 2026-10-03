@@ -12,25 +12,75 @@
   "timeoutMinutes": 15,
   "rate": false,
   "before": "node ../../../scripts/previous.ts && node ../../../scripts/fetch-pains.ts && node ../../../scripts/filter-jev.ts",
-  "previous": { "days": 14 },
+  "previous": {"days": 14},
   "pains": {
     "hours": 48,
     "reviewDays": 14,
-    "subreddits": [
-      "smallbusiness",
-      "sweatystartup",
-      "UKLandlords",
-      "Landlord",
-      "PropertyManagement",
-      "ecommerce",
-      "shopify",
-      "FulfillmentByAmazon",
-      "EtsySellers",
-      "Accounting",
-      "Bookkeeping",
-      "restaurateur",
-      "realtors",
-      "HVAC"
+    "perGroup": 30,
+    "maxChars": 340000,
+    "budgetSeconds": 180,
+    "reddit": [
+      {
+        "subs": [
+          "smallbusiness", "Accounting", "Entrepreneur", "UKLandlords", "Landlord", "PropertyManagement",
+          "realtors", "ecommerce", "shopify", "FulfillmentByAmazon", "AmazonSeller", "EtsySellers",
+          "Flipping", "Bookkeeping", "restaurateur", "sweatystartup", "HVAC", "electricians", "Contractor",
+          "AutoDetailing", "Dentistry", "Lawyertalk", "FreightBrokers", "WeddingPhotography",
+          "smallbusinessuk"
+        ],
+        "search": "\"is there a tool\" OR \"is there an app\" OR \"is there a software\" OR \"any software\" OR \"wish there was\" OR \"would pay\" OR \"spreadsheet\" OR \"by hand\" OR \"manually\" OR \"nightmare\" OR \"so frustrating\" OR \"waste hours\" OR \"how do you keep track\" OR \"how do you manage\""
+      },
+      {
+        "subs": [
+          "UKLandlords", "Landlord", "PropertyManagement", "realtors", "ecommerce", "shopify",
+          "FulfillmentByAmazon", "AmazonSeller", "EtsySellers", "Flipping", "Bookkeeping", "restaurateur",
+          "sweatystartup", "HVAC", "electricians", "Contractor", "AutoDetailing", "Dentistry", "Lawyertalk",
+          "FreightBrokers", "WeddingPhotography", "smallbusinessuk"
+        ]
+      },
+      {"subs": ["smallbusiness", "Accounting", "Entrepreneur"]}
+    ],
+    "appStore": [
+      {"id": 584606479, "name": "QuickBooks", "countries": ["us", "gb"]},
+      {"id": 441880705, "name": "Xero", "countries": ["gb"]},
+      {"id": 975591071, "name": "FreeAgent", "countries": ["gb"]},
+      {"id": 1641307408, "name": "Sage Sole Trader (MTD)", "countries": ["gb"]},
+      {"id": 881629660, "name": "Wave", "countries": ["us"]},
+      {"id": 540236748, "name": "Invoice2go", "countries": ["us"]},
+      {"id": 335393788, "name": "Square Point of Sale", "countries": ["us", "gb"]},
+      {"id": 969311778, "name": "Clover Go", "countries": ["us"]},
+      {"id": 371294472, "name": "Shopify", "countries": ["us", "gb"]},
+      {"id": 1534619962, "name": "Etsy Seller", "countries": ["us", "gb"]},
+      {"id": 1140086177, "name": "Tide business banking", "countries": ["gb"]},
+      {"id": 1014146758, "name": "Jobber", "countries": ["us"]},
+      {"id": 692833651, "name": "Housecall Pro", "countries": ["us"]},
+      {"id": 984378901, "name": "Tradify", "countries": ["gb"]},
+      {"id": 346778559, "name": "Vagaro Pro", "countries": ["us"]},
+      {"id": 725335996, "name": "Booksy Biz", "countries": ["us"]},
+      {"id": 1109898840, "name": "Landlord Studio", "countries": ["us", "gb"]}
+    ],
+    "freelancer": {
+      "queries": [
+        "bookkeeping", "data entry", "virtual assistant", "spreadsheet", "google sheets", "excel", "crm",
+        "invoice", "reconcile", "scheduling", "quickbooks", "xero", "shopify", "property management",
+        "zapier", "automation"
+      ],
+      "currencies": ["USD", "GBP"],
+      "perQuery": 6
+    },
+    "khoros": [
+      {
+        "host": "community.squareup.com",
+        "name": "Square Seller Community",
+        "skipBoards": ["french-discussions", "japanese-discussions", "product-news"]
+      }
+    ],
+    "vanilla": [
+      {
+        "host": "forums.moneysavingexpert.com",
+        "name": "MoneySavingExpert",
+        "categories": {"27": "Small biz MoneySaving", "22": "Cutting tax"}
+      }
     ],
     "shopifyCategories": {
       "95": "Shopify Discussion",
@@ -40,31 +90,23 @@
       "180": "Retail & Point of Sale"
     },
     "apps": [
-      "quickbooks-online",
-      "a2x",
-      "taxjar",
-      "shipstation",
-      "shippo",
-      "easyship",
-      "shiphero",
-      "aftership",
-      "returns-center-by-aftership",
-      "inventory-planner",
-      "subscription-payments",
-      "klaviyo-email-marketing",
+      "quickbooks-online", "a2x", "taxjar", "shipstation", "shippo", "easyship", "shiphero", "aftership",
+      "returns-center-by-aftership", "inventory-planner", "subscription-payments", "klaviyo-email-marketing",
       "judgeme"
     ]
   },
   "filter": {
     "files": ["pains.md"],
-    "threshold": 0.7,
-    "about": "post by a small business owner",
+    "threshold": 0.6,
+    "about": "post by a small business owner, or job post",
     "kinds": {
-      "pain": "Describes a problem in running the business that keeps coming back or costs real time or money: a chore done by hand, a tool that fails or costs too much, a rule or deadline that is hard to meet, a workaround.",
+      "pain": "Describes a problem in running the business that keeps coming back or costs real time or money: a chore done by hand, a tool that fails or costs too much, a rule or deadline that is hard to meet, a workaround. A bad review of a paid business app that says what it fails to do counts.",
+      "chore-job": "A job post paying someone to do a recurring business chore by hand: bookkeeping, data entry, reconciling, copying between systems, scheduling, chasing invoices or customers, managing listings.",
+      "build-job": "A job post for one-off work: building a website, app or software, design, video, writing, marketing, sales, or a salaried role.",
       "question": "A one-off question or request for advice, with no recurring problem behind it: how to start, which to choose, is this legal, feedback on my store.",
-      "promo": "Selling or promoting something: the poster's own product, service, agency or store, a survey or 'what are your pain points' post from someone building a product, hiring, a job ad.",
-      "other": "Anything else: news, celebration, venting about a customer, a rant with no problem to solve, off topic."
+      "promo": "Selling or promoting something: the poster's own product, service, agency or store, or a survey or 'what are your pain points' post from someone building a product.",
+      "other": "Anything else: news, celebration, venting about a customer, a rant with no problem to solve, a consumer's personal question, off topic."
     },
-    "drop": ["promo", "other"]
+    "drop": ["build-job", "promo", "other"]
   }
 }
