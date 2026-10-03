@@ -30,10 +30,19 @@
 /* Chrome around the paper. One reading column on a phone; from md up the page widens and each
    section's cards sit in a two, then three, column grid (see .stories). */
 .page {
-  @apply mx-auto max-w-[640px] px-4 pb-20 pt-3 md:max-w-[1000px] xl:max-w-[1400px];
+  @apply mx-auto max-w-[640px] px-4 pb-20 pt-1 md:max-w-[1000px] xl:max-w-[1400px];
 }
+/* The bar stays at the top of the screen. app.js slides it away while you scroll down (data-hidden)
+   and brings it back as soon as you scroll up; data-stuck draws its edge once the page is under it. */
 .topbar {
-  @apply mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 font-sans text-[13px] text-muted;
+  @apply sticky top-0 z-10 -mx-4 mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 bg-bg px-4 pb-2 font-sans text-[13px] text-muted transition-[translate,box-shadow] duration-200 ease-out motion-reduce:transition-none;
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+.topbar[data-stuck="true"] {
+  @apply shadow-[0_1px_0_var(--color-line)];
+}
+.topbar[data-hidden="true"] {
+  @apply -translate-y-full shadow-none;
 }
 .tabs {
   @apply -ml-2 flex min-w-0 gap-0.5 overflow-x-auto;
