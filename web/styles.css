@@ -12,8 +12,18 @@
   --color-muted: #7d7265;
   --color-accent: #8c5a2b;
   --color-failed: #a83a2a;
+  --color-good: #4f7a3a;
+  --color-warn: #b8862b;
   --font-serif: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, "Times New Roman", serif;
   --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  /* A stronger ease-out than Tailwind's: it moves at once, which is what makes a short transition
+     feel like an answer to the hand (.claude/skills/emil-design-eng). Every ease-out utility uses it. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Cards and chips get their edge from a transparent ring plus a little lift instead of a solid border,
+     so it reads the same on the page, the surface and over an image (.claude/skills/better-ui/surfaces.md).
+     Dividers and state outlines stay borders. */
+  --shadow-border: 0 0 0 1px oklch(0 0 0 / 0.06), 0 1px 2px -1px oklch(0 0 0 / 0.06), 0 2px 4px 0 oklch(0 0 0 / 0.04);
+  --shadow-border-hover: 0 0 0 1px oklch(0 0 0 / 0.08), 0 1px 2px -1px oklch(0 0 0 / 0.08), 0 2px 4px 0 oklch(0 0 0 / 0.06);
 }
 
 @layer base {
@@ -48,13 +58,13 @@
   @apply -ml-2 flex min-w-0 gap-0.5 overflow-x-auto;
 }
 .tab {
-  @apply shrink-0 rounded-md px-2 py-1 transition-colors hover:text-ink data-[active=true]:bg-surface data-[active=true]:text-ink data-[active=true]:shadow-[inset_0_0_0_1px_var(--color-line)];
+  @apply shrink-0 rounded-md px-2 py-1 hover:text-ink data-[active=true]:bg-surface data-[active=true]:text-ink data-[active=true]:shadow-[inset_0_0_0_1px_var(--color-line)];
 }
 .runnav {
   @apply -mr-2 flex items-center gap-1;
 }
 .arrow {
-  @apply rounded-md px-2 py-1 transition-colors hover:text-ink aria-disabled:pointer-events-none aria-disabled:opacity-30;
+  @apply rounded-md px-2 py-1 hover:text-ink aria-disabled:pointer-events-none aria-disabled:opacity-30;
 }
 .stamp {
   @apply tabular-nums;
@@ -68,7 +78,7 @@
 
 /* The paper itself. */
 .masthead {
-  @apply mb-2 text-[28px] font-bold leading-tight tracking-tight;
+  @apply mb-2 text-[28px] font-bold leading-tight tracking-tight text-balance;
 }
 .section {
   @apply mt-9;
@@ -83,7 +93,7 @@
   grid-auto-flow: dense;
 }
 .story {
-  @apply mb-5 overflow-hidden rounded-xl border border-line bg-surface md:mb-0;
+  @apply mb-5 overflow-hidden rounded-xl bg-surface shadow-border md:mb-0;
 }
 .story[data-importance="3"] {
   @apply md:col-span-2;
@@ -91,8 +101,14 @@
 .story[data-importance="3"] .prose h3 {
   @apply text-[25px] md:text-[28px];
 }
+/* A neutral hairline inside the image edge, so a pale photo does not bleed into the card. It fades in
+   once loaded (app.js sets data-loading only on images still in flight), so it never pops in half drawn
+   and is never shown cropped before app.js knows it is tall. */
 .story-image {
-  @apply block aspect-[16/9] w-full object-cover;
+  @apply block aspect-[16/9] w-full rounded-t-xl object-cover outline-1 -outline-offset-1 outline-black/10 transition-opacity duration-200 ease-out;
+}
+.story-image[data-loading] {
+  @apply opacity-0;
 }
 .story[data-importance="3"] .story-image {
   @apply md:aspect-[2/1];
@@ -105,7 +121,7 @@
 /* The section's briefs (importance 1): one band of short lines after the cards, the headline run into
    the first sentence, flowing in text columns on a wide screen. */
 .briefs {
-  @apply mt-5 rounded-xl border border-line bg-surface px-4 py-2 md:columns-2 md:gap-8 xl:columns-3;
+  @apply mt-5 rounded-xl bg-surface px-4 py-2 shadow-border md:columns-2 md:gap-8 xl:columns-3;
 }
 .briefs-head {
   @apply mb-1 mt-1 font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-muted;
@@ -133,10 +149,10 @@
   @apply px-4 pb-4 pt-3.5;
 }
 .prose h3 {
-  @apply mb-2 text-[21px] font-bold leading-[1.25] tracking-tight;
+  @apply mb-2 text-[21px] font-bold leading-[1.25] tracking-tight text-balance;
 }
 .prose p {
-  @apply my-2;
+  @apply my-2 text-pretty;
 }
 .prose :is(ul, ol) {
   @apply my-2 list-disc pl-5;
@@ -148,13 +164,13 @@
   @apply my-1.5;
 }
 .prose a {
-  @apply text-accent underline decoration-line underline-offset-[3px] hover:decoration-accent;
+  @apply text-accent underline decoration-line underline-offset-[3px] transition-[text-decoration-color] duration-150 ease-out hover:decoration-accent;
 }
 .prose code {
   @apply font-mono text-[15px];
 }
 .prose pre {
-  @apply my-2 overflow-x-auto rounded-lg border border-line bg-inset p-3 font-mono text-[14px];
+  @apply my-2 overflow-x-auto rounded-lg bg-inset shadow-border p-3 font-mono text-[14px];
 }
 /* The "Ne olmuştu?" / "Context" aside under a story. */
 .prose blockquote {
@@ -171,14 +187,15 @@
   @apply my-3 rounded-lg bg-inset px-3.5 py-2 text-[15px] leading-[1.5] text-muted;
 }
 .prose details.aside > summary {
-  @apply cursor-pointer select-none list-none font-semibold text-ink hover:text-accent;
+  @apply cursor-pointer select-none list-none font-semibold text-ink transition-[color] duration-150 ease-out hover:text-accent;
+  -webkit-tap-highlight-color: transparent;
 }
 .prose details.aside > summary::before {
   content: "▸";
-  @apply mr-1.5 inline-block transition-transform;
+  @apply mr-1.5 inline-block transition-[rotate] duration-200 ease-out motion-reduce:transition-none;
 }
 .prose details.aside[open] > summary::before {
-  transform: rotate(90deg);
+  rotate: 90deg;
 }
 .prose details.aside > summary::-webkit-details-marker {
   display: none;
@@ -194,7 +211,7 @@
   @apply mb-0 mt-3 flex flex-wrap items-center gap-2;
 }
 .prose a.src {
-  @apply inline-block rounded-full border border-line bg-bg px-2.5 py-0.5 font-sans text-[12px] text-muted no-underline hover:border-muted hover:text-ink;
+  @apply inline-block rounded-full bg-bg px-2.5 py-0.5 font-sans text-[12px] text-muted no-underline shadow-border hover:text-ink hover:shadow-border-hover;
 }
 /* Jev's rating (src/rate.ts): the overall number large, then its three parts as named ten-cell bars,
    each green, amber or red by its own level. */
@@ -211,10 +228,10 @@
   @apply ml-0.5 text-[12px];
 }
 .rating[data-level="high"] .score {
-  @apply text-[#4f7a3a];
+  @apply text-good;
 }
 .rating[data-level="mid"] .score {
-  @apply text-[#b8862b];
+  @apply text-warn;
 }
 .rating[data-level="low"] .score {
   @apply text-failed;
@@ -238,10 +255,10 @@
   @apply block h-2 w-1.5 rounded-[1px] bg-line;
 }
 .rating .part[data-level="high"] i.on {
-  @apply bg-[#4f7a3a];
+  @apply bg-good;
 }
 .rating .part[data-level="mid"] i.on {
-  @apply bg-[#b8862b];
+  @apply bg-warn;
 }
 .rating .part[data-level="low"] i.on {
   @apply bg-failed;
@@ -249,6 +266,33 @@
 /* Section lead without stories, e.g. a TL;DR list. */
 .lead {
   @apply mb-5;
+}
+
+/* Press feedback on everything you tap: a short scale to 0.96 that springs back, so the page answers the
+   finger before the next page loads (.claude/skills/better-ui/animations.md). Only colour, shadow and
+   scale transition; with reduced motion the scale is left out and the colour change stays. */
+.tab,
+.arrow,
+.btn,
+.prose a.src {
+  transition-property: color, background-color, box-shadow, scale;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.tab:active,
+.arrow:active,
+.btn:not(:disabled):active,
+.prose a.src:active {
+  scale: 0.96;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab:active,
+  .arrow:active,
+  .btn:active,
+  .prose a.src:active {
+    scale: none;
+  }
 }
 
 /* The dashboard under /admin: the same paper palette, in the sans of the chrome. */
@@ -268,7 +312,7 @@
   @apply mb-2 mt-7 text-[12px] font-semibold uppercase tracking-[0.12em] text-muted;
 }
 .btn {
-  @apply cursor-pointer rounded-md border border-line bg-surface px-3 py-1.5 font-semibold text-ink hover:border-muted disabled:cursor-default disabled:opacity-50;
+  @apply cursor-pointer rounded-md bg-surface px-3 py-1.5 font-semibold text-ink shadow-border hover:shadow-border-hover disabled:cursor-default disabled:opacity-50;
 }
 .linkbtn {
   @apply cursor-pointer text-muted hover:text-ink;
@@ -283,7 +327,7 @@
   @apply my-4 grid gap-4 md:grid-cols-2;
 }
 .task-card {
-  @apply rounded-xl border border-line bg-surface p-4;
+  @apply rounded-xl bg-surface p-4 shadow-border;
 }
 .task-card-head {
   @apply mb-3 flex items-center justify-between;
