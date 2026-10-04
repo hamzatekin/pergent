@@ -31,15 +31,19 @@
 
   // A feed thumbnail too small for the card looks worse than no image, and a broken one worse still.
   // A portrait or square image (a vertical video's thumbnail) is marked tall, and styles.css shows it
-  // whole instead of cutting its middle out to fill the wide frame.
+  // whole instead of cutting its middle out to fill the wide frame. An image still loading is hidden
+  // (data-loading) and fades in once it has been checked, so it never shows cropped or half drawn;
+  // one already in the cache is shown as it is, and without this script nothing is hidden at all.
   for (const img of document.querySelectorAll("img.story-image")) {
     const check = () => {
       if (img.naturalWidth > 0 && img.naturalWidth < 300) img.remove();
       else if (img.naturalWidth > 0 && img.naturalHeight > img.naturalWidth * 0.9) img.classList.add("tall");
+      delete img.dataset.loading;
     };
     img.addEventListener("error", () => img.remove());
     img.addEventListener("load", check);
     if (img.complete) check();
+    else img.dataset.loading = "";
   }
 
   // Opening a run is the read that keeps the scheduler alive (a crawler never gets here).
