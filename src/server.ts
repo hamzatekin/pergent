@@ -5,9 +5,10 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { listRuns, listTasks, loadTask, readRun, runTask, type RunMeta, type TaskConfig } from "./runner.ts";
-import { escapeHtml, renderPaper } from "./paper.ts";
+import { escapeHtml, renderPaper, type Story } from "./paper.ts";
 import { adminRoutes } from "./admin.ts";
-import { closeStaleRuns } from "./db.ts";
+import { closeStaleRuns, listMutes } from "./db.ts";
+import { hideMuted } from "./mute.ts";
 import { PAUSE_AFTER_DAYS, lastReadAt, markRead, paused, startScheduler } from "./scheduler.ts";
 
 const PORT = Number(process.env.PORT ?? 4321);
@@ -99,6 +100,17 @@ async function page(c: Context) {
   if (current?.status === "failed") notes.push('<span class="failed">This run failed.</span>');
   if (run && current?.status === "ok" && !run.paper.sections.length) notes.push("This run produced no output.");
 
+  // A task with a never-show list hides the stories that match it, and gives each story the link that
+  // adds to it. The link names the story by where it sits in the stored paper.
+  let paper = run?.paper;
+  const links = new Map<Story, string>();
+  if (run && config.mute) {
+    run.paper.sections.forEach((s, i) => s.stories.forEach((story, j) => links.set(story, `/admin/mute/${task}/${current!.runId}/${i}/${j}`)));
+    const muted = hideMuted(run.paper, listMutes(task), config);
+    paper = muted.paper;
+    if (muted.hidden) notes.push(`${muted.hidden} ${muted.hidden === 1 ? "story" : "stories"} hidden by your <a href="/admin/mutes/${task}">never-show list</a>.`);
+  }
+
   const title = run?.paper.title;
   const arrow = (r: RunMeta | undefined, label: string, glyph: string, key: string) =>
     `<a href="${r ? `/read/${task}/${r.runId}` : "#"}" class="arrow" aria-disabled="${!r}" aria-label="${label}" title="${label} (${key})" data-key="${key}">${glyph}</a>`;
@@ -128,7 +140,7 @@ ${arrow(newer, "Newer run", "→", "ArrowRight")}
 </div>
 </header>
 ${notes.map((n) => `<p class="note">${n}</p>`).join("\n")}
-${run ? renderPaper(run.paper, run.images, { contextLabel: config.contextLabel, briefsLabel: config.briefsLabel }) : ""}
+${run && paper ? renderPaper(paper, run.images, { contextLabel: config.contextLabel, briefsLabel: config.briefsLabel }, config.mute ? (story) => links.get(story) : undefined) : ""}
 </div>
 <script src="/app.js?v=${version("app.js")}"></script>
 </body>

@@ -4,8 +4,10 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { listRuns, listTasks, loadTask, runDir, type RunMeta } from "./runner.ts";
+import { listRuns, listTasks, loadTask, readRun, runDir, type RunMeta } from "./runner.ts";
 import { escapeHtml } from "./paper.ts";
+import { addMute, listMutes, removeMute } from "./db.ts";
+import { suggestions } from "./mute.ts";
 
 // The dashboard: cost, turns and logs of every run, and a button to start a task. Rendered on the
 // server like the paper. It is behind one password, ADMIN_PASSWORD; without it /admin does not exist.
@@ -55,7 +57,8 @@ ${body}
     const origin = URL.parse(c.req.header("origin") ?? "");
     if (c.req.method === "POST" && origin && origin.host !== c.req.header("host")) throw new HTTPException(403, { message: "bad origin" });
     if (c.req.path === "/admin/login" || loggedIn(c)) return next();
-    return c.redirect("/admin/login");
+    // A page asked for before logging in (a story's Never show link, say) is where the login returns to.
+    return c.redirect(c.req.method === "GET" ? `/admin/login?next=${encodeURIComponent(c.req.path)}` : "/admin/login");
   });
 
   app.get("/admin/login", (c) =>
@@ -65,6 +68,7 @@ ${body}
       `<form method="post" action="/admin/login" class="login">
 <h1 class="admin-title">pergent admin</h1>
 ${c.req.query("failed") !== undefined ? '<p class="note failed">Wrong password.</p>' : ""}
+<input type="hidden" name="next" value="${escapeHtml(adminPath(c.req.query("next")))}">
 <input type="password" name="password" autocomplete="current-password" placeholder="Password" autofocus required>
 <button type="submit" class="btn">Log in</button>
 </form>`,
@@ -72,15 +76,16 @@ ${c.req.query("failed") !== undefined ? '<p class="note failed">Wrong password.<
   );
   app.post("/admin/login", async (c) => {
     const form = await c.req.parseBody();
+    const next = adminPath(String(form.next ?? ""));
     const given = createHmac("sha256", PASSWORD).update(String(form.password ?? "")).digest();
     const want = createHmac("sha256", PASSWORD).update(PASSWORD).digest();
     if (!timingSafeEqual(given, want)) {
       await new Promise((done) => setTimeout(done, 1000)); // slows down guessing
-      return c.redirect("/admin/login?failed");
+      return c.redirect(`/admin/login?failed&next=${encodeURIComponent(next)}`);
     }
     const secure = c.req.header("x-forwarded-proto") === "https" || new URL(c.req.url).protocol === "https:";
     setCookie(c, COOKIE, token(), { path: "/admin", httpOnly: true, sameSite: "Strict", secure, maxAge: 30 * 86_400 });
-    return c.redirect("/admin");
+    return c.redirect(next);
   });
   app.post("/admin/logout", (c) => {
     deleteCookie(c, COOKIE, { path: "/admin" });
@@ -97,10 +102,86 @@ ${c.req.query("failed") !== undefined ? '<p class="note failed">Wrong password.<
     return c.redirect("/admin");
   });
 
+  // The never-show list of a task with `"mute": true` (src/mute.ts). A story's Never show link on the
+  // paper opens the first page, which offers its source, the apps it names and its headline; the
+  // second is the list on its own. Adding or removing returns to the page it came from.
+  const muteTask = async (task: string) => {
+    const config = (await listTasks()).includes(task) ? await loadTask(task).then((t) => t.config, () => null) : null;
+    if (!config?.mute) throw new HTTPException(404, { message: "this task has no never-show list" });
+    return config;
+  };
+  const mutePage = (c: Context, task: string, back: string, story = "") => {
+    const hidden = `<input type="hidden" name="task" value="${escapeHtml(task)}"><input type="hidden" name="back" value="${escapeHtml(back)}">`;
+    const muted = listMutes(task).map(
+      (p) => `<li><span>${escapeHtml(p)}</span><form method="post" action="/admin/mutes/remove">${hidden}<input type="hidden" name="phrase" value="${escapeHtml(p)}"><button type="submit" class="linkbtn">Undo</button></form></li>`,
+    );
+    return page(
+      c,
+      `Never show in ${task}`,
+      `${topbar()}
+<h1 class="admin-title">Never show in ${escapeHtml(task)}</h1>
+${story}
+<form method="post" action="/admin/mutes" class="mute-add">${hidden}
+<input name="phrase" placeholder="Or type a name or a few words" required minlength="2" maxlength="200"${story ? "" : " autofocus"}>
+<button type="submit" class="btn">Never show</button>
+</form>
+<p class="note">Posts that mention a muted name are left out of the fetch, the paper is told to skip pains about it, and stories that mention it are hidden, in old papers too. A headline stands for pains like it.</p>
+<h2 class="admin-head">Muted (${muted.length})</h2>
+${muted.length ? `<ul class="mutes">${muted.join("\n")}</ul>` : '<p class="note">Nothing muted yet.</p>'}
+<p class="note"><a href="${escapeHtml(back)}">Back</a></p>`,
+    );
+  };
+
+  app.get("/admin/mute/:task/:runId/:section/:story", async (c) => {
+    const { task, runId, section, story: index } = c.req.param();
+    const config = await muteTask(task);
+    const story = readRun(task, runId)?.paper.sections[Number(section)]?.stories[Number(index)];
+    if (!story) throw new HTTPException(404, { message: "no such story" });
+    const back = `/read/${task}/${runId}`;
+    const picks = suggestions(story, config).map(
+      (s) => `<button type="submit" name="phrase" value="${escapeHtml(s.phrase)}" class="btn">${escapeHtml(s.label)}</button>`,
+    );
+    return mutePage(
+      c,
+      task,
+      back,
+      `<div class="mute-story"><p class="mute-headline">${escapeHtml(story.headline)}</p>
+${story.source ? `<p class="note"><a href="${escapeHtml(story.source)}" target="_blank" rel="noopener">${escapeHtml(story.source)}</a></p>` : ""}</div>
+<form method="post" action="/admin/mutes" class="mute-picks"><input type="hidden" name="task" value="${escapeHtml(task)}"><input type="hidden" name="back" value="${escapeHtml(back)}">
+${picks.join("\n")}
+</form>`,
+    );
+  });
+
+  app.get("/admin/mutes/:task", async (c) => {
+    const task = c.req.param("task");
+    await muteTask(task);
+    return mutePage(c, task, `/read/${task}`);
+  });
+
+  app.post("/admin/mutes", async (c) => {
+    const form = await c.req.parseBody();
+    const task = String(form.task ?? "");
+    await muteTask(task);
+    const phrase = String(form.phrase ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+    // A single letter would match nearly every post.
+    if (phrase.length >= 2) addMute(task, phrase);
+    return c.redirect(backTo(String(form.back ?? ""), task));
+  });
+
+  app.post("/admin/mutes/remove", async (c) => {
+    const form = await c.req.parseBody();
+    const task = String(form.task ?? "");
+    await muteTask(task);
+    removeMute(task, String(form.phrase ?? ""));
+    return c.redirect(`/admin/mutes/${encodeURIComponent(task)}`);
+  });
+
   app.get("/admin", async (c) => {
     const tasks = await listTasks();
     const runs = new Map(tasks.map((t) => [t, listRuns(t)] as const));
-    const zones = new Map(await Promise.all(tasks.map(async (t) => [t, await loadTask(t).then((x) => x.config.timezone, () => undefined)] as const)));
+    const configs = new Map(await Promise.all(tasks.map(async (t) => [t, await loadTask(t).then((x) => x.config, () => undefined)] as const)));
+    const zones = new Map(tasks.map((t) => [t, configs.get(t)?.timezone] as const));
     const since = Date.now() - 30 * 86_400_000;
     const s = status();
 
@@ -116,6 +197,7 @@ ${c.req.query("failed") !== undefined ? '<p class="note failed">Wrong password.<
 <div><dt>Last run</dt><dd>${all[0] ? `${statusBadge(all[0], busy)} ${ago(all[0].startedAt)}` : "never"}</dd></div>
 <div><dt>Avg cost (last ${recent.length})</dt><dd>${money(avg(recent.map((r) => r.costUsd!)))}</dd></div>
 <div><dt>Last 30 days</dt><dd>${money(sum(month.map((r) => r.costUsd ?? 0)))} · ${month.length} run${month.length === 1 ? "" : "s"}</dd></div>
+${configs.get(task)?.mute ? `<div><dt>Never show</dt><dd><a href="/admin/mutes/${encodeURIComponent(task)}">${listMutes(task).length} muted</a></dd></div>` : ""}
 </dl>
 </div>`;
     });
@@ -202,6 +284,10 @@ ${steps.length ? `<ol class="trace">${steps.join("\n")}</ol>` : '<p class="note"
     return c.body(await readFile(join(dir, file)));
   });
 }
+
+// Where a login or a never-show change returns to: only a path on this site.
+const adminPath = (next: string | undefined) => (next && /^\/admin(\/|$)/.test(next) ? next : "/admin");
+const backTo = (back: string, task: string) => (/^\/(read|admin)\//.test(back) ? back : `/read/${task}`);
 
 const topbar = () => `<header class="topbar">
 <nav class="tabs"><a href="/admin" class="tab" data-active="true">Runs</a><a href="/read" class="tab">Paper</a></nav>

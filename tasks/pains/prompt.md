@@ -4,9 +4,9 @@ The file pains.md above holds what small business owners in the UK and the US sa
 - Reviews: new 1 and 2 star reviews of the apps businesses pay for, from Apple's App Store (QuickBooks, Square, Shopify, Jobber, Vagaro…) and the Shopify App Store. A review says what a paid tool fails at, and that its user is still looking.
 - Job posts from Freelancer.com: people paying someone to do work, with the budget. A post paying someone to do a chore by hand every week (bookkeeping, data entry, reconciling, copying between systems) is the plainest proof that the chore is worth money.
 
-Each item has its date, sometimes who posted it (for a review: the country and app version, or the store; for a job: the budget), its title, its text and its URL. Promotion, one-off build jobs and chatter were already filtered out, but not perfectly. previous.md lists the pains from this task's papers of the last two weeks.
+Each item has its date, sometimes who posted it (for a review: the country and app version, or the store; for a job: the budget), its title, its text and its URL. Promotion, one-off build jobs and chatter were already filtered out, but not perfectly. previous.md lists the pains from this task's papers of the last two weeks. muted.md lists what the reader never wants to see again: products, sources, or a headline from an earlier paper that stands for pains like it. Posts that name them were already taken out; leave out any pain that is still about one of them, even a strong one or one in previous.md.
 
-The reader is a software developer looking for a problem to build a paid product for: a problem that comes back every week or month, that costs the people who have it time or money, and that they would keep paying to be rid of. They are not looking for developer tools. Your job is to pull those problems out of the posts, not to invent products.
+The reader is a software developer who builds with a couple of friends and AI, looking for a problem to build a paid product for: a problem that comes back every week or month, that costs the people who have it time or money, that they would keep paying to be rid of, and that a small team can fix with a focused product (an add-on or integration for a tool they already use, an automation, a small app for one trade) and sell to them. Replacing a big platform is out of reach: an accounting suite like QuickBooks or Xero, a bank, a payments processor, a marketplace. They are not looking for developer tools. Your job is to pull those problems out of the posts, not to invent products.
 
 You hand it over as structured output, a paper: a `title`, then `sections`, each with a `heading` and its `stories`. One story is one pain.
 
@@ -15,9 +15,9 @@ What counts as a pain, strongest first:
 - a task done by hand every week or month (reconciling, chasing, copying between systems, filling forms);
 - money or hours named ("costs me £200 a month", "takes my Sunday");
 - a workaround already in place: spreadsheets, a VA, three tools taped together, or a job post paying someone to do it (give the budget);
-- anger at a tool they already pay for, or a new rule or deadline they have to meet.
+- a gap in a tool they already pay for that they work around by hand or with another tool, or a new rule or deadline they have to meet.
 
-What does not: one-off questions about starting out, legal questions for one situation, a consumer's personal tax or money question, requests for feedback on a store, venting about one customer, a bug in one app that its maker will fix, and anything only a developer would feel.
+What does not: one-off questions about starting out, legal questions for one situation, a consumer's personal tax or money question, requests for feedback on a store, venting about one customer, and anything only a developer would feel. Nor does a big platform's own trouble that only its maker can fix: its app crashing, freezing or losing data, logins, slow support, fees, held payouts or frozen accounts. An app review counts only when it names a job the app doesn't do that the owner then does some other way.
 
 For each story:
 - `headline`: the pain in one plain line, in the words of the people who have it, like "Landlords re-typing rent payments into MTD software every quarter". Not a product name.
