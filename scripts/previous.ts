@@ -5,16 +5,19 @@
 //   days      how far back to look (default 3)
 //   maxChars  size cap for previous.md (default 30000); older papers past the cap are dropped, since
 //             claude's Read truncates big files
+// A task with a never-show list (muted.md, src/mute.ts) does not remember the stories it would hide.
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import { isMuted, parseMuted } from "../src/mute.ts";
 
-type Story = { headline: string; source?: string };
+type Story = { headline: string; body: string; context?: string; source?: string };
 type Paper = { title?: string; sections: { heading?: string; stories: Story[] }[] };
 
 const config = JSON.parse(await readFile(join(process.env.TASK_DIR!, "task.json"), "utf8"));
 const days: number = config.previous?.days ?? 3;
 const maxChars: number = config.previous?.maxChars ?? 30_000;
 const since = Date.now() - days * 86_400_000;
+const muted = parseMuted(await readFile("muted.md", "utf8").catch(() => ""));
 
 const runsDir = resolve("..");
 const self = basename(resolve("."));
@@ -36,9 +39,10 @@ for (const { startedAt, paper } of papers) {
   let block = `# ${paper.title ?? startedAt.slice(0, 10)} (${startedAt.slice(0, 10)})\n`;
   let count = 0;
   for (const section of paper.sections ?? []) {
-    if (!section.stories?.length) continue;
+    const stories = (section.stories ?? []).filter((s) => !isMuted(s, muted, config));
+    if (!stories.length) continue;
     block += `\n## ${section.heading ?? ""}\n`;
-    for (const s of section.stories) {
+    for (const s of stories) {
       block += `- ${s.headline}${s.source ? ` ${s.source}` : ""}\n`;
       count++;
     }

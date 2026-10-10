@@ -27,8 +27,11 @@
 //   maxChars           size cap for pains.md (default 260000); bodies are cut shorter until it fits
 //   budgetSeconds      when to stop starting new fetches (default 180), so the script ends well inside the
 //                      before command's 5 minutes; what was fetched by then is written
+// The never-show list (muted.md, written by the runner, src/mute.ts): a subreddit, app, query or forum
+// whose name mentions a muted phrase is not fetched, and a post that mentions one is dropped.
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import { mentions, parseMuted } from "../src/mute.ts";
 
 type Item = { id: string; group: string; when: Date; title: string; author: string; body: string; url: string };
 type RedditRequest = { subs: string[]; search?: string };
@@ -48,6 +51,8 @@ const reviewSince = Date.now() - reviewDays * 86_400_000;
 const weekSince = Date.now() - 7 * 86_400_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const log: string[] = [];
+const muted = parseMuted(await readFile("muted.md", "utf8").catch(() => ""));
+const isMuted = (text: string) => muted.some((p) => mentions(text, p));
 
 // Ids delivered by earlier runs of this task.
 const seen = new Set<string>();
@@ -302,7 +307,7 @@ async function collect(label: string, run: () => Promise<Item[]>) {
 }
 
 // Everything but Reddit, 6 at a time.
-const jobs: [string, () => Promise<Item[]>][] = [
+const allJobs: [string, () => Promise<Item[]>][] = [
   ...(pains.appStore ?? []).flatMap((a: App) => a.countries.map((c) => [`app store ${a.name} ${c}`, () => appStore(a, c)])),
   ...(pains.freelancer?.queries ?? []).map((q: string) => [`freelancer "${q}"`, () => freelancer(q)]),
   ...(pains.khoros ?? []).map((k: { host: string; name: string; skipBoards?: string[] }) => [k.name, () => khoros(k.host, k.name, k.skipBoards)]),
@@ -312,12 +317,21 @@ const jobs: [string, () => Promise<Item[]>][] = [
   ...Object.entries(pains.shopifyCategories ?? {}).map(([id, name]) => [`shopify forum ${name}`, () => forum(id, name as string)]),
   ...(pains.apps ?? []).map((app: string) => [`shopify app ${app}`, () => reviews(app)]),
 ];
+const jobs = allJobs.filter(([label]) => !isMuted(label));
+const redditRequests = ((pains.reddit ?? []) as RedditRequest[])
+  .map((req) => ({ ...req, subs: req.subs.filter((sub) => !isMuted(`r/${sub}`)) }))
+  .filter((req) => req.subs.length);
+if (muted.length) {
+  const subs = ((pains.reddit ?? []) as RedditRequest[]).flatMap((r) => r.subs).filter((sub) => isMuted(`r/${sub}`));
+  log.push(`muted: ${muted.join(", ")}; not fetched: ${[...allJobs.filter(([label]) => isMuted(label)).map(([label]) => label), ...new Set(subs.map((s) => `r/${s}`))].join(", ") || "nothing"}`);
+  console.log(log.at(-1));
+}
 
 await Promise.all([
   (async () => {
     // A 403 means Reddit is refusing this server, not rate-limiting it; the rest would fail too.
     let refused = false;
-    for (const req of (pains.reddit ?? []) as RedditRequest[]) {
+    for (const req of redditRequests) {
       const label = req.search ? `reddit search in ${req.subs.length} subreddits` : `reddit newest in ${req.subs.length} subreddits`;
       if (refused) {
         log.push(`${label}: skipped, Reddit refused the last request`);
@@ -332,12 +346,18 @@ await Promise.all([
   }),
 ]);
 
-// New items only, each once (the same post can come from two queries or feeds).
+// New items only, each once (the same post can come from two queries or feeds), none that mention a
+// muted phrase.
 const fresh: Item[] = [];
 const ids = new Set<string>();
+let mutedItems = 0;
 for (const i of found.sort((a, b) => b.when.getTime() - a.when.getTime())) {
   if (seen.has(i.id) || ids.has(i.id) || !(i.body || i.title)) continue;
   ids.add(i.id);
+  if (isMuted(`${i.group}\n${i.title}\n${i.body}\n${i.url}`)) {
+    mutedItems++;
+    continue;
+  }
   fresh.push(i);
 }
 const groups = new Map<string, Item[]>();
@@ -373,5 +393,5 @@ await writeFile("pains.md", out);
 await writeFile("pains.json", JSON.stringify(kept.map((i) => i.id)));
 await writeFile("pains.log", log.join("\n") + "\n");
 console.log(
-  `pains.md: ${kept.length} new items in ${groups.size} groups (${found.length - fresh.length} seen before or repeated, ${fresh.length - kept.length} over the per-group cap), ${out.length} chars, bodies cut at ${limit}`,
+  `pains.md: ${kept.length} new items in ${groups.size} groups (${found.length - fresh.length - mutedItems} seen before or repeated, ${mutedItems} muted, ${fresh.length - kept.length} over the per-group cap), ${out.length} chars, bodies cut at ${limit}`,
 );

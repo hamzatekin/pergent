@@ -134,7 +134,8 @@ function importance(story: Story, index: number, legacy: boolean) {
 
 // The paper as HTML. Headlines and headings are text; bodies, leads and asides are the model's
 // markdown, rendered unsanitized (the server's CSP is what keeps a script in it from running).
-export function renderPaper(paper: Paper, images: Record<string, string> = {}, labels: PaperLabels = {}) {
+// `muteHref` gives a story its "Never show" link (src/mute.ts), for a task with a never-show list.
+export function renderPaper(paper: Paper, images: Record<string, string> = {}, labels: PaperLabels = {}, muteHref?: (story: Story) => string | undefined) {
   const byLink = new Map(Object.entries(images).map(([link, image]) => [canonical(link), image]));
   const legacy = !paper.sections.some((s) => s.stories.some((st) => st.importance));
   const out: string[] = ['<div class="paper">'];
@@ -144,7 +145,9 @@ export function renderPaper(paper: Paper, images: Record<string, string> = {}, l
     if (story.context) {
       parts.push(`<details class="aside"><summary>${escapeHtml(labels.contextLabel ?? "Context")}</summary>${render(story.context)}</details>`);
     }
-    if (story.source && isHttp(story.source)) parts.push(`<p class="foot">${chip(story.source)}</p>`);
+    const mute = muteHref?.(story);
+    const foot = [story.source && isHttp(story.source) ? chip(story.source) : "", mute ? `<a class="mute" href="${escapeHtml(mute)}" rel="nofollow">Never show</a>` : ""].join("");
+    if (foot) parts.push(`<p class="foot">${foot}</p>`);
     if (story.rating) parts.push(meter(story.rating));
     return parts.join("\n");
   };

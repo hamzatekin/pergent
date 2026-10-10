@@ -3,10 +3,11 @@ import { createWriteStream } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { getRun, openDb, saveRun, listRuns as listRunRows } from "./db.ts";
+import { getRun, listMutes, openDb, saveRun, listRuns as listRunRows } from "./db.ts";
 import { PAPER_SCHEMA, fromMarkdown, parsePaper, toMarkdown, type Paper } from "./paper.ts";
 import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
+import { mutedMarkdown } from "./mute.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -39,6 +40,8 @@ export type TaskConfig = {
   effort?: string;
   /** Output token cap for one claude reply (CLAUDE_CODE_MAX_OUTPUT_TOKENS); the whole paper is one reply. */
   maxOutputTokens?: number;
+  /** true gives the task a never-show list (src/mute.ts): a "Never show" link on every story, and muted.md in each run directory. */
+  mute?: boolean;
   [extra: string]: unknown;
 };
 
@@ -173,6 +176,8 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   const running: RunMeta = { task: name, runId, startedAt: startedAt.toISOString(), status: "running" };
   await writeFile(join(dir, "meta.json"), JSON.stringify(running, null, 2));
   saveRun(running);
+  // The never-show list, for the before scripts and the prompt (when the task lists it in inputs).
+  if (config.mute) await writeFile(join(dir, "muted.md"), mutedMarkdown(listMutes(name)));
 
   if (config.before) {
     const ok = await runBefore(config.before, dir, join(TASKS_DIR, name));

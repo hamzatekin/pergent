@@ -32,6 +32,12 @@ export function openDb(runsDir: string): DatabaseSync {
       PRIMARY KEY (task, run_id)
     );
     CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS mutes (
+      task       TEXT NOT NULL,
+      phrase     TEXT NOT NULL COLLATE NOCASE,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (task, phrase)
+    );
   `);
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
@@ -107,6 +113,20 @@ export function getState(key: string): string | null {
 
 export function setState(key: string, value: string) {
   use().prepare("INSERT INTO state (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value").run(key, value);
+}
+
+// The never-show list of a task (src/mute.ts), oldest first. A phrase is kept once, whatever its case.
+export function listMutes(task: string): string[] {
+  const rows = use().prepare("SELECT phrase FROM mutes WHERE task = ? ORDER BY created_at").all(task) as { phrase: string }[];
+  return rows.map((r) => r.phrase);
+}
+
+export function addMute(task: string, phrase: string) {
+  use().prepare("INSERT OR IGNORE INTO mutes (task, phrase, created_at) VALUES (?, ?, ?)").run(task, phrase, new Date().toISOString());
+}
+
+export function removeMute(task: string, phrase: string) {
+  use().prepare("DELETE FROM mutes WHERE task = ? AND phrase = ?").run(task, phrase);
 }
 
 // Runs made before the database existed (or restored from a volume) are picked up from their

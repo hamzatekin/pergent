@@ -75,6 +75,9 @@
 .note.failed {
   @apply text-failed;
 }
+.note a {
+  @apply underline decoration-line underline-offset-[3px] hover:text-ink hover:decoration-ink;
+}
 
 /* The paper itself. */
 .masthead {
@@ -213,6 +216,11 @@
 .prose a.src {
   @apply inline-block rounded-full bg-bg px-2.5 py-0.5 font-sans text-[12px] text-muted no-underline shadow-border hover:text-ink hover:shadow-border-hover;
 }
+/* "Never show" (src/mute.ts), at the far end of the foot: quiet until you look for it. The padding is
+   the hit area; the negative margin keeps the text where it would sit without it. */
+.prose a.mute {
+  @apply -my-1 -mr-2 ml-auto px-2 py-1 font-sans text-[12px] text-muted no-underline hover:text-failed;
+}
 /* Jev's rating (src/rate.ts): the overall number large, then its three parts as named ten-cell bars,
    each green, amber or red by its own level. */
 .rating {
@@ -274,7 +282,8 @@
 .tab,
 .arrow,
 .btn,
-.prose a.src {
+.prose a.src,
+.prose a.mute {
   transition-property: color, background-color, box-shadow, scale;
   transition-duration: 150ms;
   transition-timing-function: var(--ease-out);
@@ -283,14 +292,16 @@
 .tab:active,
 .arrow:active,
 .btn:not(:disabled):active,
-.prose a.src:active {
+.prose a.src:active,
+.prose a.mute:active {
   scale: 0.96;
 }
 @media (prefers-reduced-motion: reduce) {
   .tab:active,
   .arrow:active,
   .btn:active,
-  .prose a.src:active {
+  .prose a.src:active,
+  .prose a.mute:active {
     scale: none;
   }
 }
@@ -322,6 +333,34 @@
 }
 .login input {
   @apply rounded-md border border-line bg-surface px-3 py-2;
+}
+/* The never-show page: the story, one button per suggestion, a field for anything else, the list. */
+.mute-story {
+  @apply mb-4 rounded-xl bg-surface p-4 shadow-border;
+}
+.mute-story .note {
+  @apply mb-0 mt-1 truncate;
+}
+.mute-headline {
+  @apply font-serif text-[18px] font-bold leading-snug text-balance;
+}
+.mute-picks {
+  @apply mb-4 flex flex-wrap gap-2;
+}
+.mute-add {
+  @apply mb-2 flex gap-2;
+}
+.mute-add input {
+  @apply min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-1.5;
+}
+.mutes {
+  @apply mb-4;
+}
+.mutes li {
+  @apply flex items-center justify-between gap-3 border-b border-line py-1.5;
+}
+.mutes span {
+  @apply min-w-0 break-words;
 }
 .task-cards {
   @apply my-4 grid gap-4 md:grid-cols-2;
