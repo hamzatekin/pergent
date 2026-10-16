@@ -1,6 +1,7 @@
-import { notFound } from "@tanstack/react-router";
+import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { listRuns, readRun } from "#src/runner.ts";
+import { setResponseHeader } from "@tanstack/react-start/server";
+import { listRuns, listTasks, loadTask, readRun } from "#src/runner.ts";
 import { listMutes } from "#src/db.ts";
 import { hideMuted } from "#src/mute.ts";
 import { schedulerStatus } from "#src/scheduler.ts";
@@ -8,6 +9,7 @@ import type { Story } from "#src/paper.ts";
 import { paperView, type PaperView } from "./paper-view.ts";
 import { daysAgo, formatDate } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
+import { PASSWORD } from "./admin.ts";
 
 export type Note =
   | { kind: "paused"; lastReadDays: number | null }
@@ -38,8 +40,15 @@ export const getPaperPage = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<PaperPage> => {
     const { configs, ...sidebar } = await nav();
     const task = data.task ?? sidebar.tabs[0]?.name;
-    if (!task || !configs.has(task)) throw notFound();
+    if (!task || !configs.has(task)) {
+      // A private task's page sends a visitor without the cookie to the login, which comes back here.
+      if (task && PASSWORD && (await listTasks()).includes(task) && (await loadTask(task)).config.private)
+        throw redirect({ to: "/admin/login", search: { next: `/read/${task}${data.runId ? `/${data.runId}` : ""}`, failed: undefined } });
+      throw notFound();
+    }
     const config = configs.get(task)!;
+    // The front page and the pages differ by cookie now; a private paper is never kept by a cache.
+    if (config.private) setResponseHeader("cache-control", "private, no-store");
     const finished = listRuns(task).filter((r) => r.status !== "running");
     const current = data.runId ? finished.find((r) => r.runId === data.runId) : (finished.find((r) => r.status === "ok") ?? finished[0]);
     if (data.runId && !current) throw notFound();

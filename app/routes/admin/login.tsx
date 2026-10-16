@@ -3,7 +3,7 @@ import { adminPath, guardPost, passwordMatches, seeOther, sessionCookie } from "
 import { getAdminSession } from "../../server/admin.functions.ts";
 
 // The login form posts here; a wrong password waits a second (slows down guessing) and comes back with
-// a note. Logging in returns to the /admin page that sent you here (`next`).
+// a note. Logging in returns to the /admin page, or the private paper, that sent you here (`next`).
 export const Route = createFileRoute("/admin/login")({
   validateSearch: (search: Record<string, unknown>) => ({
     next: typeof search.next === "string" ? search.next : undefined,
@@ -39,7 +39,7 @@ function Login() {
         <img src="/icon.svg" alt="" className="login-mark" />
         <h1 className="admin-title">Log in to pergent</h1>
         {failed && <p className="note failed">Wrong password.</p>}
-        <input type="hidden" name="next" value={next && /^\/admin(\/|$)/.test(next) ? next : "/admin"} />
+        <input type="hidden" name="next" value={next && /^\/(admin|read)(\/|$)/.test(next) ? next : "/admin"} />
         <input type="password" name="password" autoComplete="current-password" placeholder="Password" autoFocus required />
         <button type="submit" className="btn primary">
           Log in

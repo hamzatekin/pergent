@@ -47,9 +47,17 @@ export function guardPost(request: Request, { login = false } = {}): Response | 
   return null;
 }
 
-// Where a login or a never-show change returns to: only a path on this site.
-export const adminPath = (next: string | undefined) => (next && /^\/admin(\/|$)/.test(next) ? next : "/admin");
+// Where a login or a never-show change returns to: only a path on this site, the dashboard's or a
+// paper's (a private task's page sends you to the login).
+export const adminPath = (next: string | undefined) => (next && /^\/(admin|read)(\/|$)/.test(next) ? next : "/admin");
 export const backTo = (back: string, task: string) => (/^\/(read|admin)\//.test(back) ? back : `/read/${task}`);
+
+// Whether this visitor may see a task's runs: a private task's only with the cookie. For the JSON API,
+// which answers an unknown task and a hidden one the same way.
+export async function canRead(task: string) {
+  if (!(await listTasks()).includes(task)) return true;
+  return !(await loadTask(task).then((t) => !!t.config.private, () => false)) || loggedIn();
+}
 
 // Only a task with `"mute": true` has a never-show list (src/mute.ts).
 export async function hasMuteList(task: string) {
