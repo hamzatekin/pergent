@@ -1,5 +1,6 @@
-@import "tailwindcss";
-/* Tailwind finds the classes the components use on its own (app/ is scanned, git-ignored files are not). */
+@import "tailwindcss" source(none);
+/* Only the components are scanned for utilities, so the build does not depend on what else is in the tree. */
+@source "./";
 
 /* Paper: warm, light, one theme. Serif for reading, the system sans only for the small chrome. */
 @theme {

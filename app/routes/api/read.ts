@@ -6,6 +6,7 @@ import { markRead } from "#src/scheduler.ts";
 export const Route = createFileRoute("/api/read")({
   server: {
     handlers: {
+      GET: () => Response.json({ error: "not found" }, { status: 404 }),
       POST: () => {
         markRead();
         return new Response(null, { status: 204 });

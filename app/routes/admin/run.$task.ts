@@ -8,6 +8,8 @@ import { guardPost, seeOther } from "../../server/admin.ts";
 export const Route = createFileRoute("/admin/run/$task")({
   server: {
     handlers: {
+      // Only the form posts here; a GET is not a page.
+      GET: () => new Response("not found", { status: 404 }),
       POST: async ({ request, params }) => {
         const refused = guardPost(request);
         if (refused) return refused;
