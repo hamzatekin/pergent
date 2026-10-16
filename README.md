@@ -1,6 +1,6 @@
 # pergent
 
-Personal agent runner. Each task is a prompt plus a small JSON config; running a task spawns headless `claude -p` on your Claude subscription and stores the result on disk, indexed in a SQLite file under `runs/`. A small web app is the morning paper that reads the outputs; prompts and configs are edited in git.
+Personal agent runner. Each task is a prompt plus a small JSON config; running a task spawns headless `claude -p` on your Claude subscription and stores the result on disk, indexed in a SQLite file under `runs/`. The site, a TanStack Start app (React, server-rendered, Tailwind), is the morning paper that reads the outputs; prompts and configs are edited in git.
 
 ## Local
 
@@ -8,8 +8,9 @@ Requires Node 24 and a logged-in `claude`.
 
 ```sh
 npm install
-npm run build          # stylesheet and static files -> dist/
-npm run serve          # http://localhost:4321
+npm run dev            # http://localhost:4321 with hot reload
+npm run build          # the site -> dist/
+npm run serve          # the built site, as in production: http://localhost:4321
 npm run task -- run tech
 npm run task -- costs  # cost, turns and duration of recent runs
 ADMIN_PASSWORD=pick-one npm run serve   # plus the dashboard at http://localhost:4321/admin
@@ -17,7 +18,7 @@ ADMIN_PASSWORD=pick-one npm run serve   # plus the dashboard at http://localhost
 
 ## Deploy (Coolify)
 
-The image bundles node, `claude`, the server, the fetch scripts and the tasks. Coolify's proxy does HTTPS. The paper is public; the dashboard at `/admin` is behind `ADMIN_PASSWORD`.
+The image bundles node, `claude`, the built site, the runner, the fetch scripts and the tasks. Coolify's proxy does HTTPS. The paper is public; the dashboard at `/admin` is behind `ADMIN_PASSWORD`.
 
 Once, on your Mac:
 
