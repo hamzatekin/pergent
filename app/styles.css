@@ -2,26 +2,30 @@
 /* Only the components are scanned for utilities, so the build does not depend on what else is in the tree. */
 @source "./";
 
-/* Paper: warm, light, one theme. Serif for reading, the system sans only for the small chrome. */
+/* Light and quiet, in the Linear and Vercel manner: white content, a faintly grey sidebar, near-black
+   ink, neutral greys, one indigo accent. One sans for everything (the system's; no web fonts), mono
+   for logs. Hierarchy comes from weight and grey, not size. */
 @theme {
-  --color-bg: #f3eee4;
-  --color-surface: #fbf8f1;
-  --color-inset: #f1ebdf;
-  --color-line: #ddd3c2;
-  --color-ink: #2a2520;
-  --color-muted: #7d7265;
-  --color-accent: #8c5a2b;
-  --color-failed: #a83a2a;
-  --color-good: #4f7a3a;
-  --color-warn: #b8862b;
-  --font-serif: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, "Times New Roman", serif;
-  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --color-bg: #fafafa;
+  --color-surface: #ffffff;
+  --color-inset: #f5f5f5;
+  --color-line: #ebebeb;
+  --color-ink: #171717;
+  --color-soft: #4a4a4a;
+  --color-muted: #737373;
+  --color-faint: #a3a3a3;
+  --color-accent: #5e6ad2;
+  --color-failed: #d93036;
+  --color-good: #1f8a4c;
+  --color-warn: #c27c0e;
+  --font-sans: Inter, "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Geist Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   /* A stronger ease-out than Tailwind's: it moves at once, which is what makes a short transition
      feel like an answer to the hand (.claude/skills/emil-design-eng). Every ease-out utility uses it. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  /* Cards and chips get their edge from a transparent ring plus a little lift instead of a solid border,
-     so it reads the same on the page, the surface and over an image (.claude/skills/better-ui/surfaces.md).
-     Dividers and state outlines stay borders. */
+  /* Cards, chips and buttons get their edge from a transparent ring plus a little lift instead of a
+     solid border, so it reads the same on white, on grey and over an image
+     (.claude/skills/better-ui/surfaces.md). Dividers and state outlines stay borders. */
   --shadow-border: 0 0 0 1px oklch(0 0 0 / 0.06), 0 1px 2px -1px oklch(0 0 0 / 0.06), 0 2px 4px 0 oklch(0 0 0 / 0.04);
   --shadow-border-hover: 0 0 0 1px oklch(0 0 0 / 0.08), 0 1px 2px -1px oklch(0 0 0 / 0.08), 0 2px 4px 0 oklch(0 0 0 / 0.06);
 }
@@ -31,84 +35,178 @@
     color-scheme: light;
   }
   body {
-    @apply bg-bg text-ink font-serif antialiased;
-    font-size: 17px;
-    line-height: 1.55;
+    @apply bg-surface font-sans text-ink antialiased;
+    font-size: 15px;
+    line-height: 1.6;
+    font-feature-settings: "cv11", "ss01";
+  }
+  ::selection {
+    @apply bg-accent/15;
   }
 }
 
-/* Chrome around the paper. One reading column on a phone; from md up the page widens and each
-   section's cards sit in a two, then three, column grid (see .stories). */
-.page {
-  @apply mx-auto max-w-[640px] px-4 pb-20 pt-1 md:max-w-[1000px] xl:max-w-[1400px];
+/* The frame (components/Shell.tsx): a sticky sidebar from md up, the page beside it. On a phone the
+   sidebar's links become a row in the top bar. */
+.shell {
+  @apply min-h-dvh md:flex;
 }
-/* The bar stays at the top of the screen. app.js slides it away while you scroll down (data-hidden)
-   and brings it back as soon as you scroll up; data-stuck draws its edge once the page is under it. */
+.sidebar {
+  @apply sticky top-0 hidden h-dvh w-[232px] shrink-0 flex-col border-r border-line bg-bg px-3 pb-3 md:flex;
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+.brand {
+  @apply mb-4 flex h-8 items-center gap-2 rounded-md px-2 text-[14px] font-semibold tracking-[-0.01em] text-ink;
+}
+.brand img {
+  @apply size-5 rounded-[5px] outline-1 -outline-offset-1 outline-black/10;
+}
+.nav-label {
+  @apply mb-1 mt-4 px-2 text-[12px] font-medium text-faint first-of-type:mt-0;
+}
+.nav {
+  @apply flex flex-col gap-px;
+}
+.nav-item {
+  @apply flex h-8 items-center gap-2.5 rounded-md px-2 text-[13.5px] text-soft capitalize hover:bg-black/[0.04] hover:text-ink;
+}
+.nav-item .icon {
+  @apply size-4 shrink-0 text-muted;
+}
+.nav-item[data-active="true"] {
+  @apply bg-surface font-medium text-ink shadow-border;
+}
+.nav-item[data-active="true"] .icon {
+  @apply text-ink;
+}
+.sidebar-foot {
+  @apply mt-auto flex items-center gap-2 px-2 text-[12px] text-muted;
+}
+.sidebar-foot .dot {
+  @apply size-1.5 rounded-full bg-faint;
+}
+.sidebar-foot[data-state="on"] .dot {
+  @apply bg-good;
+}
+.sidebar-foot[data-state="paused"] .dot {
+  @apply bg-warn;
+}
+.main {
+  @apply min-w-0 flex-1;
+}
+
+/* The top bar of the page: the title and actions, and on a phone the links row above them. It stays
+   at the top; on a phone it slides away while you scroll down (data-hidden) and comes back on any
+   scroll up. Translucent over the page, with a hairline under it. */
 .topbar {
-  @apply sticky top-0 z-10 -mx-4 mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 bg-bg px-4 pb-2 font-sans text-[13px] text-muted transition-[translate,box-shadow] duration-200 ease-out motion-reduce:transition-none;
-  padding-top: max(0.5rem, env(safe-area-inset-top));
-}
-.topbar[data-stuck="true"] {
-  @apply shadow-[0_1px_0_var(--color-line)];
+  @apply sticky top-0 z-10 border-b border-line bg-surface/85 px-4 backdrop-blur-md transition-[translate] duration-200 ease-out motion-reduce:transition-none md:px-8;
+  padding-top: env(safe-area-inset-top);
 }
 .topbar[data-hidden="true"] {
-  @apply -translate-y-full shadow-none;
+  @apply max-md:-translate-y-full;
 }
-.tabs {
-  @apply -ml-2 flex min-w-0 gap-0.5 overflow-x-auto;
+.mtabs {
+  @apply -mx-4 flex gap-1 overflow-x-auto px-4 pt-2 md:hidden;
+  scrollbar-width: none;
 }
-.tab {
-  @apply shrink-0 rounded-md px-2 py-1 hover:text-ink data-[active=true]:bg-surface data-[active=true]:text-ink data-[active=true]:shadow-[inset_0_0_0_1px_var(--color-line)];
+.mtab {
+  @apply flex h-7 shrink-0 items-center rounded-md px-2.5 text-[13px] text-muted capitalize hover:text-ink;
+}
+.mtab[data-active="true"] {
+  @apply bg-bg font-medium text-ink shadow-border;
+}
+.mainbar-row {
+  @apply flex h-12 items-center justify-between gap-4;
+}
+.crumb {
+  @apply flex min-w-0 items-center gap-2 text-[14px];
+}
+.crumb-task {
+  @apply font-medium text-ink capitalize;
+}
+.crumb .stamp {
+  @apply truncate text-muted;
+}
+.crumb .stamp::before {
+  content: "/";
+  @apply mr-2 text-faint;
 }
 .runnav {
-  @apply -mr-2 flex items-center gap-1;
+  @apply flex items-center gap-1;
 }
 .arrow {
-  @apply rounded-md px-2 py-1 hover:text-ink aria-disabled:pointer-events-none aria-disabled:opacity-30;
+  @apply grid size-7 place-items-center rounded-md text-soft shadow-border hover:text-ink hover:shadow-border-hover aria-disabled:pointer-events-none aria-disabled:opacity-40;
+}
+.arrow .icon {
+  @apply size-4;
 }
 .stamp {
   @apply tabular-nums;
 }
+.content {
+  @apply mx-auto max-w-[1180px] px-4 pb-24 pt-6 md:px-8 md:pt-8;
+}
+/* Pages outside the frame: not found, errors. */
+.page {
+  @apply mx-auto max-w-[640px] px-4 py-16;
+}
 .note {
-  @apply font-sans text-[14px] text-muted;
+  @apply text-[13.5px] text-muted;
 }
 .note.failed {
   @apply text-failed;
 }
-.note a {
-  @apply underline decoration-line underline-offset-[3px] hover:text-ink hover:decoration-ink;
+.note a,
+.callout a {
+  @apply text-ink underline decoration-black/20 underline-offset-[3px] hover:decoration-black/60;
+}
+/* The notes above a paper: paused, failed, empty, hidden. */
+.callout {
+  @apply mb-3 flex items-center gap-2.5 rounded-lg bg-bg px-3 py-2 text-[13.5px] text-soft shadow-border;
+}
+.callout::before {
+  content: "";
+  @apply size-1.5 shrink-0 rounded-full bg-faint;
+}
+.callout[data-kind="failed"]::before {
+  @apply bg-failed;
+}
+.callout[data-kind="paused"]::before {
+  @apply bg-warn;
 }
 
 /* The paper itself. */
 .masthead {
-  @apply mb-2 text-[28px] font-bold leading-tight tracking-tight text-balance;
+  @apply mb-1 text-[26px] font-semibold leading-tight tracking-[-0.02em] text-balance md:text-[30px];
 }
 .section {
-  @apply mt-9;
+  @apply mt-10 first:mt-6;
 }
 .section-head {
-  @apply mb-4 border-b-2 border-ink pb-1.5 font-sans text-[13px] font-semibold uppercase tracking-[0.12em];
+  @apply mb-4 flex items-center gap-2 border-b border-line pb-2.5 text-[13.5px] font-semibold text-ink;
+}
+.section-head .count {
+  @apply rounded-full bg-inset px-1.5 text-[11.5px] font-medium tabular-nums leading-[18px] text-muted;
 }
 /* The cards of a section. A lead story (importance 3) is two columns wide; dense packing lets a later
    single card fill the hole a lead leaves, so the grid reads as a mosaic rather than rows. */
 .stories {
-  @apply md:grid md:grid-cols-2 md:gap-5 xl:grid-cols-3;
+  @apply md:grid md:grid-cols-2 md:gap-4 xl:grid-cols-3;
   grid-auto-flow: dense;
 }
 .story {
-  @apply mb-5 overflow-hidden rounded-xl bg-surface shadow-border md:mb-0;
+  @apply mb-4 overflow-hidden rounded-xl bg-surface shadow-border transition-[box-shadow] duration-150 ease-out hover:shadow-border-hover md:mb-0;
 }
 .story[data-importance="3"] {
   @apply md:col-span-2;
 }
 .story[data-importance="3"] .prose h3 {
-  @apply text-[25px] md:text-[28px];
+  @apply text-[21px] md:text-[23px];
 }
 /* A neutral hairline inside the image edge, so a pale photo does not bleed into the card. It fades in
-   once loaded (app.js sets data-loading only on images still in flight), so it never pops in half drawn
-   and is never shown cropped before app.js knows it is tall. */
+   once loaded (StoryImage sets data-loading only on images still in flight), so it never pops in half
+   drawn and is never shown cropped before it is known to be tall. */
 .story-image {
-  @apply block aspect-[16/9] w-full rounded-t-xl object-cover outline-1 -outline-offset-1 outline-black/10 transition-opacity duration-200 ease-out;
+  @apply block aspect-[16/9] w-full object-cover outline-1 -outline-offset-1 outline-black/10 transition-opacity duration-200 ease-out;
 }
 .story-image[data-loading] {
   @apply opacity-0;
@@ -116,7 +214,7 @@
 .story[data-importance="3"] .story-image {
   @apply md:aspect-[2/1];
 }
-/* Portrait or square (app.js marks it): shown whole on the inset colour, no taller than a card should be. */
+/* Portrait or square (StoryImage marks it): shown whole on the inset grey, no taller than a card should be. */
 .story-image.tall,
 .story[data-importance="3"] .story-image.tall {
   @apply aspect-auto max-h-[26rem] bg-inset object-contain;
@@ -124,78 +222,84 @@
 /* The section's briefs (importance 1): one band of short lines after the cards, the headline run into
    the first sentence, flowing in text columns on a wide screen. */
 .briefs {
-  @apply mt-5 rounded-xl bg-surface px-4 py-2 shadow-border md:columns-2 md:gap-8 xl:columns-3;
+  @apply mt-4 rounded-xl bg-surface px-4 py-2 shadow-border md:columns-2 md:gap-8 xl:columns-3;
 }
 .briefs-head {
-  @apply mb-1 mt-1 font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-muted;
+  @apply mb-0.5 mt-1.5 text-[12px] font-medium text-muted;
   column-span: all;
 }
 .brief {
-  @apply border-b border-line py-2.5 text-[15px] leading-[1.5] last:border-0;
+  @apply border-b border-line py-2.5 text-[14px] leading-[1.55] text-soft last:border-0;
   break-inside: avoid;
 }
 .brief h3,
 .brief h3 + p {
-  @apply my-0 inline text-[15px] leading-[1.5];
+  @apply my-0 inline text-[14px] leading-[1.55];
 }
 .brief h3 {
-  @apply mr-1.5 font-bold;
+  @apply mr-1.5 font-semibold tracking-normal text-ink;
 }
 .brief p:has(> a.src:only-child),
 .brief p.foot {
-  @apply mt-1;
+  @apply mt-1.5;
 }
 .brief details.aside {
-  @apply my-2 text-[14px];
+  @apply my-2 text-[13.5px];
 }
 .story .prose {
   @apply px-4 pb-4 pt-3.5;
 }
+.prose {
+  @apply text-[14.5px] text-soft;
+}
 .prose h3 {
-  @apply mb-2 text-[21px] font-bold leading-[1.25] tracking-tight text-balance;
+  @apply mb-1.5 text-[16.5px] font-semibold leading-[1.35] tracking-[-0.01em] text-ink text-balance;
 }
 .prose p {
   @apply my-2 text-pretty;
 }
+.prose strong {
+  @apply font-semibold text-ink;
+}
 .prose :is(ul, ol) {
-  @apply my-2 list-disc pl-5;
+  @apply my-2 list-disc pl-5 marker:text-faint;
 }
 .prose ol {
   @apply list-decimal;
 }
 .prose li {
-  @apply my-1.5;
+  @apply my-1;
 }
 .prose a {
-  @apply text-accent underline decoration-line underline-offset-[3px] transition-[text-decoration-color] duration-150 ease-out hover:decoration-accent;
+  @apply text-ink underline decoration-black/20 underline-offset-[3px] transition-[text-decoration-color] duration-150 ease-out hover:decoration-black/60;
 }
 .prose code {
-  @apply font-mono text-[15px];
+  @apply rounded bg-inset px-1 py-px font-mono text-[13px] text-ink;
 }
 .prose pre {
-  @apply my-2 overflow-x-auto rounded-lg bg-inset shadow-border p-3 font-mono text-[14px];
+  @apply my-2 overflow-x-auto rounded-lg bg-inset p-3 font-mono text-[13px] shadow-border;
+}
+.prose pre code {
+  @apply bg-transparent p-0;
 }
 /* The "Ne olmuştu?" / "Context" aside under a story. */
 .prose blockquote {
-  @apply my-3 rounded-lg bg-inset px-3.5 py-2.5 text-[15px] leading-[1.5] text-muted;
+  @apply my-3 rounded-lg bg-bg px-3.5 py-2.5 text-[14px] leading-[1.55] text-soft shadow-border;
 }
 .prose blockquote p {
   @apply my-0;
 }
-.prose blockquote strong {
-  @apply text-ink;
-}
 /* The same aside as a closed disclosure when it opens with a bold label. */
 .prose details.aside {
-  @apply my-3 rounded-lg bg-inset px-3.5 py-2 text-[15px] leading-[1.5] text-muted;
+  @apply my-3 rounded-lg bg-bg px-3 py-2 text-[14px] leading-[1.55] text-soft shadow-border;
 }
 .prose details.aside > summary {
-  @apply cursor-pointer select-none list-none font-semibold text-ink transition-[color] duration-150 ease-out hover:text-accent;
+  @apply flex cursor-pointer select-none list-none items-center gap-1.5 text-[13px] font-medium text-ink;
   -webkit-tap-highlight-color: transparent;
 }
 .prose details.aside > summary::before {
-  content: "▸";
-  @apply mr-1.5 inline-block transition-[rotate] duration-200 ease-out motion-reduce:transition-none;
+  content: "";
+  @apply size-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-muted transition-[rotate] duration-200 ease-out motion-reduce:transition-none;
 }
 .prose details.aside[open] > summary::before {
   rotate: 90deg;
@@ -214,23 +318,23 @@
   @apply mb-0 mt-3 flex flex-wrap items-center gap-2;
 }
 .prose a.src {
-  @apply inline-block rounded-full bg-bg px-2.5 py-0.5 font-sans text-[12px] text-muted no-underline shadow-border hover:text-ink hover:shadow-border-hover;
+  @apply inline-flex h-6 items-center rounded-full bg-surface px-2.5 text-[12px] font-medium text-muted no-underline shadow-border hover:text-ink hover:shadow-border-hover;
 }
 /* "Never show" (src/mute.ts), at the far end of the foot: quiet until you look for it. The padding is
    the hit area; the negative margin keeps the text where it would sit without it. */
 .prose a.mute {
-  @apply -my-1 -mr-2 ml-auto px-2 py-1 font-sans text-[12px] text-muted no-underline hover:text-failed;
+  @apply -my-1 -mr-2 ml-auto px-2 py-1 text-[12px] text-faint no-underline hover:text-failed;
 }
 /* Jev's rating (src/rate.ts): the overall number large, then its three parts as named ten-cell bars,
    each green, amber or red by its own level. */
 .rating {
-  @apply mt-3 flex items-center gap-4 font-sans tabular-nums text-muted;
+  @apply mt-3 flex items-center gap-4 border-t border-line pt-3 tabular-nums text-muted;
 }
 .rating .overall {
   @apply flex cursor-help items-baseline;
 }
 .rating .score {
-  @apply text-[30px] font-bold leading-none tracking-tight;
+  @apply text-[26px] font-semibold leading-none tracking-[-0.02em];
 }
 .rating .of {
   @apply ml-0.5 text-[12px];
@@ -249,9 +353,6 @@
 }
 .rating .part {
   @apply contents cursor-help;
-}
-.rating .name {
-  @apply uppercase tracking-[0.06em];
 }
 .rating .num {
   @apply text-right text-ink;
@@ -279,7 +380,8 @@
 /* Press feedback on everything you tap: a short scale to 0.96 that springs back, so the page answers the
    finger before the next page loads (.claude/skills/better-ui/animations.md). Only colour, shadow and
    scale transition; with reduced motion the scale is left out and the colour change stays. */
-.tab,
+.nav-item,
+.mtab,
 .arrow,
 .btn,
 .prose a.src,
@@ -289,7 +391,8 @@
   transition-timing-function: var(--ease-out);
   -webkit-tap-highlight-color: transparent;
 }
-.tab:active,
+.nav-item:active,
+.mtab:active,
 .arrow:active,
 .btn:not(:disabled):active,
 .prose a.src:active,
@@ -297,7 +400,8 @@
   scale: 0.96;
 }
 @media (prefers-reduced-motion: reduce) {
-  .tab:active,
+  .nav-item:active,
+  .mtab:active,
   .arrow:active,
   .btn:active,
   .prose a.src:active,
@@ -306,33 +410,51 @@
   }
 }
 
-/* The dashboard under /admin: the same paper palette, in the sans of the chrome. */
-.admin {
-  @apply font-sans text-[14px] md:max-w-[1000px] xl:max-w-[1000px];
-}
-.admin a {
-  @apply text-accent underline decoration-line underline-offset-[3px] hover:decoration-accent;
-}
-.admin .tab {
-  @apply text-muted no-underline;
-}
-.admin-title {
-  @apply mb-3 text-[20px] font-semibold;
-}
-.admin-head {
-  @apply mb-2 mt-7 text-[12px] font-semibold uppercase tracking-[0.12em] text-muted;
-}
+/* Buttons: white with a ring by default, indigo for the one main action, bare in a bar. */
 .btn {
-  @apply cursor-pointer rounded-md bg-surface px-3 py-1.5 font-semibold text-ink shadow-border hover:shadow-border-hover disabled:cursor-default disabled:opacity-50;
+  @apply inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md bg-surface px-3 text-[13px] font-medium text-ink shadow-border hover:shadow-border-hover disabled:cursor-default disabled:opacity-50;
+}
+.btn .icon {
+  @apply size-4 text-muted;
+}
+.btn.primary {
+  @apply bg-accent text-white shadow-[0_0_0_1px_oklch(0_0_0/0.08),0_1px_2px_oklch(0_0_0/0.12)] hover:bg-accent/90;
+}
+.btn.ghost {
+  @apply bg-transparent text-muted shadow-none hover:bg-black/[0.04] hover:text-ink;
 }
 .linkbtn {
-  @apply cursor-pointer text-muted hover:text-ink;
+  @apply cursor-pointer text-[13px] text-muted hover:text-ink;
+}
+
+/* The dashboard under /admin. */
+.admin {
+  @apply text-[14px];
+}
+.admin a {
+  @apply text-ink underline decoration-black/20 underline-offset-[3px] hover:decoration-black/60;
+}
+.admin-title {
+  @apply mb-3 text-[22px] font-semibold tracking-[-0.02em];
+}
+.admin-head {
+  @apply mb-2.5 mt-8 text-[13.5px] font-semibold text-ink;
+}
+.login-page {
+  @apply grid min-h-dvh place-items-center bg-bg px-4;
 }
 .login {
-  @apply mx-auto mt-24 flex max-w-[320px] flex-col gap-3;
+  @apply flex w-full max-w-[340px] flex-col gap-3 rounded-2xl bg-surface p-6 shadow-border;
 }
-.login input {
-  @apply rounded-md border border-line bg-surface px-3 py-2;
+.login-mark {
+  @apply mb-1 size-8 rounded-lg outline-1 -outline-offset-1 outline-black/10;
+}
+.login .admin-title {
+  @apply mb-1 text-[18px];
+}
+.login input,
+.mute-add input {
+  @apply h-9 rounded-md border border-line bg-surface px-3 text-[14px] outline-none transition-[border-color,box-shadow] duration-150 ease-out placeholder:text-faint focus:border-accent focus:ring-3 focus:ring-accent/15;
 }
 /* The never-show page: the story, one button per suggestion, a field for anything else, the list. */
 .mute-story {
@@ -342,7 +464,7 @@
   @apply mb-0 mt-1 truncate;
 }
 .mute-headline {
-  @apply font-serif text-[18px] font-bold leading-snug text-balance;
+  @apply text-[16.5px] font-semibold leading-snug text-balance;
 }
 .mute-picks {
   @apply mb-4 flex flex-wrap gap-2;
@@ -351,13 +473,13 @@
   @apply mb-2 flex gap-2;
 }
 .mute-add input {
-  @apply min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-1.5;
+  @apply min-w-0 flex-1;
 }
 .mutes {
-  @apply mb-4;
+  @apply mb-4 overflow-hidden rounded-xl shadow-border;
 }
 .mutes li {
-  @apply flex items-center justify-between gap-3 border-b border-line py-1.5;
+  @apply flex items-center justify-between gap-3 border-b border-line px-4 py-2 last:border-0;
 }
 .mutes span {
   @apply min-w-0 break-words;
@@ -372,7 +494,7 @@
   @apply mb-3 flex items-center justify-between;
 }
 .task-card-head h2 {
-  @apply text-[17px] font-semibold;
+  @apply text-[15px] font-semibold capitalize;
 }
 .stats {
   @apply my-3 flex flex-wrap gap-x-6 gap-y-2;
@@ -384,29 +506,53 @@
   @apply tabular-nums;
 }
 .badge {
-  @apply rounded-full border border-line px-2 py-px text-[12px];
+  @apply inline-flex items-center gap-1.5 rounded-full bg-inset px-2 text-[12px] font-medium leading-[20px] text-soft;
+}
+.badge::before {
+  content: "";
+  @apply size-1.5 rounded-full bg-faint;
 }
 .badge[data-status="ok"] {
-  @apply border-transparent bg-inset;
+  @apply bg-good/10 text-good;
 }
-.badge[data-status="failed"],
+.badge[data-status="ok"]::before {
+  @apply bg-good;
+}
+.badge[data-status="failed"] {
+  @apply bg-failed/10 text-failed;
+}
+.badge[data-status="failed"]::before {
+  @apply bg-failed;
+}
 .badge[data-status="stopped"] {
-  @apply border-failed text-failed;
+  @apply bg-warn/10 text-warn;
+}
+.badge[data-status="stopped"]::before {
+  @apply bg-warn;
 }
 .badge[data-status="running"] {
-  @apply border-accent text-accent;
+  @apply bg-accent/10 text-accent;
+}
+.badge[data-status="running"]::before {
+  @apply animate-pulse bg-accent;
 }
 .table-wrap {
-  @apply overflow-x-auto;
+  @apply overflow-x-auto rounded-xl shadow-border;
 }
 .runs {
   @apply w-full border-collapse whitespace-nowrap;
 }
 .runs th {
-  @apply border-b border-line px-2 py-1.5 text-left text-[12px] font-semibold text-muted;
+  @apply border-b border-line bg-bg px-3 py-2 text-left text-[12px] font-medium text-muted;
 }
 .runs td {
-  @apply border-b border-line px-2 py-1.5;
+  @apply border-b border-line px-3 py-2;
+}
+.runs tr:last-child td {
+  @apply border-0;
+}
+.runs tbody tr {
+  @apply hover:bg-bg;
 }
 .runs .num {
   @apply text-right tabular-nums;
@@ -416,10 +562,10 @@
   @apply hidden md:table-cell;
 }
 .log {
-  @apply max-h-[400px] overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-inset p-3 font-mono text-[12px];
+  @apply max-h-[400px] overflow-auto whitespace-pre-wrap rounded-lg bg-bg p-3 font-mono text-[12px] shadow-border;
 }
 .trace {
-  @apply flex flex-col gap-1;
+  @apply flex flex-col;
 }
 .step {
   @apply flex gap-3 border-b border-line py-1.5;

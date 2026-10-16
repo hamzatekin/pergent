@@ -1,0 +1,26 @@
+// The few line icons the chrome uses, drawn on a 24px grid with a 1.5px stroke to match the 13-14px
+// regular text beside them (.claude/skills/better-ui/icons.md). Shapes follow Lucide (ISC). They take
+// the text colour, so hover and active states come from CSS. A task picks its icon with `icon` in
+// task.json; an unknown name gets the plain page.
+const PATHS: Record<string, string[]> = {
+  newspaper: ["M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2", "M18 14h-8", "M15 18h-5", "M10 6h8v4h-8V6Z"],
+  cpu: ["M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z", "M9 9h6v6H9z", "M15 2v2", "M15 20v2", "M2 15h2", "M2 9h2", "M20 15h2", "M20 9h2", "M9 2v2", "M9 20v2"],
+  flame: ["M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5Z"],
+  landmark: ["M3 22h18", "M6 18v-7", "M10 18v-7", "M14 18v-7", "M18 18v-7", "M12 2 20 7H4l8-5Z"],
+  page: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z", "M14 2v6h6", "M16 13H8", "M16 17H8"],
+  activity: ["M22 12h-4l-3 9L9 3l-3 9H2"],
+  left: ["m15 18-6-6 6-6"],
+  right: ["m9 18 6-6-6-6"],
+  logout: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "m16 17 5-5-5-5", "M21 12H9"],
+};
+
+export function Icon({ name, className }: { name?: string; className?: string }) {
+  const paths = PATHS[name ?? ""] ?? PATHS.page;
+  return (
+    <svg className={className ? `icon ${className}` : "icon"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths.map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
+  );
+}

@@ -28,6 +28,8 @@ export type TaskConfig = {
   lang?: string;
   contextLabel?: string;
   briefsLabel?: string;
+  /** The sidebar's icon for the task, by name from app/components/Icon.tsx (newspaper, cpu, flame, landmark). */
+  icon?: string;
   /** Where the task's tab sits: lower first, default 0, ties by name. The first task is the front page. */
   order?: number;
   /** Files the before scripts wrote into the run directory, joined into the prompt ahead of prompt.md, each in a `<file name>` tag. */

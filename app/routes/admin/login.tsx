@@ -34,13 +34,14 @@ export const Route = createFileRoute("/admin/login")({
 function Login() {
   const { next, failed } = Route.useSearch();
   return (
-    <div className="page admin">
+    <div className="login-page">
       <form method="post" action="/admin/login" className="login">
-        <h1 className="admin-title">pergent admin</h1>
+        <img src="/icon.svg" alt="" className="login-mark" />
+        <h1 className="admin-title">Log in to pergent</h1>
         {failed && <p className="note failed">Wrong password.</p>}
         <input type="hidden" name="next" value={next && /^\/admin(\/|$)/.test(next) ? next : "/admin"} />
         <input type="password" name="password" autoComplete="current-password" placeholder="Password" autoFocus required />
-        <button type="submit" className="btn">
+        <button type="submit" className="btn primary">
           Log in
         </button>
       </form>

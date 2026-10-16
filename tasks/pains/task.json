@@ -2,6 +2,7 @@
   "schedule": "0 6 * * *",
   "timezone": "Europe/London",
   "label": "pains",
+  "icon": "flame",
   "order": 2,
   "lang": "en",
   "contextLabel": "Why it might pay",

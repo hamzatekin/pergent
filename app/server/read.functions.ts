@@ -1,12 +1,13 @@
 import { notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { listRuns, listTasks, loadTask, readRun, type TaskConfig } from "#src/runner.ts";
+import { listRuns, readRun } from "#src/runner.ts";
 import { listMutes } from "#src/db.ts";
 import { hideMuted } from "#src/mute.ts";
 import { schedulerStatus } from "#src/scheduler.ts";
 import type { Story } from "#src/paper.ts";
 import { paperView, type PaperView } from "./paper-view.ts";
 import { daysAgo, formatDate } from "./format.ts";
+import { nav, type Nav } from "./nav.ts";
 
 export type Note =
   | { kind: "paused"; lastReadDays: number | null }
@@ -16,8 +17,9 @@ export type Note =
   | { kind: "hidden"; count: number; task: string };
 
 export type PaperPage = {
-  tabs: { name: string; label: string }[];
+  nav: Nav;
   task: string;
+  label: string;
   lang: string;
   contextLabel?: string;
   briefsLabel?: string;
@@ -34,10 +36,9 @@ export type PaperPage = {
 export const getPaperPage = createServerFn({ method: "GET" })
   .validator((data: { task?: string; runId?: string }) => data)
   .handler(async ({ data }): Promise<PaperPage> => {
-    const tasks = await listTasks();
-    const task = data.task ?? tasks[0];
-    if (!task || !tasks.includes(task)) throw notFound();
-    const configs = new Map(await Promise.all(tasks.map(async (t) => [t, await loadTask(t).then((x) => x.config, () => ({}) as TaskConfig)] as const)));
+    const { configs, ...sidebar } = await nav();
+    const task = data.task ?? sidebar.tabs[0]?.name;
+    if (!task || !configs.has(task)) throw notFound();
     const config = configs.get(task)!;
     const finished = listRuns(task).filter((r) => r.status !== "running");
     const current = data.runId ? finished.find((r) => r.runId === data.runId) : (finished.find((r) => r.status === "ok") ?? finished[0]);
@@ -68,8 +69,9 @@ export const getPaperPage = createServerFn({ method: "GET" })
     }
 
     return {
-      tabs: tasks.map((t) => ({ name: t, label: configs.get(t)?.label ?? t })),
+      nav: sidebar,
       task,
+      label: config.label ?? task,
       lang: config.lang ?? "en",
       contextLabel: config.contextLabel,
       briefsLabel: config.briefsLabel,
