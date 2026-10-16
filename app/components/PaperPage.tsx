@@ -1,11 +1,12 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import type { PaperPage as Data } from "../server/read.functions.ts";
+import { Icon } from "./Icon.tsx";
 import { Paper } from "./Paper.tsx";
-import { Topbar } from "./Topbar.tsx";
+import { Shell } from "./Shell.tsx";
 
-// The reading view: task tabs, the older and newer runs either side of the run's date, the notes, and
-// the paper. ← and → step between runs. Opening a run is the read that keeps the scheduler alive.
+// The reading view: the task's name and the run's date, the older and newer runs, the notes, and the
+// paper, inside the sidebar frame. ← and → step between runs. Opening a run is the read that keeps the scheduler alive.
 export function PaperPage({ data }: { data: Data }) {
   const navigate = useNavigate();
   const { task, older, newer } = data;
@@ -25,24 +26,23 @@ export function PaperPage({ data }: { data: Data }) {
     if (runId) fetch("/api/read", { method: "POST" }).catch(() => {});
   }, [task, runId]);
 
+  const header = (
+    <>
+      <h1 className="crumb">
+        <span className="crumb-task">{data.label}</span>
+        {data.run && <span className="stamp">{data.run.stamp}</span>}
+      </h1>
+      <div className="runnav">
+        <RunArrow task={task} runId={older} label="Older run" glyph="left" keyName="ArrowLeft" />
+        <RunArrow task={task} runId={newer} label="Newer run" glyph="right" keyName="ArrowRight" />
+      </div>
+    </>
+  );
+
   return (
-    <div className="page">
-      <Topbar hides>
-        <nav className="tabs">
-          {data.tabs.map((t) => (
-            <Link key={t.name} to="/read/{-$task}/{-$runId}" params={{ task: t.name, runId: undefined }} className="tab" data-active={t.name === task}>
-              {t.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="runnav">
-          <RunArrow task={task} runId={older} label="Older run" glyph="←" keyName="ArrowLeft" />
-          <span className="stamp">{data.run?.stamp}</span>
-          <RunArrow task={task} runId={newer} label="Newer run" glyph="→" keyName="ArrowRight" />
-        </div>
-      </Topbar>
+    <Shell nav={data.nav} active={task} header={header}>
       {data.notes.map((note, i) => (
-        <p key={i} className={note.kind === "failed" ? "note failed" : "note"}>
+        <p key={i} className="callout" data-kind={note.kind}>
           {note.kind === "paused" &&
             `Scheduled runs were paused: ${note.lastReadDays === null ? "the paper had not been opened yet" : `the paper was last read ${note.lastReadDays} days ago`}. Reading it turns them back on.`}
           {note.kind === "none" && "No finished runs yet."}
@@ -56,7 +56,7 @@ export function PaperPage({ data }: { data: Data }) {
         </p>
       ))}
       {data.paper && <Paper paper={data.paper} labels={{ contextLabel: data.contextLabel, briefsLabel: data.briefsLabel }} />}
-    </div>
+    </Shell>
   );
 }
 
@@ -65,13 +65,13 @@ function RunArrow({ task, runId, label, glyph, keyName }: { task: string; runId?
   if (!runId) {
     return (
       <a className="arrow" aria-disabled="true" aria-label={label} title={title}>
-        {glyph}
+        <Icon name={glyph} />
       </a>
     );
   }
   return (
     <Link to="/read/{-$task}/{-$runId}" params={{ task, runId }} className="arrow" aria-label={label} title={title}>
-      {glyph}
+      <Icon name={glyph} />
     </Link>
   );
 }

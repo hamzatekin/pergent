@@ -13,7 +13,12 @@ export function Paper({ paper, labels }: { paper: PaperView; labels: Labels }) {
       {paper.title && <h1 className="masthead">{paper.title}</h1>}
       {paper.sections.map((section, i) => (
         <section key={i} className="section">
-          {section.heading && <h2 className="section-head">{section.heading}</h2>}
+          {section.heading && (
+            <h2 className="section-head">
+              {section.heading}
+              {section.cards.length + section.briefs.length > 0 && <span className="count">{section.cards.length + section.briefs.length}</span>}
+            </h2>
+          )}
           {section.lead && <div className="prose lead" dangerouslySetInnerHTML={{ __html: section.lead }} />}
           {/* Cards sit in a grid on a wide screen, a lead story two columns wide; one column on a phone.
               The section's briefs follow the grid as one band of short lines, in the order written. */}
