@@ -6,7 +6,7 @@
   "lang": "en",
   "contextLabel": "Why it might pay",
   "briefsLabel": "Also mentioned",
-  "model": "haiku",
+  "model": "claude-haiku-5-5",
   "allowedTools": [],
   "inputs": ["pains.md", "previous.md", "muted.md"],
   "mute": true,

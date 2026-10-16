@@ -5,7 +5,7 @@
   "lang": "en",
   "contextLabel": "Context",
   "briefsLabel": "In brief",
-  "model": "haiku",
+  "model": "claude-haiku-5-5",
   "allowedTools": [],
   "inputs": ["tweets.md", "tweets-web.md", "discourse.md", "hn.md", "newsletters.md", "previous.md"],
   "timeoutMinutes": 15,
