@@ -1,0 +1,45 @@
+{
+  "schedule": "0 7 * * *",
+  "timezone": "Europe/London",
+  "label": "settlement",
+  "order": 3,
+  "lang": "en",
+  "contextLabel": "What it means for you",
+  "briefsLabel": "Also noted",
+  "model": "claude-haiku-5-5",
+  "allowedTools": [],
+  "inputs": ["settlement.md", "last.md"],
+  "timeoutMinutes": 10,
+  "rate": false,
+  "before": "node ../../../scripts/fetch-settlement.ts",
+  "settlement": {
+    "days": 3,
+    "govuk": {
+      "pages": [
+        "/government/consultations/earned-settlement",
+        "/government/collections/immigration-rules-statement-of-changes",
+        "/indefinite-leave-to-remain-tier-2-t2-skilled-worker-visa",
+        "/guidance/immigration-rules/immigration-rules-appendix-skilled-worker",
+        "/guidance/immigration-rules/immigration-rules-appendix-skilled-occupations",
+        "/guidance/immigration-rules/immigration-rules-appendix-long-residence",
+        "/government/publications/restoring-control-over-the-immigration-system-white-paper"
+      ],
+      "organisations": ["home-office", "uk-visas-and-immigration", "migration-advisory-committee"],
+      "match": "settle|indefinite leave|\\bILR\\b|immigration rules|statement of changes|skilled worker|salary|shortage list|migration advisory|white paper|english language",
+      "skip": "EU Settlement Scheme|resettlement|register of licensed sponsors|country policy|tuberculosis"
+    },
+    "parliament": {
+      "match": "\\bsettle|indefinite leave|\\bILR\\b|immigration rules|skilled worker|qualifying period",
+      "hansard": ["earned settlement", "indefinite leave to remain"]
+    },
+    "news": {
+      "queries": ["\"earned settlement\"", "\"indefinite leave to remain\"", "ILR settlement Home Office migrants"]
+    },
+    "feeds": [
+      {"name": "Free Movement (immigration law blog)", "url": "https://freemovement.org.uk/feed/"},
+      {"name": "Electronic Immigration Network", "url": "https://www.ein.org.uk/rss.xml"},
+      {"name": "House of Commons Library", "url": "https://commonslibrary.parliament.uk/feed/"}
+    ],
+    "feedMatch": "earned settlement|indefinite leave|\\bILR\\b|settlement"
+  }
+}
