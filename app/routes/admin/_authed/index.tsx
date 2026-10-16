@@ -26,7 +26,7 @@ function Dashboard() {
               <h2>{c.task}</h2>
               <form method="post" action={`/admin/run/${encodeURIComponent(c.task)}`}>
                 <button type="submit" className="btn" disabled={c.busy}>
-                  {c.busy ? "Running…" : "Run now"}
+                  {c.waiting ? "Waiting…" : c.busy ? "Running…" : "Run now"}
                 </button>
               </form>
             </div>

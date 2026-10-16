@@ -1,21 +1,44 @@
-import { getState, lastRunStartedAt, setState } from "./db.ts";
+import { getState, runsSince, setState } from "./db.ts";
 import { listTasks, loadTask, runTask } from "./runner.ts";
 
 // Only the container sets SCHEDULER=1; a local server never starts runs by itself.
 export const SCHEDULER = process.env.SCHEDULER === "1";
 
-// The runs this server process has going, one per task. The scheduler and the dashboard's Run now
-// both start runs here, so a task never runs twice at once from the server (the CLI does not see it).
+// The runs this server process has going or waiting, one per task. The scheduler and the dashboard's
+// Run now both start runs here, so a task never runs twice at once from the server (the CLI does not
+// see it). At most MAX_RUNS go at once and the rest wait their turn in order: every run is a claude
+// process inside the container's 2 CPUs and 2 GB, and tasks that share a minute would otherwise all
+// start together.
+const MAX_RUNS = 2;
 const running = new Set<string>();
+const waiting: string[] = [];
+let going = 0;
 
 export function startRun(name: string): boolean {
   if (running.has(name)) return false;
   running.add(name);
-  runTask(name).catch((err) => console.error(`run ${name} failed:`, err)).finally(() => running.delete(name));
+  waiting.push(name);
+  next();
   return true;
 }
 
+function next() {
+  while (going < MAX_RUNS && waiting.length) {
+    const name = waiting.shift()!;
+    going++;
+    runTask(name)
+      .catch((err) => console.error(`run ${name} failed:`, err))
+      .finally(() => {
+        running.delete(name);
+        going--;
+        next();
+      });
+  }
+}
+
 export const isRunning = (name: string) => running.has(name);
+// Started but not yet going: waiting for one of the MAX_RUNS places.
+export const isWaiting = (name: string) => waiting.includes(name);
 
 // Dead man's switch: scheduled runs only happen while someone is reading the paper. The server
 // records every run the UI fetches as a read; after PAUSE_AFTER_DAYS without one the scheduler
@@ -103,10 +126,12 @@ export function lastSlot(expr: string, now: Date, timeZone?: string, windowMinut
 }
 
 // Ticks just after every minute boundary. A task is due when its cron fired within the last 24h and
-// its latest run (any status) started before that slot. This is what fires it at the scheduled
+// no run of it (any status) has started since that slot. This is what fires it at the scheduled
 // minute, and it is also the catch-up: a server that was down, deploying or paused at 7:30 starts
 // the task on its first tick after, and a run that already happened (or failed) is not repeated.
-// startRun refuses to overlap a task that is already running.
+// The one exception is a run a restart cut off (failed with no finish time, see closeStaleRuns): a
+// deploy in the middle of a run would otherwise lose the day's paper, so the task gets one more run.
+// startRun refuses to overlap a task that is already running or waiting.
 export function startScheduler() {
   const tick = async () => {
     const now = new Date();
@@ -117,10 +142,10 @@ export function startScheduler() {
         if (!config.schedule) continue;
         const slot = lastSlot(config.schedule, now, config.timezone);
         if (!slot) continue;
-        const last = lastRunStartedAt(name);
-        if (last && Date.parse(last) >= slot.getTime()) continue;
-        console.log(`schedule: starting ${name} (${config.schedule} ${config.timezone ?? "local"}, slot ${slot.toISOString()})`);
-        startRun(name);
+        const since = runsSince(name, slot.toISOString());
+        const retry = since.length === 1 && since[0].status === "failed" && !since[0].finishedAt;
+        if (since.length && !retry) continue;
+        if (startRun(name)) console.log(`schedule: starting ${name} (${config.schedule} ${config.timezone ?? "local"}, slot ${slot.toISOString()}${retry ? ", retry after restart" : ""})`);
       } catch (err) {
         console.error(`schedule: ${name}:`, err);
       }

@@ -19,8 +19,8 @@ services:
     expose:
       - "4321"
     # A ceiling for the whole container, so a run that goes wrong cannot take the server down with it:
-    # both tasks fire at 07:30 and each is a claude process plus the server. Runs have their own
-    # wall-clock limits on top (timeoutMinutes, 5 minutes for a before command).
+    # the server runs at most 2 tasks at once (MAX_RUNS in src/scheduler.ts), each a claude process. Runs
+    # have their own wall-clock limits on top (timeoutMinutes, 5 minutes for a before command).
     cpus: 2
     mem_limit: 2g
     pids_limit: 512

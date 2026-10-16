@@ -100,9 +100,10 @@ export function getRun(task: string, runId: string): RunRow | null {
   return { meta: toMeta(r), output: r.output, images: JSON.parse(r.images), paper: r.paper ? JSON.parse(r.paper) : null };
 }
 
-export function lastRunStartedAt(task: string): string | null {
-  const row = use().prepare("SELECT MAX(started_at) AS at FROM runs WHERE task = ?").get(task) as { at: string | null };
-  return row.at;
+// The runs of a task that started at or after `since` (an ISO time), oldest first: what the scheduler
+// weighs a slot against.
+export function runsSince(task: string, since: string): { status: RunMeta["status"]; finishedAt: string | null }[] {
+  return use().prepare("SELECT status, finished_at AS finishedAt FROM runs WHERE task = ? AND started_at >= ? ORDER BY started_at").all(task, since) as { status: RunMeta["status"]; finishedAt: string | null }[];
 }
 
 // A few named values, e.g. last_read: when the UI last fetched a run, which gates the scheduler.
@@ -163,6 +164,8 @@ function importRuns(runsDir: string) {
 // A run still marked running when the server starts was cut off: a deploy or restart replaces the
 // container and every process in it. Close those rows as failed so they stop looking alive. A CLI run
 // going at the same moment (only possible locally) is marked too, and put right when it saves its end.
+// finished_at stays empty: every other way a run ends sets it, so a failed run without one is a run a
+// restart cut off, which the scheduler gives one retry.
 export function closeStaleRuns(): number {
   return Number(use().prepare("UPDATE runs SET status = 'failed' WHERE status = 'running'").run().changes);
 }
