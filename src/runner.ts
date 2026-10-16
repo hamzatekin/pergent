@@ -28,7 +28,7 @@ export type TaskConfig = {
   lang?: string;
   contextLabel?: string;
   briefsLabel?: string;
-  /** The sidebar's icon for the task, by name from app/components/Icon.tsx (newspaper, cpu, flame, landmark). */
+  /** The sidebar's icon for the task, by name from app/components/Icon.tsx (sun, newspaper, cpu, flame, landmark). */
   icon?: string;
   /** Where the task's tab sits: lower first, default 0, ties by name. The first task is the front page. */
   order?: number;
@@ -44,6 +44,8 @@ export type TaskConfig = {
   maxOutputTokens?: number;
   /** true gives the task a never-show list (src/mute.ts): a "Never show" link on every story, and muted.md in each run directory. */
   mute?: boolean;
+  /** true keeps the task's papers behind the admin login: no tab, page or API answer without the cookie (the `today` task, built from the reader's notes). */
+  private?: boolean;
   [extra: string]: unknown;
 };
 
