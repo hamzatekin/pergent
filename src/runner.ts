@@ -133,6 +133,16 @@ function stop(child: ChildProcess) {
   child.once("close", () => clearTimeout(kill));
 }
 
+// One before command at a time in this process. Tasks fetch from the same places (FxTwitter, which
+// answered 404 when news and tech fetched in the same minute; Reddit, one RSS request a minute), so
+// their fetches take turns. The wait does not count toward the 5 minutes.
+let fetching: Promise<unknown> = Promise.resolve();
+function oneAtATime<T>(fn: () => Promise<T>): Promise<T> {
+  const turn = fetching.then(fn);
+  fetching = turn.catch(() => {});
+  return turn;
+}
+
 function runBefore(command: string, cwd: string, taskDir: string): Promise<boolean> {
   return new Promise((done) => {
     const child = track(spawn("sh", ["-c", command], { cwd, env: { ...process.env, TASK_DIR: taskDir }, stdio: ["ignore", "pipe", "pipe"], detached: true }));
@@ -180,7 +190,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   if (config.mute) await writeFile(join(dir, "muted.md"), mutedMarkdown(listMutes(name)));
 
   if (config.before) {
-    const ok = await runBefore(config.before, dir, join(TASKS_DIR, name));
+    const ok = await oneAtATime(() => runBefore(config.before!, dir, join(TASKS_DIR, name)));
     if (!ok) {
       const meta: RunMeta = { ...running, finishedAt: new Date().toISOString(), status: "failed" };
       await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));

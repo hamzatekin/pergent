@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { listRuns, listTasks, loadTask, readRun, runDir, type RunMeta } from "#src/runner.ts";
 import { listMutes } from "#src/db.ts";
 import { suggestions } from "#src/mute.ts";
-import { isRunning, schedulerStatus } from "#src/scheduler.ts";
+import { isRunning, isWaiting, schedulerStatus } from "#src/scheduler.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
 import { ago, formatDate } from "./format.ts";
 
@@ -57,6 +57,7 @@ export const getDashboard = createServerFn({ method: "GET" })
       return {
         task,
         busy,
+        waiting: isWaiting(task),
         last: all[0] && { status: statusOf(all[0], busy), ago: ago(all[0].startedAt) },
         avgCost: `${money(avg(recent.map((r) => r.costUsd!)))}`,
         avgOf: recent.length,
