@@ -1,6 +1,6 @@
-@import "tailwindcss";
-/* The markup is built in src/paper.ts and src/server.ts; scan them for the utilities they use. */
-@source "../src";
+@import "tailwindcss" source(none);
+/* Only the components are scanned for utilities, so the build does not depend on what else is in the tree. */
+@source "./";
 
 /* Paper: warm, light, one theme. Serif for reading, the system sans only for the small chrome. */
 @theme {
@@ -203,7 +203,7 @@
 .prose details.aside > summary::-webkit-details-marker {
   display: none;
 }
-.prose details.aside > p {
+.prose details.aside p {
   @apply mb-0.5 mt-1.5;
 }
 /* Source chip: the bare-URL paragraph at the end of a story. */

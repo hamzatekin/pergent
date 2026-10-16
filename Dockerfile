@@ -1,10 +1,13 @@
-# Build the stylesheet and gather the static files, then ship a small runtime with node, claude, and
-# the source (no build step for the Node side). Tailwind scans src/ for the classes the page uses.
+# Build the site (the TanStack Start app in app/, with Tailwind) into dist/, then ship a small runtime
+# with node, claude, the built site and the source. src/ and scripts/ run as they are (no build step
+# for the runner): the built server imports src/ through package.json's "#src/*" imports.
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY web ./web
+COPY vite.config.ts ./
+COPY app ./app
+COPY public ./public
 COPY src ./src
 RUN npm run build
 
@@ -19,7 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @anthropic-ai/claude-code
 WORKDIR /app
-# The server needs hono at runtime; scripts/ and the runner still use only node built-ins (sqlite included).
+# The server needs hono, React and TanStack Start at runtime; scripts/ and the runner use only node
+# built-ins (sqlite included) and marked.
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY src ./src

@@ -1,5 +1,21 @@
 import { getState, lastRunStartedAt, setState } from "./db.ts";
-import { listTasks, loadTask } from "./runner.ts";
+import { listTasks, loadTask, runTask } from "./runner.ts";
+
+// Only the container sets SCHEDULER=1; a local server never starts runs by itself.
+export const SCHEDULER = process.env.SCHEDULER === "1";
+
+// The runs this server process has going, one per task. The scheduler and the dashboard's Run now
+// both start runs here, so a task never runs twice at once from the server (the CLI does not see it).
+const running = new Set<string>();
+
+export function startRun(name: string): boolean {
+  if (running.has(name)) return false;
+  running.add(name);
+  runTask(name).catch((err) => console.error(`run ${name} failed:`, err)).finally(() => running.delete(name));
+  return true;
+}
+
+export const isRunning = (name: string) => running.has(name);
 
 // Dead man's switch: scheduled runs only happen while someone is reading the paper. The server
 // records every run the UI fetches as a read; after PAUSE_AFTER_DAYS without one the scheduler
@@ -18,6 +34,10 @@ export function markRead() {
 export function paused(now = Date.now()): boolean {
   const read = lastReadAt();
   return !read || now - Date.parse(read) > PAUSE_AFTER_DAYS * 86_400_000;
+}
+
+export function schedulerStatus() {
+  return { scheduler: !SCHEDULER ? "off" : paused() ? "paused" : "on", lastReadAt: lastReadAt(), pauseAfterDays: PAUSE_AFTER_DAYS } as const;
 }
 
 // Five-field cron (minute hour day-of-month month day-of-week) with *, lists, ranges and steps,
@@ -86,8 +106,8 @@ export function lastSlot(expr: string, now: Date, timeZone?: string, windowMinut
 // its latest run (any status) started before that slot. This is what fires it at the scheduled
 // minute, and it is also the catch-up: a server that was down, deploying or paused at 7:30 starts
 // the task on its first tick after, and a run that already happened (or failed) is not repeated.
-// `start` is the server's run trigger, which already refuses to overlap a running task.
-export function startScheduler(start: (name: string) => void) {
+// startRun refuses to overlap a task that is already running.
+export function startScheduler() {
   const tick = async () => {
     const now = new Date();
     if (paused(now.getTime())) return;
@@ -100,7 +120,7 @@ export function startScheduler(start: (name: string) => void) {
         const last = lastRunStartedAt(name);
         if (last && Date.parse(last) >= slot.getTime()) continue;
         console.log(`schedule: starting ${name} (${config.schedule} ${config.timezone ?? "local"}, slot ${slot.toISOString()})`);
-        start(name);
+        startRun(name);
       } catch (err) {
         console.error(`schedule: ${name}:`, err);
       }

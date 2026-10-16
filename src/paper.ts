@@ -4,7 +4,7 @@ import { Marked, type Token, type Tokens } from "marked";
 // with a headline, a markdown body, an optional background aside, a source link and an importance
 // that sizes it on the page (3 leads a section, 2 is a card, 1 is a one-line brief). New runs return
 // it as structured output against PAPER_SCHEMA; runs from before that are parsed out of their markdown
-// with fromMarkdown, so both go through the one renderer below.
+// with fromMarkdown, so both reach the site (app/server/paper-view.ts) the same way.
 export type Story = { headline: string; body: string; context?: string; source?: string; importance?: number; rating?: Rating };
 // Added after the run by src/rate.ts, not by the model: 0-10 overall and per part (sourcing,
 // neutrality, substance). Not in PAPER_SCHEMA.
@@ -84,7 +84,7 @@ export function escapeHtml(s: string) {
   return s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
 }
 
-function host(url: string) {
+export function host(url: string) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
@@ -94,7 +94,7 @@ function host(url: string) {
 
 // Article links are matched to images without tracking parameters or a trailing slash, since the
 // model sometimes copies a link with utm_ noise and sometimes without.
-function canonical(url: string) {
+export function canonical(url: string) {
   try {
     const u = new URL(url);
     for (const key of [...u.searchParams.keys()]) if (key.startsWith("utm_")) u.searchParams.delete(key);
@@ -105,80 +105,10 @@ function canonical(url: string) {
   }
 }
 
-// The rating: the overall number large, then each part (src/rate.ts's questions) on its own line as a
-// name, a ten-cell bar and its number, with what it measures in the tooltip. Cells and colour are
-// classes, since the CSP allows no inline style.
-const PARTS: [key: string, name: string, meaning: string][] = [
-  ["sourcing", "Sourcing", "How well the claim is backed: a rumour, one account, a named outlet, or a primary source"],
-  ["neutrality", "Neutral tone", "How plain the original is: hype or propaganda, spun, mostly factual, or plain"],
-  ["substance", "Substance", "How much the story gives you: nothing concrete, one fact, some detail, or specifics and why it matters"],
-];
-const level = (score: number) => (score >= 7 ? "high" : score >= 4.5 ? "mid" : "low");
-const cells = (score: number) => Array.from({ length: 10 }, (_, i) => `<i${i < Math.round(score) ? ' class="on"' : ""}></i>`).join("");
-function meter(rating: Rating) {
-  const parts = PARTS.filter(([key]) => typeof rating.parts[key] === "number").map(([key, name, meaning]) => {
-    const v = rating.parts[key];
-    return `<span class="part" data-level="${level(v)}" title="${escapeHtml(meaning)}"><span class="name">${name}</span><span class="cells">${cells(v)}</span><span class="num">${v.toFixed(1)}</span></span>`;
-  });
-  return `<div class="rating" data-level="${level(rating.score)}"><span class="overall" title="Rated by Jev, 0-10"><span class="score">${rating.score.toFixed(1)}</span><span class="of">/10</span></span><span class="parts">${parts.join("")}</span></div>`;
-}
+export const isHttp = (url: string) => /^https?:\/\//i.test(url);
 
-const isHttp = (url: string) => /^https?:\/\//i.test(url);
-const render = (markdown: string) => md.parse(markdown, { async: false }) as string;
-
-// A story's size on the page. A run from before the field exists has none, so its first story per
-// section leads and the rest are cards, which is the order the prompts have always implied.
-function importance(story: Story, index: number, legacy: boolean) {
-  return story.importance === 1 || story.importance === 3 ? story.importance : legacy && index === 0 ? 3 : 2;
-}
-
-// The paper as HTML. Headlines and headings are text; bodies, leads and asides are the model's
-// markdown, rendered unsanitized (the server's CSP is what keeps a script in it from running).
-// `muteHref` gives a story its "Never show" link (src/mute.ts), for a task with a never-show list.
-export function renderPaper(paper: Paper, images: Record<string, string> = {}, labels: PaperLabels = {}, muteHref?: (story: Story) => string | undefined) {
-  const byLink = new Map(Object.entries(images).map(([link, image]) => [canonical(link), image]));
-  const legacy = !paper.sections.some((s) => s.stories.some((st) => st.importance));
-  const out: string[] = ['<div class="paper">'];
-  if (paper.title) out.push(`<h1 class="masthead">${escapeHtml(paper.title)}</h1>`);
-  const inner = (story: Story) => {
-    const parts = [`<h3>${escapeHtml(story.headline)}</h3>`, render(story.body)];
-    if (story.context) {
-      parts.push(`<details class="aside"><summary>${escapeHtml(labels.contextLabel ?? "Context")}</summary>${render(story.context)}</details>`);
-    }
-    const mute = muteHref?.(story);
-    const foot = [story.source && isHttp(story.source) ? chip(story.source) : "", mute ? `<a class="mute" href="${escapeHtml(mute)}" rel="nofollow">Never show</a>` : ""].join("");
-    if (foot) parts.push(`<p class="foot">${foot}</p>`);
-    if (story.rating) parts.push(meter(story.rating));
-    return parts.join("\n");
-  };
-  for (const section of paper.sections) {
-    out.push('<section class="section">');
-    if (section.heading) out.push(`<h2 class="section-head">${escapeHtml(section.heading)}</h2>`);
-    if (section.lead) out.push(`<div class="prose lead">${render(section.lead)}</div>`);
-    // Cards sit in a grid on a wide screen, a lead story two columns wide (styles.css); one column on a
-    // phone. The section's briefs follow the grid as one band of short lines, in the order written.
-    const sized = section.stories.map((story, i) => ({ story, importance: importance(story, i, legacy) }));
-    const cards = sized.filter((s) => s.importance > 1);
-    const briefs = sized.filter((s) => s.importance === 1);
-    if (cards.length) out.push('<div class="stories">');
-    for (const { story, importance } of cards) {
-      const image = story.source ? byLink.get(canonical(story.source)) : undefined;
-      out.push(`<article class="story" data-importance="${importance}">`);
-      // A feed thumbnail too small for the card looks worse than no image; app.js drops those on load.
-      if (image && isHttp(image)) out.push(`<img class="story-image" src="${escapeHtml(image)}" alt="" loading="lazy">`);
-      out.push(`<div class="prose">\n${inner(story)}\n</div></article>`);
-    }
-    if (cards.length) out.push("</div>");
-    if (briefs.length) {
-      out.push(`<div class="briefs"><h4 class="briefs-head">${escapeHtml(labels.briefsLabel ?? "In brief")}</h4>`);
-      for (const { story } of briefs) out.push(`<article class="brief prose">\n${inner(story)}\n</article>`);
-      out.push("</div>");
-    }
-    out.push("</section>");
-  }
-  out.push("</div>");
-  return out.join("\n");
-}
+// A story's markdown as HTML, unsanitized: the site's CSP is what keeps a script in it from running.
+export const renderMarkdown = (markdown: string) => md.parse(markdown, { async: false }) as string;
 
 // The paper as the markdown the prompts used to ask for, kept in each run directory as output.md so
 // a run stays readable with cat and diffable in git.
