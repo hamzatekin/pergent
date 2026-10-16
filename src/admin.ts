@@ -103,12 +103,11 @@ ${c.req.query("failed") !== undefined ? '<p class="note failed">Wrong password.<
   });
 
   // The never-show list of a task with `"mute": true` (src/mute.ts). A story's Never show link on the
-  // paper opens the first page, which offers its source, the apps it names and its headline; the
-  // second is the list on its own. Adding or removing returns to the page it came from.
+  // paper opens the first page, which offers its source and its headline; the second is the list on its
+  // own. Adding or removing returns to the page it came from.
   const muteTask = async (task: string) => {
     const config = (await listTasks()).includes(task) ? await loadTask(task).then((t) => t.config, () => null) : null;
     if (!config?.mute) throw new HTTPException(404, { message: "this task has no never-show list" });
-    return config;
   };
   const mutePage = (c: Context, task: string, back: string, story = "") => {
     const hidden = `<input type="hidden" name="task" value="${escapeHtml(task)}"><input type="hidden" name="back" value="${escapeHtml(back)}">`;
@@ -134,11 +133,11 @@ ${muted.length ? `<ul class="mutes">${muted.join("\n")}</ul>` : '<p class="note"
 
   app.get("/admin/mute/:task/:runId/:section/:story", async (c) => {
     const { task, runId, section, story: index } = c.req.param();
-    const config = await muteTask(task);
+    await muteTask(task);
     const story = readRun(task, runId)?.paper.sections[Number(section)]?.stories[Number(index)];
     if (!story) throw new HTTPException(404, { message: "no such story" });
     const back = `/read/${task}/${runId}`;
-    const picks = suggestions(story, config).map(
+    const picks = suggestions(story).map(
       (s) => `<button type="submit" name="phrase" value="${escapeHtml(s.phrase)}" class="btn">${escapeHtml(s.label)}</button>`,
     );
     return mutePage(

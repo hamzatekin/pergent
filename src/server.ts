@@ -106,7 +106,7 @@ async function page(c: Context) {
   const links = new Map<Story, string>();
   if (run && config.mute) {
     run.paper.sections.forEach((s, i) => s.stories.forEach((story, j) => links.set(story, `/admin/mute/${task}/${current!.runId}/${i}/${j}`)));
-    const muted = hideMuted(run.paper, listMutes(task), config);
+    const muted = hideMuted(run.paper, listMutes(task));
     paper = muted.paper;
     if (muted.hidden) notes.push(`${muted.hidden} ${muted.hidden === 1 ? "story" : "stories"} hidden by your <a href="/admin/mutes/${task}">never-show list</a>.`);
   }
