@@ -39,7 +39,7 @@ for (const { startedAt, paper } of papers) {
   let block = `# ${paper.title ?? startedAt.slice(0, 10)} (${startedAt.slice(0, 10)})\n`;
   let count = 0;
   for (const section of paper.sections ?? []) {
-    const stories = (section.stories ?? []).filter((s) => !isMuted(s, muted, config));
+    const stories = (section.stories ?? []).filter((s) => !isMuted(s, muted));
     if (!stories.length) continue;
     block += `\n## ${section.heading ?? ""}\n`;
     for (const s of stories) {

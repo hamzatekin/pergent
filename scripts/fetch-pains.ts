@@ -7,47 +7,39 @@
 //                 matching that query. Logged out, Reddit allows one RSS request a minute
 //                 (x-ratelimit-remaining is 0 after one), so the requests wait for x-ratelimit-reset and
 //                 the list is kept to the three or so that fit in the time budget.
-//   appStore      business apps on Apple's App Store, `{ id, name, countries }`: their 1 and 2 star
-//                 reviews from the store's customer reviews RSS (JSON), per country
 //   freelancer    Freelancer.com's open projects API: `queries`, kept to `currencies` (USD and GBP, for
 //                 UK and US clients), `perQuery` newest each; a job paying someone to do a chore by hand
 //                 is the plainest sign the chore is worth money
 //   khoros        Khoros communities with the public LiQL API, `{ host, name, skipBoards }` (Square's
 //                 seller community): their newest 100 topics, grouped by board
-//   vanilla       Vanilla forums with the public v2 API, `{ host, name, categories: { id: name } }`
-//                 (MoneySavingExpert): the newest 30 discussions of each category
-//   shopifyCategories  Shopify Community (Discourse) category ids, with the name to show: the newest
-//                 topics through /c/<id>.json, whose excerpt is the opening of the first post
-//   apps          Shopify App Store slugs: their newest 1 and 2 star reviews, parsed from the HTML
-// Windows: `hours` (default 48) for the busy sources; `reviewDays` (default 14) for app reviews and the
-// quiet forums (khoros, vanilla); Reddit's searches cover the week. Every item has an id; pains.json
-// lists the ids delivered, and ids found in sibling runs' pains.json are skipped, so each post reaches
-// the model once even when the windows overlap. Other settings:
-//   perGroup           at most this many items per group (subreddit, app, board…), newest first (default 30)
+// Windows: `hours` (default 48) for Reddit and Freelancer; `forumDays` (default 14) for the quieter
+// forum (khoros); Reddit's searches cover the week. Every item has an id; pains.json lists the ids
+// delivered, and ids found in sibling runs' pains.json are skipped, so each post reaches the model once
+// even when the windows overlap. Other settings:
+//   perGroup           at most this many items per group (subreddit, query, board), newest first (default 30)
 //   maxChars           size cap for pains.md (default 260000); bodies are cut shorter until it fits
 //   budgetSeconds      when to stop starting new fetches (default 180), so the script ends well inside the
 //                      before command's 5 minutes; what was fetched by then is written
-// The never-show list (muted.md, written by the runner, src/mute.ts): a subreddit, app, query or forum
-// whose name mentions a muted phrase is not fetched, and a post that mentions one is dropped.
+// The never-show list (muted.md, written by the runner, src/mute.ts): a subreddit, query or forum whose
+// name mentions a muted phrase is not fetched, and a post that mentions one is dropped.
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { mentions, parseMuted } from "../src/mute.ts";
 
 type Item = { id: string; group: string; when: Date; title: string; author: string; body: string; url: string };
 type RedditRequest = { subs: string[]; search?: string };
-type App = { id: number; name: string; countries: string[] };
 
 const config = JSON.parse(await readFile(join(process.env.TASK_DIR!, "task.json"), "utf8"));
 const pains = config.pains ?? {};
 const hours: number = pains.hours ?? 48;
-const reviewDays: number = pains.reviewDays ?? 14;
+const forumDays: number = pains.forumDays ?? 14;
 const perGroup: number = pains.perGroup ?? 30;
 const maxChars: number = pains.maxChars ?? 260_000;
 const BODY = 1200;
 const deadline = Date.now() + (pains.budgetSeconds ?? 180) * 1000;
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
 const since = Date.now() - hours * 3_600_000;
-const reviewSince = Date.now() - reviewDays * 86_400_000;
+const forumSince = Date.now() - forumDays * 86_400_000;
 const weekSince = Date.now() - 7 * 86_400_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const log: string[] = [];
@@ -142,26 +134,6 @@ async function reddit(req: RedditRequest): Promise<Item[]> {
   return items.filter((i) => i.when.getTime() >= (req.search ? weekSince : since));
 }
 
-async function appStore(app: App, country: string): Promise<Item[]> {
-  const data = JSON.parse(await get(`https://itunes.apple.com/${country}/rss/customerreviews/id=${app.id}/sortby=mostrecent/json`));
-  const entries = [data.feed?.entry ?? []].flat();
-  const items: Item[] = [];
-  for (const e of entries) {
-    const rating = Number(e["im:rating"]?.label);
-    if (!rating || rating > 2) continue;
-    items.push({
-      id: `appstore:${e.id?.label}`,
-      group: `App Store: ${app.name} (1 and 2 star reviews)`,
-      when: new Date(e.updated?.label ?? 0),
-      title: `${rating} star review: ${e.title?.label ?? ""}`,
-      author: `${country.toUpperCase()}, version ${e["im:version"]?.label ?? "?"}`,
-      body: e.content?.label ?? "",
-      url: `https://apps.apple.com/${country}/app/id${app.id}?see-all=reviews#${e.id?.label}`,
-    });
-  }
-  return items.filter((i) => i.when.getTime() >= reviewSince);
-}
-
 type Project = {
   id: number;
   seo_url: string;
@@ -216,74 +188,7 @@ async function khoros(host: string, name: string, skipBoards: string[] = []): Pr
       body: text(m.body ?? ""),
       url: m.view_href,
     }))
-    .filter((i) => i.when.getTime() >= reviewSince);
-}
-
-type Discussion = { discussionID: number; name: string; body: string; dateInserted: string; url: string };
-
-async function vanilla(host: string, name: string, categoryID: string, category: string): Promise<Item[]> {
-  const params = new URLSearchParams({ categoryID, limit: "30", sort: "-dateInserted" });
-  const discussions: Discussion[] = JSON.parse(await get(`https://${host}/api/v2/discussions?${params}`));
-  return discussions
-    .map((d) => ({
-      id: `${host}:${d.discussionID}`,
-      group: `${name}: ${category}`,
-      when: new Date(d.dateInserted),
-      title: decode(d.name),
-      author: "",
-      body: text(d.body ?? ""),
-      url: d.url,
-    }))
-    .filter((i) => i.when.getTime() >= reviewSince);
-}
-
-async function forum(id: string, name: string): Promise<Item[]> {
-  const data = JSON.parse(await get(`https://community.shopify.com/c/${id}.json`));
-  const items: Item[] = [];
-  for (const t of data.topic_list?.topics ?? []) {
-    if (t.pinned || t.closed) continue;
-    items.push({
-      id: `shopify-forum:${t.id}`,
-      group: `Shopify Community: ${name}`,
-      when: new Date(t.created_at),
-      title: decode(t.title ?? ""),
-      author: "",
-      body: decode(t.excerpt ?? "").replace(/\s+/g, " ").trim(),
-      url: `https://community.shopify.com/t/${t.slug}/${t.id}`,
-    });
-  }
-  return items.filter((i) => i.when.getTime() >= since);
-}
-
-async function reviews(app: string): Promise<Item[]> {
-  const page = `https://apps.shopify.com/${app}/reviews?ratings%5B%5D=1&ratings%5B%5D=2&sort_by=newest`;
-  const html = await get(page);
-  const name = decode(html.match(/<title>([^<]*?)(?:\s*[|–-][^<]*)?<\/title>/)?.[1] ?? app).replace(/^Reviews?:\s*/i, "").replace(/ Reviews?$/i, "").trim();
-  const items: Item[] = [];
-  for (const block of html.split('data-merchant-review=""').slice(1)) {
-    const id = block.match(/data-review-content-id="(\d+)"/)?.[1];
-    const date = block.match(/>\s*([A-Z][a-z]+ \d{1,2}, \d{4})\s*</)?.[1];
-    const stars = block.match(/aria-label="(\d) out of 5 stars"/)?.[1];
-    const body = text(block.match(/data-truncate-content-copy[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "");
-    // After the review text come the store's name, its country and how long it has used the app.
-    const facts = text(block.replace(/<svg[\s\S]*?<\/svg>/g, "").split(/data-truncate-content-copy/)[1] ?? "")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l && l !== "Show more" && !body.includes(l))
-      .slice(0, 3)
-      .join(", ");
-    if (!id || !date || !body) continue;
-    items.push({
-      id: `shopify-review:${id}`,
-      group: `Shopify App Store: ${name} (1 and 2 star reviews)`,
-      when: new Date(`${date} 12:00 UTC`),
-      title: `${stars} star review of ${name}`,
-      author: facts,
-      body,
-      url: `${page}#${id}`,
-    });
-  }
-  return items.filter((i) => i.when.getTime() >= reviewSince);
+    .filter((i) => i.when.getTime() >= forumSince);
 }
 
 const found: Item[] = [];
@@ -308,14 +213,8 @@ async function collect(label: string, run: () => Promise<Item[]>) {
 
 // Everything but Reddit, 6 at a time.
 const allJobs: [string, () => Promise<Item[]>][] = [
-  ...(pains.appStore ?? []).flatMap((a: App) => a.countries.map((c) => [`app store ${a.name} ${c}`, () => appStore(a, c)])),
   ...(pains.freelancer?.queries ?? []).map((q: string) => [`freelancer "${q}"`, () => freelancer(q)]),
   ...(pains.khoros ?? []).map((k: { host: string; name: string; skipBoards?: string[] }) => [k.name, () => khoros(k.host, k.name, k.skipBoards)]),
-  ...(pains.vanilla ?? []).flatMap((v: { host: string; name: string; categories: Record<string, string> }) =>
-    Object.entries(v.categories).map(([id, c]) => [`${v.name} ${c}`, () => vanilla(v.host, v.name, id, c)]),
-  ),
-  ...Object.entries(pains.shopifyCategories ?? {}).map(([id, name]) => [`shopify forum ${name}`, () => forum(id, name as string)]),
-  ...(pains.apps ?? []).map((app: string) => [`shopify app ${app}`, () => reviews(app)]),
 ];
 const jobs = allJobs.filter(([label]) => !isMuted(label));
 const redditRequests = ((pains.reddit ?? []) as RedditRequest[])
