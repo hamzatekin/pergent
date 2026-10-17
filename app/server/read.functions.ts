@@ -1,15 +1,17 @@
 import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { setResponseHeader } from "@tanstack/react-start/server";
+import { getCookie, setResponseHeader } from "@tanstack/react-start/server";
 import { listRuns, listTasks, loadTask, readRun } from "#src/runner.ts";
 import { listMutes } from "#src/db.ts";
 import { hideMuted } from "#src/mute.ts";
 import { schedulerStatus } from "#src/scheduler.ts";
 import type { Story } from "#src/paper.ts";
 import { paperView, type PaperView } from "./paper-view.ts";
+import { newspaperView, type NewspaperView } from "./newspaper-view.ts";
 import { daysAgo, formatDate } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
 import { PASSWORD } from "./admin.ts";
+import { LAYOUT_COOKIE } from "../layout.ts";
 
 export type Note =
   | { kind: "paused"; lastReadDays: number | null }
@@ -29,7 +31,12 @@ export type PaperPage = {
   older?: string;
   newer?: string;
   notes: Note[];
+  /** The paper's title, for the page's <title>, whichever layout it is in. */
+  title?: string;
+  /** Whether the task has the printed newspaper layout, and whether this reader has it switched on. */
+  layouts: boolean;
   paper?: PaperView;
+  newspaper?: NewspaperView;
 };
 
 // The reading page: a task's run (by default its latest ok one), the tabs, the older and newer runs,
@@ -65,6 +72,8 @@ export const getPaperPage = createServerFn({ method: "GET" })
     // A task with a never-show list hides the stories that match it, and gives each story the link that
     // adds to it. The link names the story by where it sits in the stored paper.
     let paper: PaperView | undefined;
+    let newspaper: NewspaperView | undefined;
+    const printed = !!config.newspaper && getCookie(LAYOUT_COOKIE) === "newspaper";
     if (run) {
       const links = new Map<Story, string>();
       let shown = run.paper;
@@ -74,7 +83,13 @@ export const getPaperPage = createServerFn({ method: "GET" })
         shown = muted.paper;
         if (muted.hidden) notes.push({ kind: "hidden", count: muted.hidden, task });
       }
-      paper = paperView(shown, run.images, config.mute ? (story) => links.get(story) : undefined);
+      const muteHref = config.mute ? (story: Story) => links.get(story) : undefined;
+      if (printed) {
+        // The issue number counts the task's good papers up to this one.
+        const issue = finished.filter((r) => r.status === "ok" && r.startedAt <= current!.startedAt).length;
+        const meta = { config: config.newspaper!, startedAt: current!.startedAt, timezone: config.timezone, lang: config.lang ?? "en", issue, costUsd: current!.costUsd };
+        newspaper = newspaperView(shown, run.images, meta, muteHref);
+      } else paper = paperView(shown, run.images, muteHref);
     }
 
     return {
@@ -88,6 +103,9 @@ export const getPaperPage = createServerFn({ method: "GET" })
       newer: index > 0 ? finished[index - 1].runId : undefined,
       older: index >= 0 ? finished[index + 1]?.runId : undefined,
       notes,
+      title: run?.paper.title,
+      layouts: !!config.newspaper,
       paper,
+      newspaper,
     };
   });

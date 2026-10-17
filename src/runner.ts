@@ -46,6 +46,8 @@ export type TaskConfig = {
   mute?: boolean;
   /** true keeps the task's papers behind the admin login: no tab, page or API answer without the cookie (the `today` task, built from the reader's notes). */
   private?: boolean;
+  /** Gives the task's page a toggle to a printed newspaper layout (app/server/newspaper-view.ts): the masthead's name and motto. */
+  newspaper?: { name?: string; motto?: string };
   [extra: string]: unknown;
 };
 

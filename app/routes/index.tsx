@@ -5,6 +5,6 @@ import { getPaperPage } from "../server/read.functions.ts";
 // The front page: the first task's latest paper, the same page as /read.
 export const Route = createFileRoute("/")({
   loader: () => getPaperPage({ data: {} }),
-  head: ({ loaderData }) => ({ meta: [{ title: loaderData?.paper?.title ? `${loaderData.paper.title} · pergent` : "pergent" }] }),
+  head: ({ loaderData }) => ({ meta: [{ title: loaderData?.title ? `${loaderData.title} · pergent` : "pergent" }] }),
   component: () => <PaperPage data={Route.useLoaderData()} />,
 });
