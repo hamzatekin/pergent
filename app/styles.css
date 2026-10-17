@@ -1,4 +1,14 @@
 @import "tailwindcss" source(none);
+/* The printed newspaper layout's faces (components/Newspaper.tsx), served from /assets/ like the rest,
+   so the CSP needs no other host. Anton for the manşet, Oswald for the other headlines and kickers,
+   Source Serif for the text, Alfa Slab One for the masthead; all with the Latin Extended range that
+   holds ğ, ş and İ. A face is only downloaded on a page that uses it. */
+@import "@fontsource/anton/latin.css";
+@import "@fontsource/anton/latin-ext.css";
+@import "@fontsource/alfa-slab-one/latin.css";
+@import "@fontsource/alfa-slab-one/latin-ext.css";
+@import "@fontsource-variable/oswald/index.css";
+@import "@fontsource-variable/source-serif-4/index.css";
 /* Only the components are scanned for utilities, so the build does not depend on what else is in the tree. */
 @source "./";
 
@@ -19,6 +29,14 @@
   --color-good: #1f8a4c;
   --color-warn: #c27c0e;
   --font-sans: Inter, "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-press: Anton, "Oswald Variable", Impact, "Arial Narrow", sans-serif;
+  --font-cond: "Oswald Variable", "Arial Narrow", sans-serif;
+  --font-serif: "Source Serif 4 Variable", Georgia, serif;
+  --font-logo: "Alfa Slab One", Georgia, serif;
+  --color-press: #e30a17;
+  --color-newsprint: #fcfbf7;
+  --color-newsprint-dark: #f1ede4;
+  --color-rule: #d9d4c7;
   --font-mono: ui-monospace, "SF Mono", "Geist Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   /* A stronger ease-out than Tailwind's: it moves at once, which is what makes a short transition
      feel like an answer to the hand (.claude/skills/emil-design-eng). Every ease-out utility uses it. */
@@ -375,6 +393,316 @@
 /* Section lead without stories, e.g. a TL;DR list. */
 .lead {
   @apply mb-5;
+}
+
+/* The layout toggle in the top bar, for a task with the newspaper layout: two icons, the chosen one raised. */
+.layouts {
+  @apply mr-1.5 flex items-center gap-0.5 rounded-md p-0.5 shadow-border;
+}
+.layouts button {
+  @apply grid size-6 cursor-pointer place-items-center rounded-[5px] text-muted hover:text-ink;
+  transition-property: color, background-color, box-shadow, scale;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.layouts button:active {
+  scale: 0.96;
+}
+.layouts button[aria-pressed="true"] {
+  @apply bg-surface text-ink shadow-border;
+}
+.layouts .icon {
+  @apply size-4;
+}
+
+/* The printed newspaper (components/Newspaper.tsx), after Posta, Milliyet and Hürriyet: newsprint
+   sheets, a red slab masthead, the manşet in Anton capitals, the other headlines in Oswald, the text
+   in Source Serif, red kicker bars, hairline column rules. A sheet runs edge to edge on a phone. The
+   page's lang is tr, so the capitals are Turkish (i → İ). */
+.np {
+  @apply -mx-4 md:mx-0;
+  font-family: var(--font-serif);
+  color: #141414;
+}
+.np-sheet {
+  @apply mb-3 bg-newsprint px-4 pb-5 pt-4 shadow-border md:mb-8 md:rounded-[3px] md:px-8 md:pb-8 md:pt-6;
+}
+.np [id] {
+  scroll-margin-top: 6rem;
+}
+.np-kicker {
+  @apply mb-1 block text-[12.5px] font-semibold uppercase leading-tight tracking-[0.03em] text-press;
+  font-family: var(--font-cond);
+}
+.np-kicker-bar {
+  @apply mb-2 inline-block bg-press px-2 py-0.5 text-[14px] text-white md:text-[17px];
+}
+.np-pageref {
+  @apply ml-1 whitespace-nowrap text-[12.5px] font-semibold text-press;
+  font-family: var(--font-cond);
+}
+.np .story-image {
+  @apply aspect-[3/2] outline-black/15;
+}
+.np .story-image.tall {
+  @apply aspect-auto max-h-[26rem] bg-newsprint-dark object-contain;
+}
+
+/* Sürmanşet: the band above the masthead, teasers pointing inside, a photo beside the words. */
+.np-top {
+  @apply grid border-b border-rule md:grid-cols-[repeat(var(--n),minmax(0,1fr))];
+}
+.np-top[data-count="1"] {
+  --n: 1;
+}
+.np-top[data-count="2"] {
+  --n: 2;
+}
+.np-top[data-count="3"] {
+  --n: 3;
+}
+.np-top-item {
+  @apply grid gap-3 border-t border-rule py-3 first:border-t-0 first:pt-0 md:border-l md:border-t-0 md:px-4 md:pb-4 md:pt-0 md:first:border-l-0 md:first:pl-0 md:last:pr-0;
+}
+.np-top-item:has(> .story-image) {
+  @apply grid-cols-[6.5rem_minmax(0,1fr)] md:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)];
+}
+.np-top-item .story-image,
+.np-top-item .story-image.tall {
+  @apply aspect-[4/3] max-h-none bg-transparent object-cover;
+}
+.np-top-text {
+  @apply block min-w-0;
+}
+.np-top-head {
+  @apply block text-[22px] uppercase leading-[1.08] text-ink text-balance md:text-[25px];
+  font-family: var(--font-press);
+}
+.np-top-item:hover .np-top-head {
+  @apply text-press;
+}
+.np-top-spot {
+  @apply mt-1 line-clamp-3 text-[13.5px] leading-snug text-soft;
+}
+
+/* The masthead: the paper's name in red slab capitals, its motto, and the date line between rules. */
+.np-masthead {
+  @apply pt-3 text-center md:pt-4;
+}
+.np-logo {
+  @apply uppercase leading-[0.9] tracking-[-0.01em] text-press;
+  font-family: var(--font-logo);
+  font-size: clamp(3.5rem, 17vw, 8.5rem);
+}
+.np-motto {
+  @apply mt-1.5 text-[11.5px] font-medium uppercase tracking-[0.14em] text-muted md:text-[12.5px];
+  font-family: var(--font-cond);
+}
+.np-dateline {
+  @apply mt-3 flex flex-wrap justify-center gap-x-5 gap-y-0.5 border-b border-t-[3px] border-ink py-1.5 text-[12px] font-medium uppercase tracking-[0.04em] md:justify-between md:text-[13px];
+  font-family: var(--font-cond);
+}
+
+/* Manşet: the day's main story under the masthead, its headline as big as the page allows. */
+.np-manset {
+  @apply pt-4 md:pt-5;
+}
+.np-manset-head {
+  @apply mb-2 mt-3 uppercase leading-[1.05] text-ink text-balance;
+  font-family: var(--font-press);
+  font-size: clamp(2.9rem, 12vw, 7.75rem);
+}
+.np-manset-head[data-long] {
+  font-size: clamp(2.2rem, 7vw, 4.75rem);
+}
+.np-manset-spot {
+  @apply mb-3 text-[19px] font-bold leading-[1.3] text-pretty md:text-[23px];
+}
+.np-manset .np-main:has(> .story-image) {
+  @apply md:grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] md:gap-6;
+}
+.np-manset .np-main > .story-image {
+  @apply mb-3 md:mb-0;
+}
+.np-manset .np-body {
+  @apply text-[16.5px];
+}
+
+/* Stories in ruled columns. Each one draws its rule on the left and top and is pulled back a pixel,
+   so the rules at the container's edge are clipped and only those between stories show. */
+.np-columns {
+  @apply mt-5 grid overflow-hidden border-t-2 border-ink md:grid-cols-2 lg:grid-cols-3;
+  grid-auto-flow: dense;
+}
+.np-columns > .np-story {
+  @apply -ml-px -mt-px border-l border-t border-rule py-4 md:px-5;
+}
+.np-story[data-size="wide"],
+.np-story[data-fill-md="1"] {
+  @apply md:col-span-2;
+}
+.np-story[data-fill-lg="1"] {
+  @apply lg:col-span-2;
+}
+.np-story[data-fill-lg="2"] {
+  @apply lg:col-span-3;
+}
+.np-story[data-fill-lg] .np-main:has(> .story-image) {
+  @apply lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:gap-5;
+}
+.np-story[data-fill-lg] .np-main:not(:has(> .story-image)) .np-body {
+  @apply lg:columns-2 lg:gap-6;
+}
+.np-head {
+  @apply text-[25px] font-semibold leading-[1.08] tracking-[-0.005em] text-ink text-balance;
+  font-family: var(--font-cond);
+}
+.np-story[data-size="wide"] .np-head,
+.np-story[data-size="lead"] .np-head {
+  @apply font-normal uppercase leading-[1.04];
+  font-family: var(--font-press);
+  font-size: clamp(2.1rem, 6.5vw, 3.6rem);
+}
+.np-story .np-main > .story-image {
+  @apply my-2.5;
+}
+.np-story[data-size="wide"] .np-main:has(> .story-image) {
+  @apply md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] md:gap-5;
+}
+.np-story[data-size="lead"] .np-main:has(> .story-image) {
+  @apply md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] md:gap-6;
+}
+.np-story[data-size="lead"] {
+  @apply pb-2;
+}
+/* A lead without a photo sets its text in columns, as a page would, not in one long line. */
+.np-story[data-size="lead"] .np-main:not(:has(> .story-image)) .np-body,
+.np-manset .np-main:not(:has(> .story-image)) .np-body {
+  @apply md:columns-2 md:gap-8 lg:columns-3;
+  column-rule: 1px solid var(--color-rule);
+}
+.np-spot {
+  @apply my-2 text-[16px] font-bold leading-[1.35] text-pretty;
+}
+.np-story[data-size="lead"] .np-spot {
+  @apply text-[18px] md:text-[20px];
+}
+.np-body {
+  @apply text-[15.5px] leading-[1.55] text-[#222];
+  hyphens: auto;
+}
+.np-body p {
+  @apply mb-2 text-pretty;
+}
+.np-body :is(ul, ol) {
+  @apply mb-2 list-disc pl-5;
+}
+.np-body a {
+  @apply underline decoration-black/25 underline-offset-[3px] hover:decoration-black/60;
+}
+.np-body a.src {
+  @apply font-medium text-press no-underline;
+  font-family: var(--font-cond);
+}
+.np-context {
+  @apply my-3 border-t-2 border-press bg-newsprint-dark px-3 py-2 text-[14px] leading-[1.5];
+}
+.np-context h4 {
+  @apply mb-0.5 text-[12.5px] font-semibold uppercase tracking-[0.03em] text-press;
+  font-family: var(--font-cond);
+}
+.np-context p {
+  @apply mb-1 last:mb-0;
+}
+.np-foot {
+  @apply mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] uppercase tracking-[0.03em] text-muted;
+  font-family: var(--font-cond);
+}
+.np-source {
+  @apply hover:text-press;
+}
+.np-score {
+  @apply cursor-help font-semibold tabular-nums;
+}
+.np-score[data-level="high"] {
+  @apply text-good;
+}
+.np-score[data-level="mid"] {
+  @apply text-warn;
+}
+.np-score[data-level="low"] {
+  @apply text-failed;
+}
+.np-mute {
+  @apply ml-auto normal-case tracking-normal text-faint hover:text-failed;
+}
+
+/* The foot of page one: red boxes pointing to the leads of the inner pages. */
+.np-teasers {
+  @apply mt-5 grid gap-2 sm:grid-cols-2 lg:flex;
+}
+.np-teaser {
+  @apply block flex-1 bg-press px-3 py-2.5 text-white transition-[background-color] duration-150 ease-out hover:bg-[#b80812];
+}
+.np-teaser-head {
+  @apply text-[19px] uppercase leading-[1.08] text-balance;
+  font-family: var(--font-press);
+}
+.np-teaser .np-pageref {
+  @apply text-white/85;
+}
+
+/* An inner page: the header strip with the section in a red block, the date and paper, the number. */
+.np-pagehead {
+  @apply mb-4 flex items-stretch border-b-[3px] border-ink;
+}
+.np-pagehead-name {
+  @apply bg-press px-3 py-1 text-[17px] font-bold uppercase leading-tight tracking-[0.02em] text-white md:text-[21px];
+  font-family: var(--font-cond);
+}
+.np-pagehead-meta {
+  @apply hidden min-w-0 flex-1 items-center truncate px-3 text-[12px] font-medium uppercase tracking-[0.04em] text-muted sm:flex;
+  font-family: var(--font-cond);
+}
+.np-pagenum {
+  @apply ml-auto pl-3 text-[28px] leading-none;
+  font-family: var(--font-press);
+}
+
+/* Kısaca: the page's briefs in a tinted box under a red rule, flowing in columns on a wide page. */
+.np-briefs {
+  @apply mt-5 border-t-[3px] border-press bg-newsprint-dark px-4 pb-2 pt-2.5 md:gap-6;
+  column-rule: 1px solid var(--color-rule);
+}
+.np-briefs:not([data-count="1"]) {
+  @apply md:columns-2;
+}
+.np-briefs[data-count="3"] {
+  @apply lg:columns-3;
+}
+.np-briefs-head {
+  @apply mb-1 text-[16px] font-bold uppercase tracking-[0.03em] text-press;
+  font-family: var(--font-cond);
+  column-span: all;
+}
+.np-brief {
+  @apply border-b border-dotted border-rule py-2 last:border-0;
+  break-inside: avoid;
+}
+.np-brief h4 {
+  @apply text-[16.5px] font-semibold leading-tight;
+  font-family: var(--font-cond);
+}
+.np-brief h4::before {
+  content: "■ ";
+  @apply text-press;
+}
+.np-brief .np-body {
+  @apply mt-0.5 text-[14px] leading-[1.45];
+}
+.np-brief .np-body p {
+  @apply mb-0;
 }
 
 /* Press feedback on everything you tap: a short scale to 0.96 that springs back, so the page answers the

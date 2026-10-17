@@ -24,6 +24,16 @@ Gazeteyi yapılandırılmış çıktı olarak ver: bir `title`, sonra sırayla `
 
 `importance` haberin sayfadaki büyüklüğü: bölümün en büyük bir veya iki haberi için 3, normal haber için 2, kısa haber için 1. Kısa haber tek cümlelik `body` ile verilir: bir atama, bir rakam, bir maç sonucu, bir küçük gelişme. Bir haber paragraf etmiyor ama bilinmeye değerse atlamak yerine kısa haber yap.
 
+Gazete ayrıca basılı bir gazete gibi de okunur (Posta, Milliyet, Hürriyet gibi) ve birinci sayfayı sen dizersin. importance 2 ve 3 olan her haberde şu üç alanı da yaz, kısa haberlerde (importance 1) yazma:
+- `display`: gazete başlığı, birinci sayfada basılacağı gibi kısa ve güçlü, 2-6 kelime ("Faizde sürpriz yok", "Asgari ücrete ara zam yok"). Haberin özünü söyler, olguya dayanır; tıklama tuzağı, soru ya da ünlem yığını değil. `headline` ise sade, tam cümle olarak kalsın.
+- `kicker`: üst başlık, başlığın üstündeki 2-5 kelime: konunun, kurumun ya da kimin ne yaptığının adı ("Merkez Bankası", "Erdoğan'dan erken seçim sinyali").
+- `spot`: başlığın altındaki tek cümle: en önemli olguyu ya da rakamı ekler, `body`'nin ilk cümlesini tekrar etmez.
+
+`place` ile birinci sayfayı kur, birinci sayfaya gitmeyen haberlerde alanı yazma:
+- `lead`: manşet, logonun altındaki en büyük başlık. Günün en önemli haberi, tam bir tane; `display`'i en fazla 5 kelime.
+- `top`: sürmanşet, logonun üstündeki bant. Manşetten sonra okuyucunun en çok merak edeceği 2 veya 3 haber, mümkünse farklı bölümlerden (bir spor ya da magazin haberi olabilir).
+- `front`: birinci sayfanın geri kalanı, 4-6 haber, farklı bölümlerden.
+
 `title`: "📰 Türkiye Gazetesi, <tarih>" (örnek: "📰 Türkiye Gazetesi, 19 Eylül 2026").
 
 Bölüm başlıkları, sırayla: 🏛️ Gündem ve Siyaset, 💸 Ekonomi, 🏙️ Toplum ve Yaşam, 🌍 Dünya (Türkiye'yi ilgilendirdiği kadar), 🎭 Kültür, Sanat ve Magazin, ⚽ Spor. Boş kalan bölümü yazma. Her bölümde 2-5 normal haber (importance 2 veya 3), gerekirse birkaç kısa haber (importance 1). Gazetenin tamamında en fazla 25 normal haber, 15 kısa haber ve 6 "Ne olmuştu?" bloğu olsun: gazete tek seferde yazılır ve bundan uzunu kesilir. Seçerken önemliyi tut, gerisini kısa habere çevir ya da bırak. `lead` alanını kullanma.

@@ -4,8 +4,24 @@ import { Marked, type Token, type Tokens } from "marked";
 // with a headline, a markdown body, an optional background aside, a source link and an importance
 // that sizes it on the page (3 leads a section, 2 is a card, 1 is a one-line brief). New runs return
 // it as structured output against PAPER_SCHEMA; runs from before that are parsed out of their markdown
-// with fromMarkdown, so both reach the site (app/server/paper-view.ts) the same way.
-export type Story = { headline: string; body: string; context?: string; source?: string; importance?: number; rating?: Rating };
+// with fromMarkdown, so both reach the site (app/server/paper-view.ts) the same way. A task with a
+// newspaper layout (news) also has the model lay out a printed front page: a kicker above the headline,
+// a short display headline, a spot under it, and the story's place on page one (app/server/newspaper-view.ts).
+export type Story = {
+  headline: string;
+  body: string;
+  context?: string;
+  source?: string;
+  importance?: number;
+  kicker?: string;
+  display?: string;
+  spot?: string;
+  place?: Place;
+  rating?: Rating;
+};
+// Where a story sits on a printed front page: the lead headline under the masthead (manşet), the band
+// above the masthead (sürmanşet), or elsewhere on page one. Left out, it is only on its section's page.
+export type Place = "lead" | "top" | "front";
 // Added after the run by src/rate.ts, not by the model: 0-10 overall and per part (sourcing,
 // neutrality, substance). Not in PAPER_SCHEMA.
 export type Rating = { score: number; parts: Record<string, number> };
@@ -47,6 +63,14 @@ export const PAPER_SCHEMA = {
                   type: "integer",
                   enum: [1, 2, 3],
                   description: "How big the story is on the page: 3 for the one or two stories that lead the section, 2 for a normal story, 1 for a brief, a one-line item worth knowing but not a paragraph. Left out, it is 2.",
+                },
+                kicker: { type: "string", description: "A few words set above the headline in a printed paper, naming the story's subject or angle. Only when the prompt asks for one." },
+                display: { type: "string", description: "The headline as a printed paper would set it: short and strong, a few words. Only when the prompt asks for one." },
+                spot: { type: "string", description: "The line under a printed headline that adds the key fact, one sentence, plain text, not a repeat of the body. Only when the prompt asks for one." },
+                place: {
+                  type: "string",
+                  enum: ["lead", "top", "front"],
+                  description: "Where the story sits on a printed front page: lead for the one main headline under the masthead, top for the one to three stories in the band above the masthead, front for the few others on page one. Left out for every other story. Only when the prompt asks for it.",
                 },
               },
             },
