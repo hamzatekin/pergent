@@ -9,6 +9,10 @@ import type { Paper } from "./paper.ts";
 // output of a run, `output` its markdown rendering (or, for runs from before structured output, the
 // markdown the model wrote, with no paper).
 export type RunRow = { meta: RunMeta; output: string; images: Record<string, string>; paper: Paper | null };
+// A newsletter issue as published (scripts/fetch-newsletters.ts writes them to a run's issues.json),
+// for reading it whole on the Newsletters page. `date` is ISO, `html` cleaned of the email's styling.
+export type NewIssue = { feed: string; title: string; url: string; date: string; html: string };
+export type IssueRow = { id: number; feed: string; title: string; url: string; date: string };
 
 let db: DatabaseSync | undefined;
 
@@ -38,6 +42,17 @@ export function openDb(runsDir: string): DatabaseSync {
       created_at TEXT NOT NULL,
       PRIMARY KEY (task, phrase)
     );
+    CREATE TABLE IF NOT EXISTS issues (
+      id     INTEGER PRIMARY KEY,
+      url    TEXT NOT NULL UNIQUE,
+      feed   TEXT NOT NULL,
+      title  TEXT NOT NULL,
+      date   TEXT NOT NULL,
+      html   TEXT NOT NULL,
+      task   TEXT NOT NULL,
+      run_id TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS issues_by_feed ON issues (feed, date);
   `);
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
@@ -128,6 +143,28 @@ export function addMute(task: string, phrase: string) {
 
 export function removeMute(task: string, phrase: string) {
   use().prepare("DELETE FROM mutes WHERE task = ? AND phrase = ?").run(task, phrase);
+}
+
+// An issue is kept once, by URL: a run that fetches one again (it was left for the next digest) changes nothing.
+export function saveIssues(task: string, runId: string, issues: NewIssue[]) {
+  const insert = use().prepare("INSERT OR IGNORE INTO issues (url, feed, title, date, html, task, run_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+  for (const i of issues) insert.run(i.url, i.feed, i.title, i.date, i.html, task, runId);
+}
+
+// The newest issues, of one newsletter or all of them, without their text.
+export function listIssues(feed?: string, limit = 100): IssueRow[] {
+  const where = feed === undefined ? "" : "WHERE feed = ?";
+  const rows = use().prepare(`SELECT id, feed, title, url, date FROM issues ${where} ORDER BY date DESC, id DESC LIMIT ?`).all(...(feed === undefined ? [] : [feed]), limit);
+  return rows as IssueRow[];
+}
+
+export function getIssue(id: number): (IssueRow & { html: string }) | null {
+  return (use().prepare("SELECT id, feed, title, url, date, html FROM issues WHERE id = ?").get(id) as (IssueRow & { html: string }) | undefined) ?? null;
+}
+
+// Each newsletter with its number of issues and its newest one's date.
+export function issueFeeds(): { feed: string; count: number; last: string }[] {
+  return use().prepare("SELECT feed, COUNT(*) AS count, MAX(date) AS last FROM issues GROUP BY feed").all() as { feed: string; count: number; last: string }[];
 }
 
 // Runs made before the database existed (or restored from a volume) are picked up from their

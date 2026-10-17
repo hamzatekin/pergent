@@ -39,7 +39,7 @@ function Login() {
         <img src="/icon.svg" alt="" className="login-mark" />
         <h1 className="admin-title">Log in to pergent</h1>
         {failed && <p className="note failed">Wrong password.</p>}
-        <input type="hidden" name="next" value={next && /^\/(admin|read)(\/|$)/.test(next) ? next : "/admin"} />
+        <input type="hidden" name="next" value={next && /^\/(admin|read|newsletters)(\/|$)/.test(next) ? next : "/admin"} />
         <input type="password" name="password" autoComplete="current-password" placeholder="Password" autoFocus required />
         <button type="submit" className="btn primary">
           Log in

@@ -47,9 +47,9 @@ export function guardPost(request: Request, { login = false } = {}): Response | 
   return null;
 }
 
-// Where a login or a never-show change returns to: only a path on this site, the dashboard's or a
-// paper's (a private task's page sends you to the login).
-export const adminPath = (next: string | undefined) => (next && /^\/(admin|read)(\/|$)/.test(next) ? next : "/admin");
+// Where a login or a never-show change returns to: only a path on this site, the dashboard's, a
+// paper's or the newsletters' (a private task's page and the newsletters send you to the login).
+export const adminPath = (next: string | undefined) => (next && /^\/(admin|read|newsletters)(\/|$)/.test(next) ? next : "/admin");
 export const backTo = (back: string, task: string) => (/^\/(read|admin)\//.test(back) ? back : `/read/${task}`);
 
 // Whether this visitor may see a task's runs: a private task's only with the cookie. For the JSON API,
