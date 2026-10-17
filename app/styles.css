@@ -12,10 +12,12 @@
 /* Only the components are scanned for utilities, so the build does not depend on what else is in the tree. */
 @source "./";
 
-/* Light and quiet, in the Linear and Vercel manner: white content, a faintly grey sidebar, near-black
-   ink, neutral greys, one indigo accent. One sans for everything (the system's; no web fonts), mono
+/* Light and quiet, in the Linear and Vercel manner: a soft grey page (white was hard on the eyes) with
+   white cards on it, a slightly deeper grey sidebar, near-black ink, neutral greys, one indigo accent. One sans for everything (the system's; no web fonts), mono
    for logs. Hierarchy comes from weight and grey, not size. */
 @theme {
+  --color-page: #f2f2f0;
+  --color-sidebar: #eaeae7;
   --color-bg: #fafafa;
   --color-surface: #ffffff;
   --color-inset: #f5f5f5;
@@ -53,7 +55,7 @@
     color-scheme: light;
   }
   body {
-    @apply bg-surface font-sans text-ink antialiased;
+    @apply bg-page font-sans text-ink antialiased;
     font-size: 15px;
     line-height: 1.6;
     font-feature-settings: "cv11", "ss01";
@@ -69,7 +71,7 @@
   @apply min-h-dvh md:flex;
 }
 .sidebar {
-  @apply sticky top-0 hidden h-dvh w-[232px] shrink-0 flex-col border-r border-line bg-bg px-3 pb-3 md:flex;
+  @apply sticky top-0 hidden h-dvh w-[232px] shrink-0 flex-col border-r border-line bg-sidebar px-3 pb-3 md:flex;
   padding-top: max(0.75rem, env(safe-area-inset-top));
 }
 .brand {
@@ -116,7 +118,7 @@
    at the top; on a phone it slides away while you scroll down (data-hidden) and comes back on any
    scroll up. Translucent over the page, with a hairline under it. */
 .topbar {
-  @apply sticky top-0 z-10 border-b border-line bg-surface/85 px-4 backdrop-blur-md transition-[translate] duration-200 ease-out motion-reduce:transition-none md:px-8;
+  @apply sticky top-0 z-10 border-b border-line bg-page/85 px-4 backdrop-blur-md transition-[translate] duration-200 ease-out motion-reduce:transition-none md:px-8;
   padding-top: env(safe-area-inset-top);
 }
 .topbar[data-hidden="true"] {
@@ -395,26 +397,6 @@
   @apply mb-5;
 }
 
-/* The layout toggle in the top bar, for a task with the newspaper layout: two icons, the chosen one raised. */
-.layouts {
-  @apply mr-1.5 flex items-center gap-0.5 rounded-md p-0.5 shadow-border;
-}
-.layouts button {
-  @apply grid size-6 cursor-pointer place-items-center rounded-[5px] text-muted hover:text-ink;
-  transition-property: color, background-color, box-shadow, scale;
-  transition-duration: 150ms;
-  transition-timing-function: var(--ease-out);
-  -webkit-tap-highlight-color: transparent;
-}
-.layouts button:active {
-  scale: 0.96;
-}
-.layouts button[aria-pressed="true"] {
-  @apply bg-surface text-ink shadow-border;
-}
-.layouts .icon {
-  @apply size-4;
-}
 
 /* The printed newspaper (components/Newspaper.tsx), after Posta, Milliyet and Hürriyet: newsprint
    sheets, a red slab masthead, the manşet in Anton capitals, the other headlines in Oswald, the text
@@ -769,7 +751,7 @@
   @apply mb-2.5 mt-8 text-[13.5px] font-semibold text-ink;
 }
 .login-page {
-  @apply grid min-h-dvh place-items-center bg-bg px-4;
+  @apply grid min-h-dvh place-items-center bg-page px-4;
 }
 .login {
   @apply flex w-full max-w-[340px] flex-col gap-3 rounded-2xl bg-surface p-6 shadow-border;
@@ -804,7 +786,7 @@
   @apply min-w-0 flex-1;
 }
 .mutes {
-  @apply mb-4 overflow-hidden rounded-xl shadow-border;
+  @apply mb-4 overflow-hidden rounded-xl bg-surface shadow-border;
 }
 .mutes li {
   @apply flex items-center justify-between gap-3 border-b border-line px-4 py-2 last:border-0;
@@ -865,7 +847,7 @@
   @apply animate-pulse bg-accent;
 }
 .table-wrap {
-  @apply overflow-x-auto rounded-xl shadow-border;
+  @apply overflow-x-auto rounded-xl bg-surface shadow-border;
 }
 .runs {
   @apply w-full border-collapse whitespace-nowrap;

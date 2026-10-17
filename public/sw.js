@@ -1,6 +1,6 @@
 // App shell cache: precache the shell, serve Vite's hashed assets and the icons cache-first, and leave
 // everything else to the network: pages, /api, /admin and the app's /_serverFn data calls.
-const CACHE = "pergent-v4";
+const CACHE = "pergent-v5";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 const STATIC = /^\/(assets\/|icon|apple-touch-icon|manifest\.webmanifest$)/;
 
