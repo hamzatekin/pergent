@@ -737,6 +737,79 @@
   @apply cursor-pointer text-[13px] text-muted hover:text-ink;
 }
 
+/* The Newsletters page (components/Newsletters.tsx): a row of chips to pick a newsletter, the issues as
+   one list, and an issue as published in a single reading column. */
+.feed-chips {
+  @apply mb-4 flex flex-wrap gap-2;
+}
+.chip {
+  @apply inline-flex h-7 items-center gap-1.5 rounded-full bg-surface px-3 text-[13px] text-soft shadow-border transition-[scale,box-shadow] duration-150 ease-out hover:text-ink hover:shadow-border-hover active:scale-[0.96];
+}
+.chip[data-active="true"] {
+  @apply bg-ink text-white hover:text-white;
+}
+.chip-count {
+  @apply tabular-nums text-faint;
+}
+.chip[data-active="true"] .chip-count {
+  @apply text-white/60;
+}
+.feed-note {
+  @apply mb-3;
+}
+.issues {
+  @apply overflow-hidden rounded-xl bg-surface shadow-border;
+}
+.issues li {
+  @apply border-b border-line last:border-0;
+}
+.issue-row {
+  @apply flex flex-col gap-0.5 px-4 py-2.5 hover:bg-bg md:flex-row md:items-baseline md:justify-between md:gap-4;
+}
+.issue-title {
+  @apply min-w-0 text-[14.5px] font-medium text-ink text-pretty;
+}
+.issue-meta {
+  @apply flex shrink-0 items-baseline gap-2 text-[12.5px] text-muted;
+}
+.issue-feed::after {
+  content: "·";
+  @apply ml-2 text-faint;
+}
+.issue {
+  @apply mx-auto max-w-[680px];
+}
+.issue-byline {
+  @apply mb-6 mt-1 text-[13px] text-muted;
+}
+.issue-byline a {
+  @apply text-ink underline decoration-black/20 underline-offset-[3px] hover:decoration-black/60;
+}
+.issue-body {
+  @apply text-[15px] leading-[1.65];
+}
+.issue-body :is(h1, h2, h3, h4, h5, h6) {
+  @apply mb-2 mt-6 text-[17px] font-semibold leading-[1.35] tracking-[-0.01em] text-ink text-balance;
+}
+.issue-body h4 {
+  @apply text-[12px] font-semibold uppercase tracking-[0.04em] text-muted;
+}
+.issue-body img {
+  @apply my-3 h-auto max-w-full rounded-lg outline-1 -outline-offset-1 outline-black/10;
+}
+.issue-body a img {
+  @apply inline-block;
+}
+.issue-body hr {
+  @apply my-6 border-line;
+}
+.issue-body figure {
+  @apply my-3;
+}
+.issue-body figcaption {
+  @apply text-[12.5px] text-muted;
+}
+
 /* The dashboard under /admin. */
 .admin {
   @apply text-[14px];

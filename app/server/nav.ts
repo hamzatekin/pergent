@@ -6,6 +6,8 @@ export type Nav = {
   tabs: { name: string; label: string; icon?: string }[];
   scheduler: "off" | "on" | "paused";
   admin: boolean;
+  /** The Newsletters page, the issues as published: there for a visitor with the admin cookie. */
+  newsletters: boolean;
 };
 
 // What the sidebar shows on every page: a link per task in tab order, the scheduler's state at the
@@ -26,6 +28,7 @@ export async function nav(): Promise<Nav & { configs: Map<string, TaskConfig> }>
     }),
     scheduler: schedulerStatus().scheduler,
     admin: !!PASSWORD,
+    newsletters: admin,
     configs,
   };
 }

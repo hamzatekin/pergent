@@ -18,3 +18,12 @@ export function ago(iso: string) {
   if (mins < 48 * 60) return `${Math.round(mins / 60)} h ago`;
   return `${Math.round(mins / 1440)} days ago`;
 }
+
+export function formatDay(iso: string, timeZone?: string) {
+  const opts: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" };
+  try {
+    return new Date(iso).toLocaleDateString("en-GB", { ...opts, timeZone });
+  } catch {
+    return new Date(iso).toLocaleDateString("en-GB", opts);
+  }
+}

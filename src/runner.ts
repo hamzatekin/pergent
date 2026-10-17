@@ -3,7 +3,7 @@ import { createWriteStream } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { getRun, listMutes, openDb, saveRun, listRuns as listRunRows } from "./db.ts";
+import { getRun, listMutes, openDb, saveIssues, saveRun, listRuns as listRunRows } from "./db.ts";
 import { PAPER_SCHEMA, fromMarkdown, parsePaper, toMarkdown, type Paper } from "./paper.ts";
 import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
@@ -197,6 +197,9 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
 
   if (config.before) {
     const ok = await oneAtATime(() => runBefore(config.before!, dir, join(TASKS_DIR, name)));
+    // Newsletter issues as published (scripts/fetch-newsletters.ts) go to the Newsletters page whatever
+    // becomes of the paper.
+    await readFile(join(dir, "issues.json"), "utf8").then((t) => saveIssues(name, runId, JSON.parse(t))).catch(() => {});
     if (!ok) {
       const meta: RunMeta = { ...running, finishedAt: new Date().toISOString(), status: "failed" };
       await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));

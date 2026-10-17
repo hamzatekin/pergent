@@ -18,9 +18,11 @@ import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as ApiReadRouteImport } from './routes/api/read'
 import { Route as ApiStatusRouteImport } from './routes/api/status'
 import { Route as ApiTasksRouteImport } from './routes/api/tasks'
+import { Route as NewslettersChar123FeedChar125RouteImport } from './routes/newsletters.{-$feed}'
 import { Route as AdminAuthedIndexRouteImport } from './routes/admin/_authed/index'
 import { Route as AdminMutesRemoveRouteImport } from './routes/admin/mutes.remove'
 import { Route as AdminRunTaskRouteImport } from './routes/admin/run.$task'
+import { Route as NewslettersFeedIdRouteImport } from './routes/newsletters.$feed.$id'
 import { Route as ReadChar123TaskChar125Char123RunIdChar125RouteImport } from './routes/read.{-$task}.{-$runId}'
 import { Route as AdminAuthedMutesTaskRouteImport } from './routes/admin/_authed/mutes.$task'
 import { Route as ApiTasksNameRunsRouteImport } from './routes/api/tasks.$name.runs'
@@ -74,6 +76,12 @@ const ApiTasksRoute = ApiTasksRouteImport.update({
   path: '/api/tasks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NewslettersChar123FeedChar125Route =
+  NewslettersChar123FeedChar125RouteImport.update({
+    id: '/newsletters/{-$feed}',
+    path: '/newsletters/{-$feed}',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminAuthedIndexRoute = AdminAuthedIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -87,6 +95,11 @@ const AdminMutesRemoveRoute = AdminMutesRemoveRouteImport.update({
 const AdminRunTaskRoute = AdminRunTaskRouteImport.update({
   id: '/admin/run/$task',
   path: '/admin/run/$task',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewslettersFeedIdRoute = NewslettersFeedIdRouteImport.update({
+  id: '/newsletters/$feed/$id',
+  path: '/newsletters/$feed/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReadChar123TaskChar125Char123RunIdChar125Route =
@@ -139,8 +152,10 @@ export interface FileRoutesByFullPath {
   '/api/read': typeof ApiReadRoute
   '/api/status': typeof ApiStatusRoute
   '/api/tasks': typeof ApiTasksRouteWithChildren
+  '/newsletters/{-$feed}': typeof NewslettersChar123FeedChar125Route
   '/admin/mutes/remove': typeof AdminMutesRemoveRoute
   '/admin/run/$task': typeof AdminRunTaskRoute
+  '/newsletters/$feed/$id': typeof NewslettersFeedIdRoute
   '/read/{-$task}/{-$runId}': typeof ReadChar123TaskChar125Char123RunIdChar125Route
   '/admin/': typeof AdminAuthedIndexRoute
   '/admin/mutes/$task': typeof AdminAuthedMutesTaskRoute
@@ -159,8 +174,10 @@ export interface FileRoutesByTo {
   '/api/read': typeof ApiReadRoute
   '/api/status': typeof ApiStatusRoute
   '/api/tasks': typeof ApiTasksRouteWithChildren
+  '/newsletters/{-$feed}': typeof NewslettersChar123FeedChar125Route
   '/admin/mutes/remove': typeof AdminMutesRemoveRoute
   '/admin/run/$task': typeof AdminRunTaskRoute
+  '/newsletters/$feed/$id': typeof NewslettersFeedIdRoute
   '/read/{-$task}/{-$runId}': typeof ReadChar123TaskChar125Char123RunIdChar125Route
   '/admin': typeof AdminAuthedIndexRoute
   '/admin/mutes/$task': typeof AdminAuthedMutesTaskRoute
@@ -181,8 +198,10 @@ export interface FileRoutesById {
   '/api/read': typeof ApiReadRoute
   '/api/status': typeof ApiStatusRoute
   '/api/tasks': typeof ApiTasksRouteWithChildren
+  '/newsletters/{-$feed}': typeof NewslettersChar123FeedChar125Route
   '/admin/mutes/remove': typeof AdminMutesRemoveRoute
   '/admin/run/$task': typeof AdminRunTaskRoute
+  '/newsletters/$feed/$id': typeof NewslettersFeedIdRoute
   '/read/{-$task}/{-$runId}': typeof ReadChar123TaskChar125Char123RunIdChar125Route
   '/admin/_authed/': typeof AdminAuthedIndexRoute
   '/admin/_authed/mutes/$task': typeof AdminAuthedMutesTaskRoute
@@ -204,8 +223,10 @@ export interface FileRouteTypes {
     | '/api/read'
     | '/api/status'
     | '/api/tasks'
+    | '/newsletters/{-$feed}'
     | '/admin/mutes/remove'
     | '/admin/run/$task'
+    | '/newsletters/$feed/$id'
     | '/read/{-$task}/{-$runId}'
     | '/admin/'
     | '/admin/mutes/$task'
@@ -224,8 +245,10 @@ export interface FileRouteTypes {
     | '/api/read'
     | '/api/status'
     | '/api/tasks'
+    | '/newsletters/{-$feed}'
     | '/admin/mutes/remove'
     | '/admin/run/$task'
+    | '/newsletters/$feed/$id'
     | '/read/{-$task}/{-$runId}'
     | '/admin'
     | '/admin/mutes/$task'
@@ -245,8 +268,10 @@ export interface FileRouteTypes {
     | '/api/read'
     | '/api/status'
     | '/api/tasks'
+    | '/newsletters/{-$feed}'
     | '/admin/mutes/remove'
     | '/admin/run/$task'
+    | '/newsletters/$feed/$id'
     | '/read/{-$task}/{-$runId}'
     | '/admin/_authed/'
     | '/admin/_authed/mutes/$task'
@@ -267,7 +292,9 @@ export interface RootRouteChildren {
   ApiReadRoute: typeof ApiReadRoute
   ApiStatusRoute: typeof ApiStatusRoute
   ApiTasksRoute: typeof ApiTasksRouteWithChildren
+  NewslettersChar123FeedChar125Route: typeof NewslettersChar123FeedChar125Route
   AdminRunTaskRoute: typeof AdminRunTaskRoute
+  NewslettersFeedIdRoute: typeof NewslettersFeedIdRoute
   ReadChar123TaskChar125Char123RunIdChar125Route: typeof ReadChar123TaskChar125Char123RunIdChar125Route
 }
 
@@ -336,6 +363,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTasksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/newsletters/{-$feed}': {
+      id: '/newsletters/{-$feed}'
+      path: '/newsletters/{-$feed}'
+      fullPath: '/newsletters/{-$feed}'
+      preLoaderRoute: typeof NewslettersChar123FeedChar125RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/_authed/': {
       id: '/admin/_authed/'
       path: '/'
@@ -355,6 +389,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/run/$task'
       fullPath: '/admin/run/$task'
       preLoaderRoute: typeof AdminRunTaskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/newsletters/$feed/$id': {
+      id: '/newsletters/$feed/$id'
+      path: '/newsletters/$feed/$id'
+      fullPath: '/newsletters/$feed/$id'
+      preLoaderRoute: typeof NewslettersFeedIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/read/{-$task}/{-$runId}': {
@@ -488,7 +529,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiReadRoute: ApiReadRoute,
   ApiStatusRoute: ApiStatusRoute,
   ApiTasksRoute: ApiTasksRouteWithChildren,
+  NewslettersChar123FeedChar125Route: NewslettersChar123FeedChar125Route,
   AdminRunTaskRoute: AdminRunTaskRoute,
+  NewslettersFeedIdRoute: NewslettersFeedIdRoute,
   ReadChar123TaskChar125Char123RunIdChar125Route:
     ReadChar123TaskChar125Char123RunIdChar125Route,
 }
