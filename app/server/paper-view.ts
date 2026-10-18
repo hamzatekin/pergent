@@ -1,5 +1,7 @@
 import { canonical, escapeHtml, host, isHttp, renderMarkdown, type Paper, type Rating, type Story } from "#src/paper.ts";
 
+import { isNoteLink } from "./notes.ts";
+
 // What the reading page gets for a paper: every markdown field already rendered to HTML on the server,
 // so marked never ships to the browser, and each story sized, given its image and sorted into the
 // section's cards or briefs.
@@ -14,7 +16,11 @@ export type StoryView = {
   rating?: Rating;
   /** The story's "Never show" page, for a task with a never-show list (src/mute.ts). */
   mute?: string;
+  /** Where the story sits in the stored paper (task/runId/section/story), for "Save to notes". */
+  save?: string;
 };
+/** The links a story's foot gets: never show (a task with a never-show list), save to notes (logged in). */
+export type StoryActions = (story: Story) => { mute?: string; save?: string };
 export type SectionView = { heading?: string; lead?: string; cards: StoryView[]; briefs: StoryView[] };
 export type PaperView = { title?: string; sections: SectionView[] };
 
@@ -24,7 +30,7 @@ function importance(story: Story, index: number, legacy: boolean): 1 | 2 | 3 {
   return story.importance === 1 || story.importance === 3 ? story.importance : legacy && index === 0 ? 3 : 2;
 }
 
-export function paperView(paper: Paper, images: Record<string, string>, muteHref?: (story: Story) => string | undefined): PaperView {
+export function paperView(paper: Paper, images: Record<string, string>, actions?: StoryActions): PaperView {
   // Article links are matched to images without tracking parameters or a trailing slash.
   const byLink = new Map(Object.entries(images).map(([link, image]) => [canonical(link), image]));
   const legacy = !paper.sections.some((s) => s.stories.some((st) => st.importance));
@@ -38,11 +44,11 @@ export function paperView(paper: Paper, images: Record<string, string>, muteHref
           html: `<h3>${escapeHtml(story.headline)}</h3>\n${renderMarkdown(story.body)}`,
           context: story.context ? renderMarkdown(story.context) : undefined,
           source,
-          sourceHost: source && host(source),
+          sourceHost: source && (isNoteLink(source) ? "Open note" : host(source)),
           image: image && isHttp(image) ? image : undefined,
           importance: importance(story, i, legacy),
           rating: story.rating,
-          mute: muteHref?.(story),
+          ...actions?.(story),
         };
       });
       return {

@@ -12,6 +12,9 @@
 //   outline      piles shown by topic (default Work, Projects); every other pile is reference material
 //                (book notes, film lists) and gets one line, plus its recent changes
 //   maxChars     size cap for notes.md (default 90000); long texts are cut shorter until it fits
+//   app          where the reader opens Aletheia (default https://aletheia.hamzatekin.dev); every note in
+//                notes.md carries a short reference ([n12]), and links.json maps each to <app>/n/<id>, so a
+//                story whose source is a reference links to its note (the runner swaps it in)
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -30,6 +33,7 @@ const full: string[] = cfg.full ?? ["Inbox", "Alınacaklar"];
 const outline: string[] = cfg.outline ?? ["Work", "Projects"];
 const maxChars: number = cfg.maxChars ?? 90_000;
 const importedOn: string = cfg.importedOn ?? "";
+const app: string = (cfg.app ?? "https://aletheia.hamzatekin.dev").replace(/\/$/, "");
 
 const res = await fetch(cfg.url, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30_000) });
 if (!res.ok) {
@@ -70,6 +74,13 @@ const created = (n: Node) => {
   return imported ? `created ${day(n.createdAt)} or before, ${ageDays(n.createdAt)}+ days ago` : `created ${day(n.createdAt)}, ${ago(ageDays(n.createdAt))}`;
 };
 const edited = (n: Node) => (n.updatedAt.slice(0, 16) !== n.createdAt.slice(0, 16) ? `, edited ${day(n.updatedAt)}` : "");
+// A note's short reference, the same wherever it appears: a 36-character id on every line would cost
+// more tokens than the notes. Numbered in the order notes.md first shows them.
+const refs = new Map<string, string>();
+const ref = (n: Node) => {
+  if (!refs.has(n.id)) refs.set(n.id, `n${refs.size + 1}`);
+  return `[${refs.get(n.id)}]`;
+};
 const flat = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
 
 let cut = 400;
@@ -80,7 +91,7 @@ const clip = (s: string | null | undefined, max = cut) => {
 const line = (n: Node, depth: number, dates: string) => {
   const text = clip(n.text) || "(no text)";
   const note = clip(n.note);
-  return `${"  ".repeat(depth)}- ${n.done ? "[done] " : ""}${text}${note ? ` — note: ${note}` : ""}${dates ? ` (${dates})` : ""}\n`;
+  return `${"  ".repeat(depth)}- ${ref(n)} ${n.done ? "[done] " : ""}${text}${note ? ` — note: ${note}` : ""}${dates ? ` (${dates})` : ""}\n`;
 };
 
 // A node and everything under it, an empty line left out but not its children. Dates on the first level
@@ -97,10 +108,11 @@ function tree(n: Node, depth: number, maxDepth: number, parent?: Node): string {
 
 function render(): string {
   const today = new Intl.DateTimeFormat("en-GB", { timeZone: zone, weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(now));
+  refs.clear();
   let out = `# The reader's notes (Aletheia), ${today}\n\n`;
   out += `Today is ${today}. ${feed.nodes.length} notes in the piles the assistant may read.`;
   if (importedOn) out += ` Everything was imported into Aletheia on ${day(importedOn)}, so a note "created ${day(importedOn)} or before" may be much older; its text sometimes carries its real date.`;
-  out += ` Struck-through text (~~like this~~) is done.\n\n`;
+  out += ` Struck-through text (~~like this~~) is done. Each note starts with its reference in square brackets, like [n12].\n\n`;
 
   // What the reader touched lately, newest first: the clearest sign of what is on their mind.
   const changed = feed.nodes.filter((n) => n.parentId && Date.parse(n.updatedAt) >= recent && (flat(n.text) || flat(n.note))).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -108,7 +120,7 @@ function render(): string {
   for (const n of changed.slice(0, 150)) {
     const where = [pileOf(n), ...n.path.slice(1)].join(" / ") || "(top level)";
     const isNew = n.createdAt.slice(0, 16) === n.updatedAt.slice(0, 16);
-    out += `- [${where}] ${clip(n.text, Math.min(cut, 200)) || "(no text)"}${n.note ? ` — note: ${clip(n.note, Math.min(cut, 200))}` : ""} (${isNew ? "new" : "edited"} ${day(n.updatedAt)})\n`;
+    out += `- ${ref(n)} (${where}) ${clip(n.text, Math.min(cut, 200)) || "(no text)"}${n.note ? ` — note: ${clip(n.note, Math.min(cut, 200))}` : ""} (${isNew ? "new" : "edited"} ${day(n.updatedAt)})\n`;
   }
   if (changed.length > 150) out += `- (${changed.length - 150} more)\n`;
 
@@ -125,7 +137,7 @@ function render(): string {
       // older items by their first line only, at most 15 of them.
       const topics = kids(pile).map((k) => ({ k, ...subtree(k) })).sort((a, b) => b.updated.localeCompare(a.updated));
       for (const t of topics) {
-        out += `\n### ${clip(t.k.text, 120) || "(no title)"} (${items(t.count - 1)}, ${created(t.k)}, last edited ${day(t.updated)})\n`;
+        out += `\n### ${ref(t.k)} ${clip(t.k.text, 120) || "(no title)"} (${items(t.count - 1)}, ${created(t.k)}, last edited ${day(t.updated)})\n`;
         if (t.k.note) out += `${clip(t.k.note)}\n`;
         let older = 0;
         for (const k of kids(t.k)) {
@@ -151,4 +163,5 @@ while (out.length > maxChars && cut > 80) {
   out = render();
 }
 await writeFile("notes.md", out);
+await writeFile("links.json", JSON.stringify(Object.fromEntries([...refs].map(([id, r]) => [r, `${app}/n/${id}`])), null, 2));
 console.log(`aletheia: ${feed.nodes.length} nodes in ${piles.length} piles, generated ${feed.generatedAt}; notes.md ${out.length} chars (texts cut at ${cut})`);

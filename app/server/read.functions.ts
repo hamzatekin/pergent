@@ -6,11 +6,12 @@ import { listMutes } from "#src/db.ts";
 import { hideMuted } from "#src/mute.ts";
 import { schedulerStatus } from "#src/scheduler.ts";
 import type { Story } from "#src/paper.ts";
-import { paperView, type PaperView } from "./paper-view.ts";
+import { paperView, type PaperView, type StoryActions } from "./paper-view.ts";
 import { newspaperView, type NewspaperView } from "./newspaper-view.ts";
 import { daysAgo, formatDate } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
-import { PASSWORD } from "./admin.ts";
+import { PASSWORD, loggedIn } from "./admin.ts";
+import { canSaveNotes } from "./notes.ts";
 
 export type Note =
   | { kind: "paused"; lastReadDays: number | null }
@@ -67,25 +68,30 @@ export const getPaperPage = createServerFn({ method: "GET" })
     if (run && current?.status === "ok" && !run.paper.sections.length) notes.push({ kind: "empty" });
 
     // A task with a never-show list hides the stories that match it, and gives each story the link that
-    // adds to it. The link names the story by where it sits in the stored paper.
+    // adds to it; logged in, every story of a public paper can be saved to the notes. Both name the story
+    // by where it sits in the stored paper.
     let paper: PaperView | undefined;
     let newspaper: NewspaperView | undefined;
     if (run) {
-      const links = new Map<Story, string>();
+      const places = new Map<Story, string>();
+      run.paper.sections.forEach((s, i) => s.stories.forEach((story, j) => places.set(story, `${task}/${current!.runId}/${i}/${j}`)));
       let shown = run.paper;
       if (config.mute) {
-        run.paper.sections.forEach((s, i) => s.stories.forEach((story, j) => links.set(story, `/admin/mute/${task}/${current!.runId}/${i}/${j}`)));
         const muted = hideMuted(run.paper, listMutes(task));
         shown = muted.paper;
         if (muted.hidden) notes.push({ kind: "hidden", count: muted.hidden, task });
       }
-      const muteHref = config.mute ? (story: Story) => links.get(story) : undefined;
+      const saving = canSaveNotes() && !config.private && loggedIn();
+      const actions: StoryActions = (story) => ({
+        mute: config.mute ? `/admin/mute/${places.get(story)}` : undefined,
+        save: saving ? places.get(story) : undefined,
+      });
       if (config.newspaper) {
         // The issue number counts the task's good papers up to this one.
         const issue = finished.filter((r) => r.status === "ok" && r.startedAt <= current!.startedAt).length;
         const meta = { config: config.newspaper!, startedAt: current!.startedAt, timezone: config.timezone, lang: config.lang ?? "en", issue, costUsd: current!.costUsd };
-        newspaper = newspaperView(shown, run.images, meta, muteHref);
-      } else paper = paperView(shown, run.images, muteHref);
+        newspaper = newspaperView(shown, run.images, meta, actions);
+      } else paper = paperView(shown, run.images, actions);
     }
 
     return {

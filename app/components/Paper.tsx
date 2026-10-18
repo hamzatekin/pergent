@@ -1,5 +1,6 @@
 import type { PaperView, StoryView } from "../server/paper-view.ts";
 import { Rating } from "./Rating.tsx";
+import { SaveToNotes } from "./SaveToNotes.tsx";
 import { StoryImage } from "./StoryImage.tsx";
 
 type Labels = { contextLabel?: string; briefsLabel?: string };
@@ -60,19 +61,21 @@ function StoryText({ story, labels }: { story: StoryView; labels: Labels }) {
           <div dangerouslySetInnerHTML={{ __html: story.context }} />
         </details>
       )}
-      {(story.source || story.mute) && (
-        <p className="foot">
+      {/* A div, not a p: the save button is a form, and a form cannot sit inside a paragraph. */}
+      {(story.source || story.mute || story.save) && (
+        <div className="foot">
           {story.source && (
             <a className="src" href={story.source} target="_blank" rel="noopener">
               {story.sourceHost} ↗
             </a>
           )}
+          {story.save && <SaveToNotes place={story.save} className="save" />}
           {story.mute && (
             <a className="mute" href={story.mute} rel="nofollow">
               Never show
             </a>
           )}
-        </p>
+        </div>
       )}
       {story.rating && <Rating rating={story.rating} />}
     </>

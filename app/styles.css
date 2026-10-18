@@ -260,7 +260,7 @@
   @apply mr-1.5 font-semibold tracking-normal text-ink;
 }
 .brief p:has(> a.src:only-child),
-.brief p.foot {
+.brief .foot {
   @apply mt-1.5;
 }
 .brief details.aside {
@@ -334,7 +334,7 @@
 .prose p:has(> a.src:only-child) {
   @apply mb-0 mt-3;
 }
-.prose p.foot {
+.prose .foot {
   @apply mb-0 mt-3 flex flex-wrap items-center gap-2;
 }
 .prose a.src {
@@ -344,6 +344,20 @@
    the hit area; the negative margin keeps the text where it would sit without it. */
 .prose a.mute {
   @apply -my-1 -mr-2 ml-auto px-2 py-1 text-[12px] text-faint no-underline hover:text-failed;
+}
+/* "Save to notes" (app/server/notes.ts), next to the source chip: a quiet text button, like "Never show",
+   that becomes a link to the new note once saved. Its form is left out of the layout. */
+.save-form {
+  display: contents;
+}
+.prose .save {
+  @apply -my-1 cursor-pointer px-2 py-1 text-[12px] font-medium text-muted no-underline hover:text-accent disabled:cursor-default disabled:opacity-60;
+}
+.prose .save[data-saved] {
+  @apply text-good hover:text-good;
+}
+.prose .save[data-failed] {
+  @apply text-failed;
 }
 /* Jev's rating (src/rate.ts): the overall number large, then its three parts as named ten-cell bars,
    each green, amber or red by its own level. */
@@ -619,6 +633,15 @@
 .np-mute {
   @apply ml-auto normal-case tracking-normal text-faint hover:text-failed;
 }
+.np-save {
+  @apply cursor-pointer uppercase hover:text-press disabled:cursor-default disabled:opacity-60;
+}
+.np-save[data-saved] {
+  @apply text-good;
+}
+.np-save[data-failed] {
+  @apply text-failed;
+}
 
 /* The foot of page one: red boxes pointing to the leads of the inner pages. */
 .np-teasers {
@@ -695,7 +718,8 @@
 .arrow,
 .btn,
 .prose a.src,
-.prose a.mute {
+.prose a.mute,
+.prose .save {
   transition-property: color, background-color, box-shadow, scale;
   transition-duration: 150ms;
   transition-timing-function: var(--ease-out);
@@ -706,7 +730,8 @@
 .arrow:active,
 .btn:not(:disabled):active,
 .prose a.src:active,
-.prose a.mute:active {
+.prose a.mute:active,
+.prose .save:not(:disabled):active {
   scale: 0.96;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -715,7 +740,8 @@
   .arrow:active,
   .btn:active,
   .prose a.src:active,
-  .prose a.mute:active {
+  .prose a.mute:active,
+  .prose .save:active {
     scale: none;
   }
 }

@@ -1,3 +1,4 @@
+import type { StoryActions } from "./paper-view.ts";
 import { canonical, host, isHttp, renderMarkdown, type Paper, type Rating, type Story } from "#src/paper.ts";
 
 // The paper laid out as a printed Turkish daily (Posta, Milliyet, Hürriyet): page one with the
@@ -20,6 +21,7 @@ export type NewsStory = {
   importance: 1 | 2 | 3;
   rating?: Rating;
   mute?: string;
+  save?: string;
   /** The inner page the story is printed on, when it is on one. */
   page?: number;
 };
@@ -46,7 +48,7 @@ export function newspaperView(
   paper: Paper,
   images: Record<string, string>,
   meta: { config: NewspaperConfig; startedAt: string; timezone?: string; lang: string; issue: number; costUsd?: number },
-  muteHref?: (story: Story) => string | undefined,
+  actions?: StoryActions,
 ): NewspaperView {
   const byLink = new Map(Object.entries(images).map(([link, image]) => [canonical(link), image]));
   const legacy = !paper.sections.some((s) => s.stories.some((st) => st.importance));
@@ -70,7 +72,7 @@ export function newspaperView(
         image: image && isHttp(image) ? image : undefined,
         importance,
         rating: story.rating,
-        mute: muteHref?.(story),
+        ...actions?.(story),
         place: importance > 1 ? story.place : undefined,
       };
     }),
