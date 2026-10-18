@@ -15,6 +15,7 @@ services:
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
       # The read-only token for Aletheia's feed, which the private today task reads. Unset, today fails.
       ALETHEIA_TOKEN: ${ALETHEIA_TOKEN:-}
+      ALETHEIA_CAPTURE_KEY: ${ALETHEIA_CAPTURE_KEY:-}
     volumes:
       - runs:/app/runs
       - claude-home:/root/.claude

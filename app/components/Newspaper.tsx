@@ -1,4 +1,5 @@
 import type { NewsPage, NewspaperView, NewsStory } from "../server/newspaper-view.ts";
+import { SaveToNotes } from "./SaveToNotes.tsx";
 import { StoryImage } from "./StoryImage.tsx";
 
 type Labels = { contextLabel?: string; briefsLabel?: string };
@@ -165,10 +166,10 @@ function Text({ story, labels }: { story: NewsStory; labels: Labels }) {
 }
 
 function Foot({ story }: { story: NewsStory }) {
-  if (!story.source && !story.rating && !story.mute) return null;
+  if (!story.source && !story.rating && !story.mute && !story.save) return null;
   const score = story.rating?.score;
   return (
-    <p className="np-foot">
+    <div className="np-foot">
       {story.source && (
         <a className="np-source" href={story.source} target="_blank" rel="noopener">
           {story.sourceHost} ↗
@@ -179,12 +180,13 @@ function Foot({ story }: { story: NewsStory }) {
           {score.toFixed(1).replace(".", ",")}
         </span>
       )}
+      {story.save && <SaveToNotes place={story.save} className="np-save" />}
       {story.mute && (
         <a className="np-mute" href={story.mute} rel="nofollow">
           Never show
         </a>
       )}
-    </p>
+    </div>
   );
 }
 

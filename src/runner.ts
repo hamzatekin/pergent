@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { getRun, listMutes, openDb, saveIssues, saveRun, listRuns as listRunRows } from "./db.ts";
-import { PAPER_SCHEMA, fromMarkdown, parsePaper, toMarkdown, type Paper } from "./paper.ts";
+import { PAPER_SCHEMA, fromMarkdown, isHttp, parsePaper, toMarkdown, type Paper } from "./paper.ts";
 import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
@@ -90,6 +90,21 @@ export function runDir(name: string, runId: string): string {
 
 export function listRuns(name: string): RunMeta[] {
   return listRunRows(name);
+}
+
+// A before script can let the model name a story's source by a short reference instead of a URL
+// (fetch-aletheia.ts numbers the notes [n1], [n2]…, since a note's id on every line would cost more
+// tokens than the notes): links.json maps each reference to its URL. A source that is a reference
+// becomes that URL; one that is neither a known reference nor a URL is dropped.
+async function resolveLinks(paper: Paper, dir: string) {
+  const links: Record<string, string> | null = await readFile(join(dir, "links.json"), "utf8").then(JSON.parse, () => null);
+  if (!links) return;
+  for (const story of paper.sections.flatMap((s) => s.stories)) {
+    if (!story.source || isHttp(story.source)) continue;
+    const url = links[story.source.replace(/[[\]\s]/g, "")];
+    if (url) story.source = url;
+    else delete story.source;
+  }
 }
 
 // What the reading view needs: the paper, and the lead images the before scripts found (images.json,
@@ -263,6 +278,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   // The paper is the structured output; output.md is its markdown rendering, kept so a run stays
   // readable with cat. A result without a valid paper (the model answered in text) is a failed run.
   const paper = parsePaper(result?.structured_output);
+  if (paper) await resolveLinks(paper, dir);
   if (paper && process.env.TYPESAFE_API_KEY && config.rate !== false) {
     await ratePaper(paper, dir, process.env.TYPESAFE_API_KEY).catch((err) => writeFile(join(dir, "rate.log"), `failed: ${err}\n`));
   }

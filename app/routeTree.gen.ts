@@ -14,6 +14,7 @@ import { Route as AdminAuthedRouteImport } from './routes/admin/_authed'
 import { Route as AdminLoginRouteImport } from './routes/admin/login'
 import { Route as AdminLogoutRouteImport } from './routes/admin/logout'
 import { Route as AdminMutesRouteImport } from './routes/admin/mutes'
+import { Route as AdminSaveRouteImport } from './routes/admin/save'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as ApiReadRouteImport } from './routes/api/read'
 import { Route as ApiStatusRouteImport } from './routes/api/status'
@@ -54,6 +55,11 @@ const AdminLogoutRoute = AdminLogoutRouteImport.update({
 const AdminMutesRoute = AdminMutesRouteImport.update({
   id: '/admin/mutes',
   path: '/admin/mutes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSaveRoute = AdminSaveRouteImport.update({
+  id: '/admin/save',
+  path: '/admin/save',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
@@ -148,6 +154,7 @@ export interface FileRoutesByFullPath {
   '/admin/login': typeof AdminLoginRoute
   '/admin/logout': typeof AdminLogoutRoute
   '/admin/mutes': typeof AdminMutesRouteWithChildren
+  '/admin/save': typeof AdminSaveRoute
   '/api/$': typeof ApiSplatRoute
   '/api/read': typeof ApiReadRoute
   '/api/status': typeof ApiStatusRoute
@@ -170,6 +177,7 @@ export interface FileRoutesByTo {
   '/admin/login': typeof AdminLoginRoute
   '/admin/logout': typeof AdminLogoutRoute
   '/admin/mutes': typeof AdminMutesRouteWithChildren
+  '/admin/save': typeof AdminSaveRoute
   '/api/$': typeof ApiSplatRoute
   '/api/read': typeof ApiReadRoute
   '/api/status': typeof ApiStatusRoute
@@ -194,6 +202,7 @@ export interface FileRoutesById {
   '/admin/login': typeof AdminLoginRoute
   '/admin/logout': typeof AdminLogoutRoute
   '/admin/mutes': typeof AdminMutesRouteWithChildren
+  '/admin/save': typeof AdminSaveRoute
   '/api/$': typeof ApiSplatRoute
   '/api/read': typeof ApiReadRoute
   '/api/status': typeof ApiStatusRoute
@@ -219,6 +228,7 @@ export interface FileRouteTypes {
     | '/admin/login'
     | '/admin/logout'
     | '/admin/mutes'
+    | '/admin/save'
     | '/api/$'
     | '/api/read'
     | '/api/status'
@@ -241,6 +251,7 @@ export interface FileRouteTypes {
     | '/admin/login'
     | '/admin/logout'
     | '/admin/mutes'
+    | '/admin/save'
     | '/api/$'
     | '/api/read'
     | '/api/status'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/admin/login'
     | '/admin/logout'
     | '/admin/mutes'
+    | '/admin/save'
     | '/api/$'
     | '/api/read'
     | '/api/status'
@@ -288,6 +300,7 @@ export interface RootRouteChildren {
   AdminLoginRoute: typeof AdminLoginRoute
   AdminLogoutRoute: typeof AdminLogoutRoute
   AdminMutesRoute: typeof AdminMutesRouteWithChildren
+  AdminSaveRoute: typeof AdminSaveRoute
   ApiSplatRoute: typeof ApiSplatRoute
   ApiReadRoute: typeof ApiReadRoute
   ApiStatusRoute: typeof ApiStatusRoute
@@ -333,6 +346,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/mutes'
       fullPath: '/admin/mutes'
       preLoaderRoute: typeof AdminMutesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/save': {
+      id: '/admin/save'
+      path: '/admin/save'
+      fullPath: '/admin/save'
+      preLoaderRoute: typeof AdminSaveRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/$': {
@@ -525,6 +545,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminLoginRoute: AdminLoginRoute,
   AdminLogoutRoute: AdminLogoutRoute,
   AdminMutesRoute: AdminMutesRouteWithChildren,
+  AdminSaveRoute: AdminSaveRoute,
   ApiSplatRoute: ApiSplatRoute,
   ApiReadRoute: ApiReadRoute,
   ApiStatusRoute: ApiStatusRoute,
