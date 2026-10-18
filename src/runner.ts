@@ -37,7 +37,9 @@ export type TaskConfig = {
   inputs?: string[];
   /** Replaces Claude Code's built-in system prompt, which is written for a coding agent. */
   systemPrompt?: string;
-  /** false turns off Jev's per-story rating (src/rate.ts), which otherwise runs whenever TYPESAFE_API_KEY is set. */
+  /** Who reads the tab and what they care about: with TYPESAFE_API_KEY set, Jev scores every story against it (src/rate.ts) and the page puts what is for them first. */
+  reader?: string;
+  /** false turns off Jev's per-story score even when the task has a `reader`. */
   rate?: boolean;
   /** Reasoning effort (low, medium, high, xhigh, max) passed as --effort; the thinking is billed as output. */
   effort?: string;
@@ -282,8 +284,8 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   // readable with cat. A result without a valid paper (the model answered in text) is a failed run.
   const paper = parsePaper(result?.structured_output);
   if (paper) await resolveLinks(paper, dir);
-  if (paper && process.env.TYPESAFE_API_KEY && config.rate !== false) {
-    await ratePaper(paper, dir, process.env.TYPESAFE_API_KEY).catch((err) => writeFile(join(dir, "rate.log"), `failed: ${err}\n`));
+  if (paper && process.env.TYPESAFE_API_KEY && config.reader && config.rate !== false) {
+    await ratePaper(paper, dir, process.env.TYPESAFE_API_KEY, config.reader).catch((err) => writeFile(join(dir, "rate.log"), `failed: ${err}\n`));
   }
   const output = paper ? toMarkdown(paper, { contextLabel: config.contextLabel }) : (result?.result ?? "");
   await writeFile(join(dir, "output.md"), output);

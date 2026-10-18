@@ -6,6 +6,7 @@
   "lang": "tr",
   "contextLabel": "Ne olmuştu?",
   "briefsLabel": "Kısaca",
+  "reader": "A Turkish software engineer living in the UK on a Skilled Worker visa, following Turkey from abroad. They care about what shapes the country and the lives of people there: politics, elections and the opposition, courts, rights and press freedom, the economy, inflation, the lira and prices, major disasters and big public events, and Turkey's relations with the UK, Europe and the US. Little interest in celebrity and TV gossip, routine local crime and accidents, and horoscopes or lifestyle filler.",
   "newspaper": { "name": "Pergent", "motto": "Türkiye'nin en kişisel gazetesi" },
   "model": "sonnet",
   "allowedTools": ["WebFetch"],

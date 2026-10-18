@@ -17,14 +17,12 @@ export type Story = {
   display?: string;
   spot?: string;
   place?: Place;
-  rating?: Rating;
+  /** How much the story matters to the reader, 0-3: added after the run by src/rate.ts, not by the model, so not in PAPER_SCHEMA. */
+  forYou?: number;
 };
 // Where a story sits on a printed front page: the lead headline under the masthead (manşet), the band
 // above the masthead (sürmanşet), or elsewhere on page one. Left out, it is only on its section's page.
 export type Place = "lead" | "top" | "front";
-// Added after the run by src/rate.ts, not by the model: 0-10 overall and per part (sourcing,
-// neutrality, substance). Not in PAPER_SCHEMA.
-export type Rating = { score: number; parts: Record<string, number> };
 export type Section = { heading?: string; lead?: string; stories: Story[] };
 export type Paper = { title?: string; sections: Section[] };
 

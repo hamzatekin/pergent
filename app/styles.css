@@ -418,53 +418,6 @@ a.chip {
 .prose .save[data-failed] {
   @apply text-failed;
 }
-/* Jev's rating (src/rate.ts): the overall number large, then its three parts as named ten-cell bars,
-   each green, amber or red by its own level. */
-.rating {
-  @apply mt-3 flex items-center gap-4 border-t border-line pt-3 tabular-nums text-muted;
-}
-.rating .overall {
-  @apply flex cursor-help items-baseline;
-}
-.rating .score {
-  @apply text-[26px] font-semibold leading-none tracking-[-0.02em];
-}
-.rating .of {
-  @apply ml-0.5 text-[12px];
-}
-.rating[data-level="high"] .score {
-  @apply text-good;
-}
-.rating[data-level="mid"] .score {
-  @apply text-warn;
-}
-.rating[data-level="low"] .score {
-  @apply text-failed;
-}
-.rating .parts {
-  @apply grid grid-cols-[auto_auto_auto] items-center gap-x-2 gap-y-0.5 border-l border-line pl-4 text-[11px] leading-[1.35];
-}
-.rating .part {
-  @apply contents cursor-help;
-}
-.rating .num {
-  @apply text-right text-ink;
-}
-.rating .cells {
-  @apply inline-flex gap-[2px];
-}
-.rating i {
-  @apply block h-2 w-1.5 rounded-[1px] bg-line;
-}
-.rating .part[data-level="high"] i.on {
-  @apply bg-good;
-}
-.rating .part[data-level="mid"] i.on {
-  @apply bg-warn;
-}
-.rating .part[data-level="low"] i.on {
-  @apply bg-failed;
-}
 /* Section lead without stories, e.g. a TL;DR list. */
 .lead {
   @apply mb-5;
@@ -676,18 +629,6 @@ a.chip {
 }
 .np-source {
   @apply hover:text-press;
-}
-.np-score {
-  @apply cursor-help font-semibold tabular-nums;
-}
-.np-score[data-level="high"] {
-  @apply text-good;
-}
-.np-score[data-level="mid"] {
-  @apply text-warn;
-}
-.np-score[data-level="low"] {
-  @apply text-failed;
 }
 .np-mute {
   @apply ml-auto normal-case tracking-normal text-faint hover:text-failed;
