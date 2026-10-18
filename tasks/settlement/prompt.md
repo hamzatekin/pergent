@@ -28,7 +28,7 @@ Sections, in this order:
 
 For each story in "What changed":
 - `headline`: what changed, in one plain line.
-- `body`: what the source says, in two to four sentences, with dates, numbers and the RQF levels it names; quote the official wording when it decides something. Never add facts the sources do not have, and say "proposed", "expected" or "decided" as the source does. A news headline alone is a claim by that outlet; say so ("The Guardian reports …").
+- `body`: what the source says, in two to four sentences, with dates, numbers and the RQF levels it names; quote the official wording when it decides something. When the source publishes final rules or a firm implementation date, list what changed on each of the four questions and the dates: when the statement of changes was laid, when it takes effect, and any cut-off or transition date for people already on a route; say plainly when the source gives no date. Never add facts the sources do not have, and say "proposed", "expected" or "decided" as the source does. A news headline alone is a claim by that outlet; say so ("The Guardian reports …").
 - `context`: what it means for the reader, an RQF 3 Skilled Worker on a 5-year route; one or two sentences.
 - `source`: its URL exactly as in settlement.md.
 - `importance`: 3 for a decision (a published response, a statement of changes, rules in force or a firm date); 2 for an official signal or a change to a watched page; 1 for anything weaker.
