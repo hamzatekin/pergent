@@ -8,6 +8,7 @@ import { PAPER_SCHEMA, fromMarkdown, isHttp, parsePaper, toMarkdown, type Paper 
 import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
+import { notifyPaper, type NotifyRule } from "./notify.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -46,6 +47,8 @@ export type TaskConfig = {
   mute?: boolean;
   /** true keeps the task's papers behind the admin login: no tab, page or API answer without the cookie (the `today` task, built from the reader's notes). */
   private?: boolean;
+  /** Pushes the paper's biggest stories to the reader's phone through ntfy (src/notify.ts, NTFY_TOPIC): those of `importance` or more in sections whose heading contains `section`. */
+  notify?: NotifyRule;
   /** Gives the task's page a toggle to a printed newspaper layout (app/server/newspaper-view.ts): the masthead's name and motto. */
   newspaper?: { name?: string; motto?: string };
   [extra: string]: unknown;
@@ -301,5 +304,6 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   if (paper) await addPreviewImages(paper, dir).catch((err) => writeFile(join(dir, "images.log"), `failed: ${err}\n`));
   const images = await readFile(join(dir, "images.json"), "utf8").then(JSON.parse, () => ({}));
   saveRun(meta, output, images, paper);
+  if (ok && config.notify) await notifyPaper(name, runId, paper, config.notify, dir).catch((err) => writeFile(join(dir, "notify.log"), `failed: ${err}\n`));
   return { meta, dir };
 }

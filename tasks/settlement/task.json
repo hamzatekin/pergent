@@ -12,6 +12,7 @@
   "inputs": ["settlement.md", "last.md"],
   "timeoutMinutes": 10,
   "rate": false,
+  "notify": {"section": "What changed", "importance": 3},
   "before": "node ../../../scripts/fetch-settlement.ts",
   "settlement": {
     "days": 3,
