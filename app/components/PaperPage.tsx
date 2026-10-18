@@ -5,6 +5,7 @@ import { Icon } from "./Icon.tsx";
 import { Newspaper } from "./Newspaper.tsx";
 import { Paper } from "./Paper.tsx";
 import { Shell } from "./Shell.tsx";
+import { Sources } from "./Sources.tsx";
 
 // The reading view: the task's name and the run's date, the older and newer runs, the notes, and the
 // paper, inside the sidebar frame. ← and → step between runs. Opening a run is the read that keeps the scheduler alive.
@@ -56,6 +57,7 @@ export function PaperPage({ data }: { data: Data }) {
           )}
         </p>
       ))}
+      <Sources sources={data.sources} />
       {data.paper && <Paper paper={data.paper} labels={{ contextLabel: data.contextLabel, briefsLabel: data.briefsLabel }} />}
       {data.newspaper && <Newspaper paper={data.newspaper} labels={{ contextLabel: data.contextLabel, briefsLabel: data.briefsLabel }} />}
     </Shell>

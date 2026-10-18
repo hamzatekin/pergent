@@ -12,6 +12,7 @@ import { daysAgo, formatDate } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
 import { canSaveNotes } from "./notes.ts";
+import { taskSources, type TaskSources } from "#src/sources.ts";
 
 export type Note =
   | { kind: "paused"; lastReadDays: number | null }
@@ -35,6 +36,8 @@ export type PaperPage = {
   title?: string;
   paper?: PaperView;
   newspaper?: NewspaperView;
+  /** What the task reads and how its paper is made, for the closed Sources panel above the paper. */
+  sources: TaskSources;
 };
 
 // The reading page: a task's run (by default its latest ok one), the tabs, the older and newer runs,
@@ -108,5 +111,7 @@ export const getPaperPage = createServerFn({ method: "GET" })
       title: run?.paper.title,
       paper,
       newspaper,
+      // The other papers a task can read (briefings.ts) are the public ones.
+      sources: await taskSources(task, config, sidebar.tabs.filter((t) => !configs.get(t.name)?.private)),
     };
   });

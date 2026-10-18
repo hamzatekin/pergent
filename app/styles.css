@@ -194,6 +194,65 @@
   @apply bg-warn;
 }
 
+/* The Sources panel above a paper (components/Sources.tsx): closed, one line naming what the task
+   reads; open, how a run goes and every source as a chip, by kind. */
+.sources {
+  @apply mb-3 rounded-lg bg-bg text-[13.5px] text-soft shadow-border;
+}
+.sources > summary {
+  @apply flex cursor-pointer select-none list-none items-center gap-2 px-3 py-2;
+  -webkit-tap-highlight-color: transparent;
+}
+.sources > summary::-webkit-details-marker {
+  display: none;
+}
+.sources > summary::before {
+  content: "";
+  @apply size-0 shrink-0 border-y-[4px] border-l-[5px] border-y-transparent border-l-muted transition-[rotate] duration-200 ease-out motion-reduce:transition-none;
+}
+.sources[open] > summary::before {
+  rotate: 90deg;
+}
+.sources-title {
+  @apply shrink-0 font-medium text-ink;
+}
+.sources-sum {
+  @apply min-w-0 truncate text-muted;
+}
+.sources-body {
+  @apply border-t border-line px-3 pb-3.5 pt-3;
+}
+.sources-how {
+  @apply mb-4 list-decimal space-y-0.5 pl-5 leading-[1.55] marker:text-faint;
+}
+.sources-groups {
+  @apply grid gap-x-6 gap-y-4 md:grid-cols-2;
+}
+.sources-group[data-wide] {
+  @apply md:col-span-2;
+}
+.sources-group h3 {
+  @apply text-[13px] font-semibold text-ink;
+}
+.sources-note {
+  @apply mt-0.5 text-[13px] leading-[1.5] text-muted;
+}
+.sources-part h4 {
+  @apply mt-3 flex items-center gap-1.5 text-[12px] font-medium text-muted;
+}
+.sources-part .count {
+  @apply rounded-full bg-inset px-1.5 text-[11px] tabular-nums leading-[17px] text-faint;
+}
+.chips {
+  @apply mt-1.5 flex flex-wrap gap-1.5;
+}
+.chip {
+  @apply inline-flex h-6 items-center rounded-full bg-surface px-2.5 text-[12px] font-medium text-muted no-underline shadow-border;
+}
+a.chip {
+  @apply hover:text-ink hover:shadow-border-hover;
+}
+
 /* The paper itself. */
 .masthead {
   @apply mb-1 text-[26px] font-semibold leading-tight tracking-[-0.02em] text-balance md:text-[30px];
@@ -719,7 +778,8 @@
 .btn,
 .prose a.src,
 .prose a.mute,
-.prose .save {
+.prose .save,
+a.chip {
   transition-property: color, background-color, box-shadow, scale;
   transition-duration: 150ms;
   transition-timing-function: var(--ease-out);
@@ -731,7 +791,8 @@
 .btn:not(:disabled):active,
 .prose a.src:active,
 .prose a.mute:active,
-.prose .save:not(:disabled):active {
+.prose .save:not(:disabled):active,
+a.chip:active {
   scale: 0.96;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -741,7 +802,8 @@
   .btn:active,
   .prose a.src:active,
   .prose a.mute:active,
-  .prose .save:active {
+  .prose .save:active,
+  a.chip:active {
     scale: none;
   }
 }
