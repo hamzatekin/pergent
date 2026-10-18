@@ -1,5 +1,4 @@
 import type { PaperView, StoryView } from "../server/paper-view.ts";
-import { Rating } from "./Rating.tsx";
 import { SaveToNotes } from "./SaveToNotes.tsx";
 import { StoryImage } from "./StoryImage.tsx";
 
@@ -77,7 +76,6 @@ function StoryText({ story, labels }: { story: StoryView; labels: Labels }) {
           )}
         </div>
       )}
-      {story.rating && <Rating rating={story.rating} />}
     </>
   );
 }

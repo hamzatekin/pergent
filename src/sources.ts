@@ -222,7 +222,7 @@ export async function taskSources(task: string, config: TaskConfig, tabs: { name
       if (others.length)
         groups.push({ title: "The other tabs", note: "Each one's newest paper.", links: others.map((t) => ({ label: t.label, href: `/read/${t.name}` })) });
     }
-    // The filter and the rating only run with TypeSafe's key, so the panel only claims them then.
+    // The filter and the for-you score only run with TypeSafe's key, so the panel only claims them then.
     if (script === "filter-jev" && jev) {
       const drop = ((c.filter?.drop ?? ["clickbait", "filler", "praise"]) as string[]).map((k) => k.replace(/-/g, " "));
       how.push(`Jev (TypeSafe) reads every item first and drops ${drop.join(", ").replace(/, ([^,]*)$/, " and $1")} when it is at least ${Math.round((c.filter?.threshold ?? 0.8) * 100)}% sure.`);
@@ -233,7 +233,7 @@ export async function taskSources(task: string, config: TaskConfig, tabs: { name
   if (config.mute) how.push("Your never-show list is left out.");
   const tools = config.allowedTools ?? [];
   how.push(`${modelName(config.model)} writes the paper${tools.includes("WebFetch") ? ", opening a few of the linked articles" : " from what was fetched, with no tools"}.`);
-  if (config.rate !== false && jev) how.push("Jev scores every story for sourcing, neutrality and substance.");
+  if (config.reader && config.rate !== false && jev) how.push("Jev scores every story by how much it matters to you; each section puts those first, and what is not for you drops to the briefs.");
 
   const summary = groups.map((g) => g.title).join(" · ");
   return { how, groups, summary };

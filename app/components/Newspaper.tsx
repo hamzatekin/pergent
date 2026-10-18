@@ -166,19 +166,13 @@ function Text({ story, labels }: { story: NewsStory; labels: Labels }) {
 }
 
 function Foot({ story }: { story: NewsStory }) {
-  if (!story.source && !story.rating && !story.mute && !story.save) return null;
-  const score = story.rating?.score;
+  if (!story.source && !story.mute && !story.save) return null;
   return (
     <div className="np-foot">
       {story.source && (
         <a className="np-source" href={story.source} target="_blank" rel="noopener">
           {story.sourceHost} ↗
         </a>
-      )}
-      {score !== undefined && (
-        <span className="np-score" data-level={score >= 7 ? "high" : score >= 4.5 ? "mid" : "low"} title="Rated by Jev, 0-10">
-          {score.toFixed(1).replace(".", ",")}
-        </span>
       )}
       {story.save && <SaveToNotes place={story.save} className="np-save" />}
       {story.mute && (

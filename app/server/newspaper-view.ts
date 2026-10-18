@@ -1,5 +1,5 @@
-import type { StoryActions } from "./paper-view.ts";
-import { canonical, host, isHttp, renderMarkdown, type Paper, type Rating, type Story } from "#src/paper.ts";
+import { forReader, type StoryActions } from "./paper-view.ts";
+import { canonical, host, isHttp, renderMarkdown, type Paper, type Story } from "#src/paper.ts";
 
 // The paper laid out as a printed Turkish daily (Posta, Milliyet, Hürriyet): page one with the
 // sürmanşet band above the masthead, the manşet under it and a few more stories, then a page per
@@ -19,7 +19,7 @@ export type NewsStory = {
   sourceHost?: string;
   image?: string;
   importance: 1 | 2 | 3;
-  rating?: Rating;
+  forYou?: number;
   mute?: string;
   save?: string;
   /** The inner page the story is printed on, when it is on one. */
@@ -71,12 +71,18 @@ export function newspaperView(
         sourceHost: source && host(source),
         image: image && isHttp(image) ? image : undefined,
         importance,
-        rating: story.rating,
+        forYou: story.forYou,
         ...actions?.(story),
-        place: importance > 1 ? story.place : undefined,
+        place: story.place,
       };
     }),
   }));
+  // Each section in the reader's order, its stories that are not for them moved to the Kısaca box,
+  // and only cards keep a place on page one.
+  for (const section of sections) {
+    section.stories = forReader(section.stories);
+    for (const s of section.stories) if (s.importance === 1) s.place = undefined;
+  }
 
   // The candidates for page one when the model did not place a story: each section's cards in turn,
   // its biggest first, so the front page mixes sections the way an editor would.
@@ -129,8 +135,8 @@ export function newspaperView(
   };
 }
 
-// The place was only needed to lay out the page; the browser does not get it.
-const strip = ({ place: _, ...story }: NewsStory & { place?: unknown }): NewsStory => story;
+// The place and the for-you score were only needed to lay out the page; the browser does not get them.
+const strip = ({ place: _, forYou: __, ...story }: NewsStory & { place?: unknown }): NewsStory => story;
 
 function longDate(iso: string, lang: string, timeZone?: string) {
   const opts: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "long", year: "numeric" };

@@ -1,15 +1,17 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Paper, Rating, Story } from "./paper.ts";
+import type { Paper, Story } from "./paper.ts";
 
-// Rates every story of a finished paper with Jev (TypeSafe's System One model: typed questions in,
-// calibrated scores out, https://docs.typesafe.ai). Each story is one request whose state is the story
-// as written plus the input it came from: the block of the fetched files (tweets, posts, HN, newsletter,
-// Bundle) that carries its source URL, with the account group and handle above it. Three Score
-// questions, combined in code with fixed weights into one 0-10 number, since Jev is calibrated on
-// judgments and not on arithmetic. Only when TYPESAFE_API_KEY is set and the task does not say
-// `"rate": false`; a failed request leaves that story unrated and never fails the run. rate.log in the
-// run directory has every answer and error.
+// Scores every story of a finished paper by how much it matters to the reader, with Jev (TypeSafe's
+// System One model: typed questions in, calibrated scores out, https://docs.typesafe.ai). The reader is
+// the task's `reader` in task.json, a few sentences on who reads the tab and what they care about.
+// Each story is one request whose state is the reader, the story as written and the input it came
+// from: the block of the fetched files (tweets, posts, HN, newsletter, Bundle) that carries its source
+// URL, with the account group and handle above it. The answer is `story.forYou`, 0-3, which the page
+// uses to order each section and to move stories that are not for the reader into the briefs
+// (app/server/paper-view.ts). Only when TYPESAFE_API_KEY is set and the task has a `reader`; a failed
+// request leaves that story unscored and never fails the run. rate.log in the run directory has every
+// answer and error.
 
 const URL_ = "https://api.typesafe.ai/v1/systemone";
 const MODEL = "jev-latest";
@@ -18,47 +20,20 @@ const EXCERPT_CHARS = 2500;
 // Files in the run directory that are not input: the prompt, what claude wrote, and the memory.
 const NOT_INPUT = new Set(["prompt.md", "output.md", "previous.md"]);
 
-type Question = { type: "score"; instructions: string | object; criteria: string[] };
-
-// What each part asks, and how much it weighs in the overall number.
-const QUESTIONS: Record<string, Question & { weight: number }> = {
-  sourcing: {
-    type: "score",
-    weight: 0.45,
-    instructions: "How well is the main claim of `story` backed by `source_material`? Judge who is saying it and on what basis, not whether you agree.",
-    criteria: [
-      "No source material, or an anonymous rumour, unverified claim or gossip",
-      "One account's claim or opinion, not backed by a named outlet, a document or first-hand knowledge",
-      "Reported by a named news outlet or journalist, or a company or project announcing its own news",
-      "A primary source (official statement, court ruling, document, release notes, paper, data) or reported by several independent outlets",
-    ],
-  },
-  neutrality: {
-    type: "score",
-    weight: 0.25,
-    instructions: "How plain and non-sensational is `source_material`? Judge the tone and framing of the original, not of `story`.",
-    criteria: [
-      "Clickbait, propaganda or marketing hype",
-      "Noticeably spun, one-sided or promotional",
-      "Mostly factual with some framing",
-      "Plain and factual",
-    ],
-  },
-  substance: {
-    type: "score",
-    weight: 0.3,
-    instructions: "How much does `story` give a reader to take away?",
-    criteria: [
-      "Nothing concrete: vague, filler or gossip",
-      "One concrete fact with little detail",
-      "Concrete facts with some detail, numbers or consequences",
-      "Specific facts, numbers or technical detail, and why it matters",
-    ],
-  },
+const QUESTION = {
+  type: "score",
+  instructions:
+    "How much does `story` matter to `reader`? Judge by what the reader works on, uses and follows, not by how big the news is in general. `source_material` is the original the story was written from.",
+  criteria: [
+    "Not for them: about something they do not work on, use or follow",
+    "Loosely related: background on a topic near theirs, fine to skip",
+    "Relevant: about something they work on, use or follow, worth reading",
+    "Directly useful to them or affects them: something they would act on, try or need to know today",
+  ],
 };
 
 type ScoreAnswer = { type: "score"; score: number; confidence: number };
-type Response = { model: string; answers: Record<string, ScoreAnswer>; usage?: { input_tokens: number } };
+type Response = { model: string; answers: { for_you?: ScoreAnswer }; usage?: { input_tokens: number } };
 
 // The input files, read once per paper.
 async function inputs(dir: string): Promise<string[][]> {
@@ -94,12 +69,11 @@ function excerpt(files: string[][], url: string): string {
 }
 
 async function ask(state: object, apiKey: string): Promise<Response> {
-  const questions = Object.fromEntries(Object.entries(QUESTIONS).map(([id, { weight: _, ...q }]) => [id, q]));
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(URL_, {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: MODEL, state, questions }),
+      body: JSON.stringify({ model: MODEL, state, questions: { for_you: QUESTION } }),
       signal: AbortSignal.timeout(30_000),
     });
     // 429 rate limited, 529 overloaded: back off and try again, twice.
@@ -112,20 +86,7 @@ async function ask(state: object, apiKey: string): Promise<Response> {
   }
 }
 
-// Each part on 0-10 from its level (score / top level), the overall number their weighted mean.
-function toRating(answers: Record<string, ScoreAnswer>): Rating {
-  const parts: Record<string, number> = {};
-  let total = 0;
-  for (const [id, q] of Object.entries(QUESTIONS)) {
-    const a = answers[id];
-    if (typeof a?.score !== "number") throw new Error(`no answer for ${id}`);
-    parts[id] = Math.round((a.score / (q.criteria.length - 1)) * 100) / 10;
-    total += parts[id] * q.weight;
-  }
-  return { score: Math.round(total * 10) / 10, parts };
-}
-
-export async function ratePaper(paper: Paper, dir: string, apiKey: string): Promise<void> {
+export async function ratePaper(paper: Paper, dir: string, apiKey: string, reader: string): Promise<void> {
   const files = await inputs(dir).catch(() => []);
   const stories: { story: Story; section: string }[] = paper.sections.flatMap((s) => s.stories.map((story) => ({ story, section: s.heading ?? "" })));
   const log: string[] = [];
@@ -135,21 +96,25 @@ export async function ratePaper(paper: Paper, dir: string, apiKey: string): Prom
     while (next < stories.length) {
       const { story, section } = stories[next++];
       const state = {
+        reader,
         story: { section, headline: story.headline, body: story.body, context: story.context, source: story.source },
         source_material: story.source ? excerpt(files, story.source) || "(not found in the input files)" : "(no source)",
       };
       try {
         const res = await ask(state, apiKey);
-        story.rating = toRating(res.answers);
+        const score = res.answers.for_you?.score;
+        if (typeof score !== "number") throw new Error("no answer");
+        // Jev's score is the expected level, so 2.8 is "directly useful" with a little doubt.
+        story.forYou = Math.round(score * 100) / 100;
         tokens += res.usage?.input_tokens ?? 0;
-        log.push(`${story.rating.score} ${JSON.stringify(story.rating.parts)} ${story.headline}`);
+        log.push(`${story.forYou} ${story.headline}`);
       } catch (err) {
         log.push(`failed: ${err instanceof Error ? err.message : String(err)} ${story.headline}`);
       }
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  const rated = stories.filter((s) => s.story.rating).length;
-  log.unshift(`${MODEL}: rated ${rated} of ${stories.length} stories, ${tokens} input tokens`);
+  const rated = stories.filter((s) => s.story.forYou !== undefined).length;
+  log.unshift(`${MODEL}: scored ${rated} of ${stories.length} stories for the reader, ${tokens} input tokens`);
   await writeFile(join(dir, "rate.log"), log.join("\n") + "\n");
 }

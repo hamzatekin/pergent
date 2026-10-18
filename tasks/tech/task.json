@@ -6,6 +6,7 @@
   "lang": "en",
   "contextLabel": "Context",
   "briefsLabel": "In brief",
+  "reader": "A frontend-focused full-stack software engineer in the UK who also builds mobile apps with React Native and Expo, works with Claude Code and other coding agents every day, and builds side projects with a couple of friends. High for them: HTML and CSS, JavaScript and TypeScript, React, React Native and Expo, Node.js, browser and mobile APIs, performance, accessibility, tooling, web standards, security, AI-assisted development and coding agents, major AI model and tool releases, and AI research that changes how software is built. Low: AI business news, funding rounds, hype, opinion pieces about AI and society, consumer gadgets, and languages and stacks they do not use.",
   "model": "claude-haiku-5-5",
   "allowedTools": [],
   "inputs": ["tweets.md", "tweets-web.md", "discourse.md", "hn.md", "newsletters.md", "previous.md"],
