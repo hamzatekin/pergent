@@ -1,0 +1,55 @@
+{
+  "schedule": "0 9 * * 0",
+  "timezone": "Europe/London",
+  "label": "web dev",
+  "icon": "code",
+  "order": 1,
+  "lang": "en",
+  "contextLabel": "Context",
+  "briefsLabel": "In brief",
+  "model": "sonnet",
+  "allowedTools": ["WebFetch"],
+  "inputs": ["newsletters.md", "previous.md"],
+  "timeoutMinutes": 15,
+  "maxOutputTokens": 32000,
+  "before": "node ../../../scripts/previous.ts && node ../../../scripts/fetch-newsletters.ts",
+  "previous": { "days": 8 },
+  "newsletters": {
+    "days": 10,
+    "maxChars": 300000,
+    "feeds": [
+      {
+        "name": "JavaScript Weekly",
+        "url": "https://javascriptweekly.com/rss"
+      },
+      {
+        "name": "Frontend Focus",
+        "url": "https://frontendfoc.us/rss"
+      },
+      {
+        "name": "React Status",
+        "url": "https://react.statuscode.com/rss"
+      },
+      {
+        "name": "Node Weekly",
+        "url": "https://nodeweekly.com/rss"
+      },
+      {
+        "name": "The Deep View",
+        "url": "https://rss.beehiiv.com/feeds/nswNBn2yqy.xml"
+      },
+      {
+        "name": "Superpower Daily",
+        "url": "https://rss.beehiiv.com/feeds/GcFiF2T4I5.xml"
+      },
+      {
+        "name": "MyClaw Newsletter",
+        "url": "https://newsletter.myclaw.ai/rss/"
+      },
+      {
+        "name": "NativeWeekly",
+        "sitemap": "https://nativeweekly.beehiiv.com/sitemap.xml"
+      }
+    ]
+  }
+}
