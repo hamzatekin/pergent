@@ -16,6 +16,10 @@ services:
       # The read-only token for Aletheia's feed, which the private today task reads. Unset, today fails.
       ALETHEIA_TOKEN: ${ALETHEIA_TOKEN:-}
       ALETHEIA_CAPTURE_KEY: ${ALETHEIA_CAPTURE_KEY:-}
+      # An ntfy topic (subscribe to it in the ntfy app). Set, tasks with "notify" push their biggest stories.
+      NTFY_TOPIC: ${NTFY_TOPIC:-}
+      # The site's public address, so a notification opens the paper. Optional.
+      PUBLIC_URL: ${PUBLIC_URL:-}
     volumes:
       - runs:/app/runs
       - claude-home:/root/.claude
