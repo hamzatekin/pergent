@@ -19,7 +19,7 @@ export const Route = createFileRoute("/admin/save")({
         const [task = "", runId = "", section, index] = String((await request.formData()).get("place") ?? "").split("/");
         if (!(await listTasks()).includes(task)) return answer(404, "no such task");
         const { config } = await loadTask(task);
-        const story = config.private ? undefined : readRun(task, runId)?.paper.sections[Number(section)]?.stories[Number(index)];
+        const story = readRun(task, runId)?.paper.sections[Number(section)]?.stories[Number(index)];
         if (!story) return answer(404, "no such story");
         const saved = await saveToNotes(story, { label: config.label ?? task, contextLabel: config.contextLabel, timezone: config.timezone });
         if (!saved.ok) return answer(502, saved.error);

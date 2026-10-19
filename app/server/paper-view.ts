@@ -1,6 +1,5 @@
 import { canonical, escapeHtml, host, isHttp, renderMarkdown, type Paper, type Story } from "#src/paper.ts";
 
-import { isNoteLink } from "./notes.ts";
 
 // What the reading page gets for a paper: every markdown field already rendered to HTML on the server,
 // so marked never ships to the browser, and each story sized, given its image and sorted into the
@@ -68,7 +67,7 @@ export function paperView(paper: Paper, images: Record<string, string>, actions?
           html: `<h3>${escapeHtml(story.headline)}</h3>\n${renderMarkdown(story.body)}`,
           context: story.context ? renderMarkdown(story.context) : undefined,
           source,
-          sourceHost: source && (isNoteLink(source) ? "Open note" : host(source)),
+          sourceHost: source && host(source),
           image: image && isHttp(image) ? image : undefined,
           importance: importance(story, i, legacy),
           forYou: story.forYou,

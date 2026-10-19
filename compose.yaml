@@ -13,8 +13,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       # TypeSafe API key (console.typesafe.ai/keys). Set, every story gets a 0-10 rating from Jev.
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
-      # The read-only token for Aletheia's feed, which the private today task reads. Unset, today fails.
-      ALETHEIA_TOKEN: ${ALETHEIA_TOKEN:-}
+      # An Aletheia capture key. Set, a logged-in reader gets "Save to notes" on every story.
       ALETHEIA_CAPTURE_KEY: ${ALETHEIA_CAPTURE_KEY:-}
       # An ntfy topic (subscribe to it in the ntfy app). Set, tasks with "notify" push their biggest stories.
       NTFY_TOPIC: ${NTFY_TOPIC:-}

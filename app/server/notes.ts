@@ -8,8 +8,6 @@ const KEY = process.env.ALETHEIA_CAPTURE_KEY ?? "";
 const APP = (process.env.ALETHEIA_URL || "https://aletheia.hamzatekin.dev").replace(/\/$/, "");
 
 export const canSaveNotes = () => KEY !== "";
-/** A link to one of the reader's notes (today's stories link to the note they are about). */
-export const isNoteLink = (url: string) => url.startsWith(`${APP}/n/`);
 
 export type Saved = { ok: true; url: string } | { ok: false; error: string };
 

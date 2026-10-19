@@ -167,27 +167,8 @@ function settlementGroups(cfg: any): SourceGroup[] {
   return groups;
 }
 
-function aletheiaGroup(cfg: any): SourceGroup {
-  const app = (cfg?.app ?? "https://aletheia.hamzatekin.dev").replace(/\/$/, "");
-  const full = (cfg?.full ?? []) as string[];
-  const outline = (cfg?.outline ?? []) as string[];
-  const parts = [
-    full.length && `${full.join(" and ")} whole`,
-    outline.length && `${outline.join(" and ")} by topic`,
-    "the rest one line each",
-  ].filter(Boolean);
-  return {
-    title: "Your notes",
-    note: `From Aletheia's allowed piles: ${parts.join(", ")}, and everything changed in the last ${cfg?.recentDays ?? 7} days.`,
-    links: [{ label: "Aletheia", href: app }],
-  };
-}
-
-/**
- * The Sources panel of `task`. `tabs` are the other tasks a reader can open, for a task whose input is
- * the other papers (`briefings.ts`).
- */
-export async function taskSources(task: string, config: TaskConfig, tabs: { name: string; label: string }[]): Promise<TaskSources> {
+/** The Sources panel of `task`. */
+export async function taskSources(task: string, config: TaskConfig): Promise<TaskSources> {
   const scripts = [...(config.before ?? "").matchAll(/scripts\/([\w-]+)\.ts/g)].map((m) => m[1]);
   const c = config as Record<string, any>;
   const groups: SourceGroup[] = [];
@@ -216,12 +197,6 @@ export async function taskSources(task: string, config: TaskConfig, tabs: { name
       });
     if (script === "fetch-pains") groups.push(...painsGroups(c.pains));
     if (script === "fetch-settlement") groups.push(...settlementGroups(c.settlement));
-    if (script === "fetch-aletheia") groups.push(aletheiaGroup(c.aletheia));
-    if (script === "briefings") {
-      const others = tabs.filter((t) => t.name !== task);
-      if (others.length)
-        groups.push({ title: "The other tabs", note: "Each one's newest paper.", links: others.map((t) => ({ label: t.label, href: `/read/${t.name}` })) });
-    }
     // The filter and the for-you score only run with TypeSafe's key, so the panel only claims them then.
     if (script === "filter-jev" && jev) {
       const drop = ((c.filter?.drop ?? ["clickbait", "filler", "praise"]) as string[]).map((k) => k.replace(/-/g, " "));

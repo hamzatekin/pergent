@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { getRun, listMutes, openDb, saveIssues, saveRun, listRuns as listRunRows } from "./db.ts";
-import { PAPER_SCHEMA, fromMarkdown, isHttp, parsePaper, toMarkdown, type Paper } from "./paper.ts";
+import { PAPER_SCHEMA, fromMarkdown, parsePaper, toMarkdown, type Paper } from "./paper.ts";
 import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
@@ -47,8 +47,6 @@ export type TaskConfig = {
   maxOutputTokens?: number;
   /** true gives the task a never-show list (src/mute.ts): a "Never show" link on every story, and muted.md in each run directory. */
   mute?: boolean;
-  /** true keeps the task's papers behind the admin login: no tab, page or API answer without the cookie (the `today` task, built from the reader's notes). */
-  private?: boolean;
   /** Pushes the paper's biggest stories to the reader's phone through ntfy (src/notify.ts, NTFY_TOPIC): those of `importance` or more in sections whose heading contains `section`. */
   notify?: NotifyRule;
   /** Gives the task's page a toggle to a printed newspaper layout (app/server/newspaper-view.ts): the masthead's name and motto. */
@@ -95,21 +93,6 @@ export function runDir(name: string, runId: string): string {
 
 export function listRuns(name: string): RunMeta[] {
   return listRunRows(name);
-}
-
-// A before script can let the model name a story's source by a short reference instead of a URL
-// (fetch-aletheia.ts numbers the notes [n1], [n2]…, since a note's id on every line would cost more
-// tokens than the notes): links.json maps each reference to its URL. A source that is a reference
-// becomes that URL; one that is neither a known reference nor a URL is dropped.
-async function resolveLinks(paper: Paper, dir: string) {
-  const links: Record<string, string> | null = await readFile(join(dir, "links.json"), "utf8").then(JSON.parse, () => null);
-  if (!links) return;
-  for (const story of paper.sections.flatMap((s) => s.stories)) {
-    if (!story.source || isHttp(story.source)) continue;
-    const url = links[story.source.replace(/[[\]\s]/g, "")];
-    if (url) story.source = url;
-    else delete story.source;
-  }
 }
 
 // What the reading view needs: the paper, and the lead images the before scripts found (images.json,
@@ -283,7 +266,6 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   // The paper is the structured output; output.md is its markdown rendering, kept so a run stays
   // readable with cat. A result without a valid paper (the model answered in text) is a failed run.
   const paper = parsePaper(result?.structured_output);
-  if (paper) await resolveLinks(paper, dir);
   if (paper && process.env.TYPESAFE_API_KEY && config.reader && config.rate !== false) {
     await ratePaper(paper, dir, process.env.TYPESAFE_API_KEY, config.reader).catch((err) => writeFile(join(dir, "rate.log"), `failed: ${err}\n`));
   }
