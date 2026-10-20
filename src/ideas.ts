@@ -6,7 +6,24 @@
 // trend label. The model never counts.
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { latestVerdicts, listProblems, mentionFacts, problemMentions, saveSort, saveVerdicts, unsortedPosts, type Mention, type PostRow, type ProblemRow, type Score, type VerdictRow } from "./db.ts";
+import {
+  latestVerdicts,
+  listBriefs,
+  listProblems,
+  mentionFacts,
+  problemMentions,
+  problemVerdicts,
+  radarSince,
+  saveBrief,
+  saveSort,
+  saveVerdicts,
+  unsortedPosts,
+  type Mention,
+  type PostRow,
+  type ProblemRow,
+  type Score,
+  type VerdictRow,
+} from "./db.ts";
 import { mentions } from "./mute.ts";
 import type { TaskConfig } from "./runner.ts";
 
@@ -375,5 +392,103 @@ export async function saveJudgeOutput(runId: string, output: unknown, dir: strin
     "",
     ...rows.map((r) => `- ${r.problemId}: ${names.get(r.problemId) ?? "?"}: **${VERDICTS[r.verdict]}** (${Object.entries(r.scores).map(([k, v]) => `${k} ${v.score}`).join(", ")})${r.hardNo ? `, hard no: ${r.hardNo}` : ""}`),
     ...(picked.length > rows.length ? ["", `${picked.length - rows.length} problems were left out of the answer and wait for the next run.`] : []),
+  ].join("\n") + "\n";
+}
+
+// The brief, written when the page's Brief me asks (tasks/ideas-brief): what changed since the last
+// brief (or the last 7 days), from the tables, not the raw posts, so it is small. prepareBrief writes
+// radar.md, the facts by group, all counted by code; the model only says what matters in them.
+export const BRIEF_GROUPS = ["Worth a look", "New and rising", "Verdicts that changed", "Your starred"] as const;
+
+export function briefSchema() {
+  const text = (description: string) => ({ type: "string", description });
+  return {
+    type: "object",
+    required: ["summary", "items", "next"],
+    additionalProperties: false,
+    properties: {
+      summary: text("Two to four plain sentences: what the radar found since the last brief and what deserves attention, or that little changed."),
+      items: {
+        type: "array",
+        description: "At most 12 lines, the most important first within each group. Leave a group out when it has nothing worth saying.",
+        items: {
+          type: "object",
+          required: ["group", "problem", "text"],
+          additionalProperties: false,
+          properties: {
+            group: { type: "string", enum: [...BRIEF_GROUPS] },
+            problem: { type: "integer", description: "The problem's number from radar.md." },
+            text: text("One or two sentences on this problem, starting with why it is here: what changed, with the counts that matter. The page puts the problem's name just before it, so never restate or paraphrase the name."),
+          },
+        },
+      },
+      next: text("One or two sentences: the one thing worth doing next, such as running a problem's smallest test, starring or killing something, or waiting for more evidence. Name problems in words, never by number."),
+    },
+  };
+}
+
+export async function prepareBrief(dir: string, muted: string[], now = Date.now()): Promise<{ problems: number }> {
+  const last = listBriefs(1)[0];
+  const since = last?.createdAt ?? new Date(now - 7 * 86_400_000).toISOString();
+  const stats = problemStats(now);
+  const verdicts = latestVerdicts();
+  const rows = listProblems()
+    .filter((p) => p.status !== "killed" && stats.has(p.id) && !muted.some((m) => mentions(`${p.name}\n${p.summary}`, m)))
+    .map((p) => ({ p, s: stats.get(p.id)!, v: verdicts.get(p.id) }));
+  const line = ({ p, s, v }: (typeof rows)[number]) =>
+    `- ${p.id}: ${p.name} (${p.category}). ${s.people} people, ${s.mentions} mentions, ${s.sources.join(" and ")}${s.jobs ? `, ${s.jobs} paid jobs` : ""}, first seen ${s.first.slice(0, 10)}, last ${s.last.slice(0, 10)}${s.trend ? `, ${s.trend}` : ""}${p.status === "starred" ? ", starred" : ""}.` +
+    (v ? ` Verdict ${VERDICTS[v.verdict]} on ${v.createdAt.slice(0, 10)} (${Object.entries(v.scores).map(([k, x]) => `${k} ${x.score}`).join(", ")})${v.hardNo ? `, hard no: ${v.hardNo}` : ""}. ${v.reason} Smallest test: ${v.test}` : " Not judged yet.");
+  const byPeople = (a: (typeof rows)[number], b: (typeof rows)[number]) => b.s.people - a.s.people || b.s.mentions - a.s.mentions;
+  const recent = (f: { postedAt: string }) => f.postedAt >= since;
+  const newSince = new Map<number, number>();
+  for (const f of mentionFacts()) if (recent(f)) newSince.set(f.problemId, (newSince.get(f.problemId) ?? 0) + 1);
+
+  const worth = rows.filter((r) => r.v?.verdict === "worth").sort(byPeople);
+  const watch = rows.filter((r) => r.v?.verdict === "watch").sort(byPeople).slice(0, 6);
+  const fresh = rows.filter((r) => (r.p.createdAt >= since && r.s.people > 1) || r.s.trend === "new" || r.s.trend === "rising").sort(byPeople).slice(0, 12);
+  const changed = rows
+    .filter((r) => r.v && r.v.createdAt >= since)
+    .map((r) => ({ ...r, before: problemVerdicts(r.p.id)[1] }))
+    .slice(0, 12);
+  const starred = rows.filter((r) => r.p.status === "starred");
+  const done = radarSince(since);
+  const sections = [
+    `# The radar since ${since.slice(0, 16).replace("T", " ")} UTC${last ? " (the last brief)" : " (7 days; no brief yet)"}`,
+    `${done.collected} new posts kept, ${done.sorted} sorted, ${done.raising} of them raising a problem. ${rows.length} problems in all, ${rows.filter((r) => r.v).length} judged.`,
+    `## Worth testing (all of them)\n\n${worth.map(line).join("\n") || "None yet."}`,
+    `## Watch (the six with the most people)\n\n${watch.map(line).join("\n") || "None yet."}`,
+    `## New since then, or New or Rising this week\n\n${fresh.map((r) => `${line(r)} ${newSince.get(r.p.id) ?? 0} mentions since the last brief.`).join("\n") || "Nothing."}`,
+    `## Judged since then\n\n${changed.map((r) => `${line(r)}${r.before ? ` Before: ${VERDICTS[r.before.verdict]} on ${r.before.createdAt.slice(0, 10)}.` : " First verdict."}`).join("\n") || "Nothing."}`,
+    `## Starred by the reader\n\n${starred.map((r) => `${line(r)} ${newSince.get(r.p.id) ?? 0} mentions since the last brief.`).join("\n") || "Nothing starred."}`,
+    ...(last ? [`## The last brief, for what it said then\n\n${last.summary}\n\n${last.items.map((i) => `- ${i.group}, ${i.problem}: ${i.text}`).join("\n")}`] : []),
+  ];
+  await writeFile(join(dir, "radar.md"), sections.join("\n\n") + "\n");
+  await writeFile(join(dir, "brief.json"), JSON.stringify({ since, problems: rows.map((r) => r.p.id) }));
+  return { problems: rows.length };
+}
+
+type BriefOutput = { summary: string; items: { group: string; problem: number; text: string }[]; next: string };
+
+export async function saveBriefOutput(runId: string, output: unknown, dir: string): Promise<string | null> {
+  const out = output as BriefOutput | undefined;
+  if (!out || typeof out.summary !== "string" || !Array.isArray(out.items)) return null;
+  const { since, problems } = JSON.parse(await readFile(join(dir, "brief.json"), "utf8")) as { since: string; problems: number[] };
+  const known = new Set(problems);
+  const items = out.items
+    .filter((i) => known.has(i?.problem) && (BRIEF_GROUPS as readonly string[]).includes(i.group) && String(i.text ?? "").trim())
+    .slice(0, 16)
+    .map((i) => ({ group: i.group, problem: i.problem, text: String(i.text).trim() }));
+  saveBrief(runId, { since, summary: out.summary.trim(), items, next: String(out.next ?? "").trim() });
+  const names = new Map(listProblems().map((p) => [p.id, p.name]));
+  return [
+    `# Brief, ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    "",
+    out.summary.trim(),
+    ...BRIEF_GROUPS.flatMap((g) => {
+      const these = items.filter((i) => i.group === g);
+      return these.length ? ["", `## ${g}`, "", ...these.map((i) => `- ${names.get(i.problem) ?? i.problem}: ${i.text}`)] : [];
+    }),
+    "",
+    `Next: ${String(out.next ?? "").trim()}`,
   ].join("\n") + "\n";
 }

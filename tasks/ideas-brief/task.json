@@ -1,0 +1,13 @@
+{
+  "timezone": "Europe/London",
+  "label": "ideas brief",
+  "tab": false,
+  "order": 7,
+  "lang": "en",
+  "model": "sonnet",
+  "allowedTools": [],
+  "output": "brief",
+  "inputs": ["radar.md"],
+  "timeoutMinutes": 10,
+  "systemPrompt": "You brief one reader on what their ideas radar found. The user message holds the radar's facts, counted by code, and the editor's brief. You deliver the brief by calling the StructuredOutput tool once, with the object as the tool's arguments: `items` an array, never a JSON string. Do not write the brief, or any JSON, as a text reply: a brief written as text is thrown away."
+}

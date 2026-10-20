@@ -149,6 +149,15 @@ export function openDb(runsDir: string): DatabaseSync {
       run_id      TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS verdicts_by_problem ON verdicts (problem_id, id);
+    CREATE TABLE IF NOT EXISTS briefs (
+      id         INTEGER PRIMARY KEY,
+      since      TEXT NOT NULL,
+      summary    TEXT NOT NULL,
+      items      TEXT NOT NULL,
+      next       TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      run_id     TEXT NOT NULL
+    );
   `);
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
@@ -413,6 +422,36 @@ export function radarTotals(): { posts: number; sorted: number; raising: number;
            (SELECT COUNT(*) FROM mentions WHERE problem_id IS NOT NULL) AS raising,
            (SELECT COUNT(*) FROM problems WHERE status != 'merged') AS problems
   `).get() as { posts: number; sorted: number; raising: number; problems: number };
+}
+
+// The radar's on-demand brief (src/ideas.ts): what changed since `since`, in a few grouped lines that
+// point at problems.
+export type BriefItem = { group: string; problem: number; text: string };
+export type BriefRow = { id: number; since: string; summary: string; items: BriefItem[]; next: string; createdAt: string };
+
+export function saveBrief(runId: string, brief: Omit<BriefRow, "id" | "createdAt">): number {
+  return Number(
+    use()
+      .prepare("INSERT INTO briefs (since, summary, items, next, created_at, run_id) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(brief.since, brief.summary, JSON.stringify(brief.items), brief.next, new Date().toISOString(), runId).lastInsertRowid,
+  );
+}
+
+// The briefs, newest first.
+export function listBriefs(limit = 50): BriefRow[] {
+  const rows = use().prepare("SELECT id, since, summary, items, next, created_at AS createdAt FROM briefs ORDER BY id DESC LIMIT ?").all(limit) as (Omit<BriefRow, "items"> & { items: string })[];
+  return rows.map((r) => ({ ...r, items: JSON.parse(r.items) }));
+}
+
+// What the radar did since a time: posts collected (by the run that saved them, whose id is its start
+// time), posts sorted, and of those, how many raised a problem.
+export function radarSince(since: string): { collected: number; sorted: number; raising: number } {
+  const runId = since.replace(/[:.]/g, "-");
+  return use().prepare(`
+    SELECT (SELECT COUNT(*) FROM posts WHERE kept = 1 AND run_id >= ?) AS collected,
+           (SELECT COUNT(*) FROM mentions WHERE sorted_at >= ?) AS sorted,
+           (SELECT COUNT(*) FROM mentions WHERE sorted_at >= ? AND problem_id IS NOT NULL) AS raising
+  `).get(runId, since, since) as { collected: number; sorted: number; raising: number };
 }
 
 // The newest issues, of one newsletter or all of them, without their text.

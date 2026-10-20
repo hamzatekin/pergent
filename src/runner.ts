@@ -9,7 +9,7 @@ import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
 import { notifyPaper, type NotifyRule } from "./notify.ts";
-import { RADAR, judgeSchema, prepareJudge, prepareSort, saveJudgeOutput, saveSortOutput, sortSchema } from "./ideas.ts";
+import { RADAR, briefSchema, judgeSchema, prepareBrief, prepareJudge, prepareSort, saveBriefOutput, saveJudgeOutput, saveSortOutput, sortSchema } from "./ideas.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -54,7 +54,7 @@ export type TaskConfig = {
   newspaper?: { name?: string; motto?: string };
   /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar). */
   tab?: boolean;
-  /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort" and "judge"). */
+  /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort", "judge" and "brief"). */
   output?: string;
   [extra: string]: unknown;
 };
@@ -134,6 +134,14 @@ const OUTPUTS: Record<string, Output> = {
     },
     schema: judgeSchema,
     save: (runId, output, dir) => saveJudgeOutput(runId, output, dir),
+  },
+  brief: {
+    prepare: async (_task, _runId, dir) => {
+      const { problems } = await prepareBrief(dir, listMutes(RADAR));
+      return { go: problems > 0, note: problems ? `${problems} problems on the radar` : "Nothing on the radar yet" };
+    },
+    schema: briefSchema,
+    save: (runId, output, dir) => saveBriefOutput(runId, output, dir),
   },
 };
 

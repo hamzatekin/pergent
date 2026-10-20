@@ -848,6 +848,60 @@ a.chip:active {
 .trend[data-trend="fading"] {
   @apply text-faint;
 }
+.brief {
+  @apply mb-3 rounded-xl bg-surface px-4 py-3 shadow-border;
+}
+.brief summary {
+  @apply flex cursor-pointer list-none items-center gap-2 text-[14px] select-none;
+}
+.brief summary::-webkit-details-marker {
+  display: none;
+}
+.brief-title {
+  @apply font-medium text-ink;
+}
+.brief summary .stamp {
+  @apply text-[12.5px] text-muted;
+}
+.brief-empty {
+  @apply flex flex-col gap-3 text-[13.5px] text-soft md:flex-row md:items-center md:justify-between;
+}
+.brief-body {
+  @apply mt-2;
+}
+.brief-summary {
+  @apply text-[14.5px] leading-[1.6] text-ink text-pretty;
+}
+.brief-group {
+  @apply mt-3;
+}
+.brief-group h4 {
+  @apply text-[11px] font-semibold uppercase tracking-[0.04em] text-muted;
+}
+.brief-group ul {
+  @apply mt-1 flex flex-col gap-1.5;
+}
+.brief-group li {
+  @apply text-[13.5px] leading-[1.55] text-soft text-pretty;
+}
+.brief-group a {
+  @apply font-medium text-ink underline decoration-black/20 underline-offset-[3px] hover:decoration-black/60;
+}
+.brief-next {
+  @apply mt-3 rounded-lg bg-accent/5 px-3 py-2 text-[13.5px] leading-[1.55] text-ink;
+}
+.brief-body .note {
+  @apply mt-2 text-[12px];
+}
+.brief-foot {
+  @apply mt-3 flex items-center gap-3 border-t border-line pt-3;
+}
+.briefs-list {
+  @apply mx-auto max-w-[720px];
+}
+.brief-when {
+  @apply text-[13px] font-medium text-muted;
+}
 .badges {
   @apply flex items-center gap-1.5;
 }

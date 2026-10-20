@@ -1,5 +1,6 @@
-import { Link } from "@tanstack/react-router";
-import type { IdeasPage, ProblemItem, ProblemPage } from "../server/ideas.functions.ts";
+import { Link, useRouter } from "@tanstack/react-router";
+import { useEffect } from "react";
+import type { BriefState, BriefView, BriefsPage, IdeasPage, ProblemItem, ProblemPage } from "../server/ideas.functions.ts";
 import { Shell } from "./Shell.tsx";
 import { Sources } from "./Sources.tsx";
 
@@ -70,6 +71,7 @@ export function IdeasBoard({ data }: { data: IdeasPage }) {
   );
   return (
     <Shell nav={data.nav} active="ideas" header={header}>
+      <BriefPanel state={data.brief} />
       <Sources sources={data.sources} />
       <p className="note feed-note">
         {totals.posts.toLocaleString("en-GB")} posts collected, {totals.sorted.toLocaleString("en-GB")} sorted into {plural(totals.problems, "problem")}
@@ -345,5 +347,115 @@ function VerdictCard({ data }: { data: ProblemPage }) {
         </div>
       )}
     </section>
+  );
+}
+
+// While a brief is being written the page asks the server again every 5s, so it appears without a reload.
+function useRefreshWhile(busy: boolean) {
+  const router = useRouter();
+  useEffect(() => {
+    if (!busy) return;
+    const timer = setInterval(() => router.invalidate(), 5_000);
+    return () => clearInterval(timer);
+  }, [busy, router]);
+}
+
+function BriefMe({ state, label = "Brief me" }: { state: BriefState; label?: string }) {
+  if (!state.canBrief) return null;
+  return (
+    <form method="post" action="/admin/ideas/brief">
+      <button type="submit" className="btn primary" disabled={state.briefing}>
+        {state.briefing ? "Writing your brief…" : label}
+      </button>
+    </form>
+  );
+}
+
+// The top of the board: the newest brief (open for 12 hours, then closed to one line), with Brief me to
+// write a new one covering what changed since. The briefs page keeps the earlier ones.
+function BriefPanel({ state }: { state: BriefState }) {
+  useRefreshWhile(state.briefing);
+  const [latest] = state.briefs;
+  if (!latest)
+    return (
+      <div className="brief brief-empty">
+        <p>Ask for a brief and the radar sums up what it found: what is worth a look, what is new or rising, which verdicts changed.</p>
+        <BriefMe state={state} />
+      </div>
+    );
+  return (
+    <details className="brief" open={latest.fresh || state.briefing}>
+      <summary>
+        <span className="brief-title">Brief</span>
+        <span className="stamp">{latest.when}</span>
+      </summary>
+      <BriefBody brief={latest} />
+      <div className="brief-foot">
+        <BriefMe state={state} label="Brief me again" />
+        <Link to="/ideas/briefs" className="linkbtn">
+          Earlier briefs
+        </Link>
+      </div>
+    </details>
+  );
+}
+
+function BriefBody({ brief }: { brief: BriefView }) {
+  return (
+    <div className="brief-body">
+      <p className="brief-summary">{brief.summary}</p>
+      {brief.groups.map((g) => (
+        <section key={g.group} className="brief-group">
+          <h4>{g.group}</h4>
+          <ul>
+            {g.items.map((i) => (
+              <li key={i.problem}>
+                <Link to="/ideas/$id" params={{ id: String(i.problem) }}>
+                  {i.name}
+                </Link>{" "}
+                {i.text}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      {brief.next && (
+        <p className="brief-next">
+          <strong>Next:</strong> {brief.next}
+        </p>
+      )}
+      <p className="note">Covers what changed since {brief.since}.</p>
+    </div>
+  );
+}
+
+export function BriefsList({ data }: { data: BriefsPage }) {
+  useRefreshWhile(data.briefing);
+  const header = (
+    <>
+      <h1 className="crumb">
+        <Link to="/ideas" className="crumb-task">
+          Ideas
+        </Link>
+        <span className="stamp">Briefs</span>
+      </h1>
+      <BriefMe state={data} />
+    </>
+  );
+  return (
+    <Shell nav={data.nav} active="ideas" header={header}>
+      <div className="briefs-list">
+        {data.briefs.length ? (
+          data.briefs.map((b) => (
+            <article key={b.id} className="brief">
+              <h3 className="brief-when">{b.when}</h3>
+              <BriefBody brief={b} />
+            </article>
+          ))
+        ) : (
+          <p className="callout">No briefs yet.</p>
+        )}
+      </div>
+    </Shell>
   );
 }
