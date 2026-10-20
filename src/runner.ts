@@ -9,6 +9,7 @@ import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
 import { notifyPaper, type NotifyRule } from "./notify.ts";
+import { prepareSort, saveSortOutput, sortSchema } from "./ideas.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -51,8 +52,10 @@ export type TaskConfig = {
   notify?: NotifyRule;
   /** Gives the task's page a toggle to a printed newspaper layout (app/server/newspaper-view.ts): the masthead's name and motto. */
   newspaper?: { name?: string; motto?: string };
-  /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar's collect runs). */
+  /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar). */
   tab?: boolean;
+  /** What the run hands back instead of a paper, by name from OUTPUTS below ("sort": the ideas radar's sort). */
+  output?: string;
   [extra: string]: unknown;
 };
 
@@ -105,6 +108,26 @@ export function readRun(name: string, runId: string): { meta: RunMeta; output: s
   const row = getRun(name, runId);
   return row && { ...row, paper: row.paper ?? fromMarkdown(row.output) };
 }
+
+// Runs that hand back something other than a paper. `prepare` writes the run's input files after
+// `before` (false: nothing to do, and the run ends ok without claude), `schema` is what claude's
+// structured output is held to, and `save` stores it, returning output.md, or null when the output is
+// unusable and the run failed.
+type Output = {
+  prepare: (task: string, runId: string, dir: string, config: TaskConfig) => Promise<{ go: boolean; note: string }>;
+  schema: (config: TaskConfig) => object;
+  save: (runId: string, output: unknown, dir: string, config: TaskConfig) => Promise<string | null>;
+};
+const OUTPUTS: Record<string, Output> = {
+  sort: {
+    prepare: async (task, runId, dir, config) => {
+      const { posts, waiting } = await prepareSort(task, runId, dir, config, listMutes(task));
+      return { go: posts > 0, note: `${posts} posts to sort${waiting ? `, ${waiting} more waiting for the next runs` : ""}` };
+    },
+    schema: sortSchema,
+    save: saveSortOutput,
+  },
+};
 
 // A before command gets this long; the fetches inside it have their own, shorter timeouts.
 const BEFORE_TIMEOUT_MS = 5 * 60_000;
@@ -190,6 +213,8 @@ async function withInputs(dir: string, inputs: string[], prompt: string): Promis
 
 export async function runTask(name: string): Promise<{ meta: RunMeta; dir: string }> {
   const { config, prompt } = await loadTask(name);
+  const custom = config.output ? OUTPUTS[config.output] : undefined;
+  if (config.output && !custom) throw new Error(`${name}: unknown output ${config.output}`);
   const startedAt = new Date();
   const runId = startedAt.toISOString().replace(/[:.]/g, "-");
   const dir = runDir(name, runId);
@@ -198,6 +223,14 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   const running: RunMeta = { task: name, runId, startedAt: startedAt.toISOString(), status: "running" };
   await writeFile(join(dir, "meta.json"), JSON.stringify(running, null, 2));
   saveRun(running);
+  // A run that ends before claude: a failed before, or nothing for claude to do.
+  const end = async (ok: boolean, output: string) => {
+    const meta: RunMeta = { ...running, finishedAt: new Date().toISOString(), status: ok ? "ok" : "failed" };
+    await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));
+    await writeFile(join(dir, "output.md"), output);
+    saveRun(meta, output);
+    return { meta, dir };
+  };
   // The never-show list, for the before scripts and the prompt (when the task lists it in inputs).
   if (config.mute) await writeFile(join(dir, "muted.md"), mutedMarkdown(listMutes(name)));
 
@@ -213,18 +246,17 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
       ok = false;
       await writeFile(join(dir, "save.log"), `posts.json not saved: ${err}\n`);
     });
-    if (!ok || !prompt) {
-      const meta: RunMeta = { ...running, finishedAt: new Date().toISOString(), status: ok ? "ok" : "failed" };
-      await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));
-      await writeFile(join(dir, "output.md"), "");
-      saveRun(meta);
-      return { meta, dir };
-    }
+    if (!ok || !prompt) return end(ok, "");
+  }
+  if (custom) {
+    const { go, note } = await custom.prepare(name, runId, dir, config);
+    await writeFile(join(dir, "prepare.log"), note + "\n");
+    if (!go) return end(true, `${note}.\n`);
   }
 
   // strict-mcp-config: ignore the user-level MCP servers; a task gets only what its own config names.
   // json-schema: the paper comes back as structured output, held to the schema on the model's side.
-  const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--json-schema", JSON.stringify(PAPER_SCHEMA)];
+  const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--json-schema", JSON.stringify(custom ? custom.schema(config) : PAPER_SCHEMA)];
   if (config.model) args.push("--model", config.model);
   if (config.effort) args.push("--effort", config.effort);
   // --tools is what the model gets to see; --allowedTools only pre-approves, and on its own leaves the
@@ -273,6 +305,26 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   const exitCode = await new Promise<number | null>((done) => child.on("close", done));
   clearTimeout(timer);
 
+  const finished = { exitCode, timedOut, costUsd: result?.total_cost_usd, turns: result?.num_turns };
+  if (custom) {
+    // Not a paper: the output is stored where it belongs (Output.save), output.json keeps it as it came
+    // and output.md is what save said about it.
+    if (result?.structured_output) await writeFile(join(dir, "output.json"), JSON.stringify(result.structured_output, null, 2));
+    const answered = exitCode === 0 && !timedOut && !!result && !result.is_error;
+    const saved = answered
+      ? await custom.save(runId, result!.structured_output, dir, config).catch(async (err) => {
+          await writeFile(join(dir, "save.log"), `${err instanceof Error ? err.stack : err}\n`);
+          return null;
+        })
+      : null;
+    const output = saved ?? result?.result ?? "";
+    await writeFile(join(dir, "output.md"), output);
+    const meta: RunMeta = { ...running, finishedAt: new Date().toISOString(), status: saved !== null ? "ok" : "failed", ...finished };
+    await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));
+    saveRun(meta, output);
+    return { meta, dir };
+  }
+
   // The paper is the structured output; output.md is its markdown rendering, kept so a run stays
   // readable with cat. A result without a valid paper (the model answered in text) is a failed run.
   const paper = parsePaper(result?.structured_output);
@@ -287,10 +339,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
     ...running,
     finishedAt: new Date().toISOString(),
     status: ok ? "ok" : "failed",
-    exitCode,
-    timedOut,
-    costUsd: result?.total_cost_usd,
-    turns: result?.num_turns,
+    ...finished,
   };
   await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));
   // The run directory keeps everything; the database gets what the API serves.

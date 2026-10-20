@@ -13,6 +13,13 @@ export type RunRow = { meta: RunMeta; output: string; images: Record<string, str
 // for reading it whole on the Newsletters page. `date` is ISO, `html` cleaned of the email's styling.
 export type NewIssue = { feed: string; title: string; url: string; date: string; html: string };
 export type IssueRow = { id: number; feed: string; title: string; url: string; date: string };
+export type PostRow = { id: string; source: string; community: string; author: string; postedAt: string; title: string; body: string; url: string; budget: string | null; kind: string | null };
+// A problem of the ideas radar (src/ideas.ts): what several posts complain about, named in the owners'
+// words. `status` is open, or merged (into `merged_into`); the page's Star and Kill come later.
+export type ProblemRow = { id: number; name: string; category: string; summary: string; status: string; createdAt: string };
+// What the sort made of one post: the problem it raises (none when it raises none, or `note` says why
+// it was set aside) and what it says about it.
+export type Mention = { postId: string; problemId: number | null; recurring: boolean; cost: string; workaround: string; quote: string; note?: string };
 // A post the ideas radar collected (scripts/collect-posts.ts writes them to a run's posts.json): a
 // Reddit post, a Freelancer job or a forum topic, with the kind Jev gave it. `kept` is false when
 // the kind is one the task drops; such a post keeps no body and is stored only so it is not fetched
@@ -88,11 +95,34 @@ export function openDb(runsDir: string): DatabaseSync {
       run_id    TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS posts_by_date ON posts (posted_at);
+    CREATE TABLE IF NOT EXISTS problems (
+      id          INTEGER PRIMARY KEY,
+      name        TEXT NOT NULL,
+      category    TEXT NOT NULL,
+      summary     TEXT NOT NULL DEFAULT '',
+      status      TEXT NOT NULL DEFAULT 'open',
+      merged_into INTEGER,
+      created_at  TEXT NOT NULL,
+      run_id      TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS mentions (
+      post_id    TEXT PRIMARY KEY,
+      problem_id INTEGER,
+      recurring  INTEGER NOT NULL DEFAULT 0,
+      cost       TEXT NOT NULL DEFAULT '',
+      workaround TEXT NOT NULL DEFAULT '',
+      quote      TEXT NOT NULL DEFAULT '',
+      note       TEXT,
+      run_id     TEXT NOT NULL,
+      sorted_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS mentions_by_problem ON mentions (problem_id);
   `);
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
   if (!columns.some((c) => c.name === "paper")) db.exec("ALTER TABLE runs ADD COLUMN paper TEXT");
   renameTasks(runsDir);
+  moveMutes();
   importRuns(runsDir);
   return db;
 }
@@ -204,6 +234,87 @@ export function savePosts(task: string, runId: string, posts: NewPost[]) {
   }
 }
 
+// A post's columns as PostRow names them, from `posts p`.
+const POST_COLUMNS = "p.id, p.source, p.community, p.author, p.posted_at AS postedAt, p.title, p.body, p.url, p.budget, p.kind";
+
+// The kept posts no sort has seen yet, newest first, and how many there are in all.
+export function unsortedPosts(limit: number): { posts: PostRow[]; total: number } {
+  const from = "FROM posts p LEFT JOIN mentions m ON m.post_id = p.id WHERE p.kept = 1 AND m.post_id IS NULL";
+  const posts = use().prepare(`SELECT ${POST_COLUMNS} ${from} ORDER BY p.posted_at DESC LIMIT ?`).all(limit) as PostRow[];
+  const { total } = use().prepare(`SELECT COUNT(*) AS total ${from}`).get() as { total: number };
+  return { posts, total };
+}
+
+// Every problem a post can still go to (not merged away), oldest first.
+export function listProblems(): ProblemRow[] {
+  return use().prepare("SELECT id, name, category, summary, status, created_at AS createdAt FROM problems WHERE status != 'merged' ORDER BY id").all() as ProblemRow[];
+}
+
+export function getProblem(id: number): ProblemRow | null {
+  return (use().prepare("SELECT id, name, category, summary, status, created_at AS createdAt FROM problems WHERE id = ?").get(id) as ProblemRow | undefined) ?? null;
+}
+
+// One sort's result, all or nothing: the problems it opened, then every post's mention. A mention's
+// `problemId` below zero points at the new problem of that index (-1 the first).
+export function saveSort(runId: string, opened: { name: string; category: string; summary: string }[], found: Mention[]): number[] {
+  const db = use();
+  const now = new Date().toISOString();
+  db.exec("BEGIN");
+  try {
+    const add = db.prepare("INSERT INTO problems (name, category, summary, created_at, run_id) VALUES (?, ?, ?, ?, ?)");
+    const ids = opened.map((p) => Number(add.run(p.name, p.category, p.summary, now, runId).lastInsertRowid));
+    const put = db.prepare(`
+      INSERT OR REPLACE INTO mentions (post_id, problem_id, recurring, cost, workaround, quote, note, run_id, sorted_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const m of found) {
+      const problem = m.problemId !== null && m.problemId < 0 ? ids[-m.problemId - 1] : m.problemId;
+      put.run(m.postId, problem ?? null, Number(m.recurring), m.cost, m.workaround, m.quote, m.note ?? null, runId, now);
+    }
+    db.exec("COMMIT");
+    return ids;
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// Every mention of a problem with its post, newest first.
+export function problemMentions(problemId: number): (Mention & { post: PostRow })[] {
+  const rows = use().prepare(`
+    SELECT m.post_id AS postId, m.problem_id AS problemId, m.recurring, m.cost, m.workaround, m.quote, m.note, ${POST_COLUMNS}
+    FROM mentions m JOIN posts p ON p.id = m.post_id WHERE m.problem_id = ? ORDER BY p.posted_at DESC
+  `).all(problemId) as (Record<string, unknown>)[];
+  return rows.map((r) => ({
+    postId: r.postId as string,
+    problemId: r.problemId as number,
+    recurring: r.recurring === 1,
+    cost: r.cost as string,
+    workaround: r.workaround as string,
+    quote: r.quote as string,
+    post: { id: r.id, source: r.source, community: r.community, author: r.author, postedAt: r.postedAt, title: r.title, body: r.body, url: r.url, budget: r.budget, kind: r.kind } as PostRow,
+  }));
+}
+
+// What the radar counts, per problem with at least one mention: one row per mention, with the facts
+// about its post that the counts need. The counting is in src/ideas.ts.
+export function mentionFacts(): { problemId: number; postId: string; source: string; community: string; author: string; title: string; postedAt: string; budget: string | null; recurring: number; cost: string; workaround: string }[] {
+  return use().prepare(`
+    SELECT m.problem_id AS problemId, p.id AS postId, p.source, p.community, p.author, p.title, p.posted_at AS postedAt, p.budget, m.recurring, m.cost, m.workaround
+    FROM mentions m JOIN posts p ON p.id = m.post_id WHERE m.problem_id IS NOT NULL
+  `).all() as ReturnType<typeof mentionFacts>;
+}
+
+// How far the sort has got: posts kept, sorted, raising a problem, and problems.
+export function radarTotals(): { posts: number; sorted: number; raising: number; problems: number } {
+  return use().prepare(`
+    SELECT (SELECT COUNT(*) FROM posts WHERE kept = 1) AS posts,
+           (SELECT COUNT(*) FROM mentions) AS sorted,
+           (SELECT COUNT(*) FROM mentions WHERE problem_id IS NOT NULL) AS raising,
+           (SELECT COUNT(*) FROM problems WHERE status != 'merged') AS problems
+  `).get() as { posts: number; sorted: number; raising: number; problems: number };
+}
+
 // The newest issues, of one newsletter or all of them, without their text.
 export function listIssues(feed?: string, limit = 100): IssueRow[] {
   const where = feed === undefined ? "" : "WHERE feed = ?";
@@ -231,6 +342,19 @@ function renameTasks(runsDir: string) {
   for (const [from, to] of Object.entries(RENAMED)) {
     if (existsSync(join(runsDir, from)) && !existsSync(join(runsDir, to))) renameSync(join(runsDir, from), join(runsDir, to));
     use().prepare("UPDATE runs SET task = ? WHERE task = ?").run(to, from);
+  }
+}
+
+// Never-show lists that went to another task: pains' to the ideas radar that replaced it. Copied once
+// (a state key remembers it), so a phrase undone on the new task later stays undone.
+const MUTES_MOVED: Record<string, string> = { pains: "ideas" };
+
+function moveMutes() {
+  for (const [from, to] of Object.entries(MUTES_MOVED)) {
+    const key = `mutes_moved_${from}`;
+    if (getState(key)) continue;
+    use().prepare("INSERT OR IGNORE INTO mutes (task, phrase, created_at) SELECT ?, phrase, created_at FROM mutes WHERE task = ?").run(to, from);
+    setState(key, new Date().toISOString());
   }
 }
 

@@ -49,7 +49,7 @@ export function guardPost(request: Request, { login = false } = {}): Response | 
 
 // Where a login returns to: only a path on this site, the dashboard's or the newsletters' (the
 // newsletters send you to the login).
-export const adminPath = (next: string | undefined) => (next && /^\/(admin|newsletters)(\/|$)/.test(next) ? next : "/admin");
+export const adminPath = (next: string | undefined) => (next && /^\/(admin|newsletters|ideas)(\/|$)/.test(next) ? next : "/admin");
 export const backTo = (back: string, task: string) => (/^\/(read|admin)\//.test(back) ? back : `/read/${task}`);
 
 // Whether the JSON API answers for a task: only one in tasks/. The database still holds the runs of a

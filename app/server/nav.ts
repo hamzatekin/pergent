@@ -8,6 +8,8 @@ export type Nav = {
   admin: boolean;
   /** The Newsletters page, the issues as published: there for a visitor with the admin cookie. */
   newsletters: boolean;
+  /** The Ideas page, the radar's problems (tasks/ideas): likewise. */
+  ideas: boolean;
 };
 
 // What the sidebar shows on every page: a link per task in tab order (not a task with `tab: false`), the scheduler's state at the
@@ -26,6 +28,7 @@ export async function nav(): Promise<Nav & { configs: Map<string, TaskConfig> }>
     scheduler: schedulerStatus().scheduler,
     admin: !!PASSWORD,
     newsletters: loggedIn(),
+    ideas: loggedIn() && all.includes("ideas"),
     configs,
   };
 }

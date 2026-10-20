@@ -108,14 +108,14 @@ function newsletterGroup(cfg: any): SourceGroup | undefined {
   };
 }
 
-function painsGroups(cfg: any): SourceGroup[] {
+// The ideas radar's sources (scripts/collect-posts.ts).
+function collectGroups(cfg: any): SourceGroup[] {
   const groups: SourceGroup[] = [];
-  const reddit = (cfg?.reddit ?? []) as { subs: string[]; search?: string }[];
-  const subs = [...new Map(reddit.flatMap((r) => r.subs).map((s) => [s.toLowerCase(), s])).values()];
+  const subs = (cfg?.reddit?.subs ?? []) as string[];
   if (subs.length)
     groups.push({
       title: plural(subs.length, "subreddit"),
-      note: `${reddit.some((r) => r.search) ? "A search for pain phrases (“is there a tool”, “spreadsheet”, “manually”…) over the week, then the" : "The"} newest posts of the last ${cfg.hours ?? 48} hours.`,
+      note: "Every new post, through Arctic Shift's archive of Reddit.",
       links: subs.map((s) => ({ label: `r/${s}`, href: `https://www.reddit.com/r/${s}/` })),
     });
   const fl = cfg?.freelancer;
@@ -195,7 +195,13 @@ export async function taskSources(task: string, config: TaskConfig): Promise<Tas
         note: `The popular list and the last ${c.bundle?.hours ?? 24} hours of the feed.`,
         links: [{ label: "bundle.app", href: "https://www.bundle.app" }],
       });
-    if (script === "fetch-pains") groups.push(...painsGroups(c.pains));
+    if (script === "collect-posts") {
+      groups.push(...collectGroups(c.collect));
+      if (jev) {
+        const drop = ((c.filter?.drop ?? []) as string[]).map((k) => k.replace(/-/g, " "));
+        how.push(`Jev (TypeSafe) reads every new post first and sets aside ${drop.join(", ").replace(/, ([^,]*)$/, " and $1")} when it is at least ${Math.round((c.filter?.threshold ?? 0.6) * 100)}% sure.`);
+      }
+    }
     if (script === "fetch-settlement") groups.push(...settlementGroups(c.settlement));
     // The filter and the for-you score only run with TypeSafe's key, so the panel only claims them then.
     if (script === "filter-jev" && jev) {
@@ -207,6 +213,11 @@ export async function taskSources(task: string, config: TaskConfig): Promise<Tas
   if (scripts.includes("fetch-settlement")) how.push("It is shown its last paper, and carries its answers forward until a source changes them.");
   if (config.mute) how.push("Your never-show list is left out.");
   const tools = config.allowedTools ?? [];
+  if (config.output === "sort") {
+    how.push(`${modelName(config.model)} puts each post under the problem it raises, opening a new problem when none fits, and notes whether it recurs, what it costs and the workaround.`);
+    how.push("The counts are code: people, sources, paid jobs and weeks, and from them New, Rising, Steady or Fading.");
+    return { how, groups, summary: groups.map((g) => g.title).join(" · ") };
+  }
   how.push(`${modelName(config.model)} writes the paper${tools.includes("WebFetch") ? ", opening a few of the linked articles" : " from what was fetched, with no tools"}.`);
   if (config.reader && config.rate !== false && jev) how.push("Jev scores every story by how much it matters to you; each section puts those first, and what is not for you drops to the briefs.");
 
