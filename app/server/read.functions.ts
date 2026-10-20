@@ -47,7 +47,7 @@ export const getPaperPage = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<PaperPage> => {
     const { configs, ...sidebar } = await nav();
     const task = data.task ?? sidebar.tabs[0]?.name;
-    if (!task || !configs.has(task)) throw notFound();
+    if (!task || !sidebar.tabs.some((t) => t.name === task)) throw notFound();
     const config = configs.get(task)!;
     const finished = listRuns(task).filter((r) => r.status !== "running");
     const current = data.runId ? finished.find((r) => r.runId === data.runId) : (finished.find((r) => r.status === "ok") ?? finished[0]);
