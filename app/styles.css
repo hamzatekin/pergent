@@ -848,6 +848,86 @@ a.chip:active {
 .trend[data-trend="fading"] {
   @apply text-faint;
 }
+.badges {
+  @apply flex items-center gap-1.5;
+}
+.verdict {
+  @apply rounded-full bg-inset px-2 text-[11.5px] font-medium leading-[19px] whitespace-nowrap text-muted;
+}
+.verdict[data-verdict="worth"] {
+  @apply bg-good text-white;
+}
+.verdict[data-verdict="watch"] {
+  @apply bg-warn/10 text-warn;
+}
+.star {
+  @apply text-warn;
+}
+.problem-actions {
+  @apply mt-3 flex flex-wrap items-center gap-2;
+}
+.problem-actions .merge {
+  @apply flex items-center gap-2;
+}
+.problem-actions select {
+  @apply h-8 max-w-[16rem] rounded-md bg-surface px-2 text-[13px] text-soft shadow-border;
+}
+.verdict-card {
+  @apply mt-4 rounded-xl bg-surface p-4 shadow-border;
+}
+.verdict-top {
+  @apply flex flex-wrap items-center gap-x-3 gap-y-1;
+}
+.verdict-top .verdict {
+  @apply text-[12.5px] leading-[22px];
+}
+.hard-no {
+  @apply mt-3 rounded-md bg-failed/5 px-3 py-2 text-[13px] text-failed;
+}
+.verdict-reason {
+  @apply mt-3 text-[14px] leading-[1.6] text-ink text-pretty;
+}
+.scores {
+  @apply mt-3 flex flex-col divide-y divide-line border-y border-line;
+}
+.scores li {
+  @apply grid grid-cols-[7.5rem_auto] gap-x-3 gap-y-1 py-2 md:grid-cols-[8rem_5.5rem_1fr];
+}
+.score-label {
+  @apply text-[12.5px] leading-[19px] font-medium text-soft;
+}
+.dots {
+  @apply flex h-[19px] items-center gap-1 self-start;
+}
+.dots span {
+  @apply size-2 rounded-full bg-line;
+}
+.dots span[data-on] {
+  @apply bg-ink;
+}
+.score-why {
+  @apply col-span-2 text-[13px] leading-[1.5] text-soft text-pretty md:col-span-1;
+}
+.verdict-test {
+  @apply mt-3 rounded-lg bg-accent/5 px-3 py-2.5;
+}
+.verdict-test h4,
+.verdict-part h4 {
+  @apply text-[11px] font-semibold uppercase tracking-[0.04em] text-muted;
+}
+.verdict-test p,
+.verdict-part p {
+  @apply mt-1 text-[13.5px] leading-[1.55] text-ink text-pretty;
+}
+.verdict-part {
+  @apply mt-3;
+}
+.competitors {
+  @apply mt-1 flex flex-col gap-1 text-[13px] leading-[1.5] text-soft;
+}
+.competitors a {
+  @apply font-medium text-ink underline decoration-black/20 underline-offset-[3px] hover:decoration-black/60;
+}
 .weeks rect {
   fill: var(--color-faint);
 }

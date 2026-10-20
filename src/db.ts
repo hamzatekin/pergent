@@ -15,8 +15,25 @@ export type NewIssue = { feed: string; title: string; url: string; date: string;
 export type IssueRow = { id: number; feed: string; title: string; url: string; date: string };
 export type PostRow = { id: string; source: string; community: string; author: string; postedAt: string; title: string; body: string; url: string; budget: string | null; kind: string | null };
 // A problem of the ideas radar (src/ideas.ts): what several posts complain about, named in the owners'
-// words. `status` is open, or merged (into `merged_into`); the page's Star and Kill come later.
-export type ProblemRow = { id: number; name: string; category: string; summary: string; status: string; createdAt: string };
+// words. `status` is open, starred, killed (hidden, its posts still land on it) or merged (into
+// `merged_into`, which has its mentions now). `judgeAsked` is set by the page's Judge again.
+export type ProblemRow = { id: number; name: string; category: string; summary: string; status: string; mergedInto: number | null; createdAt: string; judgeAsked: string | null };
+// One judgement of a problem (src/ideas.ts): the verdict code derived from the model's scores.
+export type Score = { score: number; why: string };
+export type VerdictRow = {
+  id: number;
+  problemId: number;
+  verdict: "worth" | "watch" | "pass";
+  hardNo: string;
+  scores: Record<string, Score>;
+  competitors: { name: string; url: string; note: string }[];
+  size: string;
+  reason: string;
+  test: string;
+  /** The problem's mentions when it was judged, to tell when it has grown enough to judge again. */
+  mentions: number;
+  createdAt: string;
+};
 // What the sort made of one post: the problem it raises (none when it raises none, or `note` says why
 // it was set aside) and what it says about it.
 export type Mention = { postId: string; problemId: number | null; recurring: boolean; cost: string; workaround: string; quote: string; note?: string };
@@ -117,10 +134,27 @@ export function openDb(runsDir: string): DatabaseSync {
       sorted_at  TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS mentions_by_problem ON mentions (problem_id);
+    CREATE TABLE IF NOT EXISTS verdicts (
+      id          INTEGER PRIMARY KEY,
+      problem_id  INTEGER NOT NULL,
+      verdict     TEXT NOT NULL,
+      hard_no     TEXT NOT NULL DEFAULT '',
+      scores      TEXT NOT NULL,
+      competitors TEXT NOT NULL DEFAULT '[]',
+      size        TEXT NOT NULL DEFAULT '',
+      reason      TEXT NOT NULL DEFAULT '',
+      test        TEXT NOT NULL DEFAULT '',
+      mentions    INTEGER NOT NULL,
+      created_at  TEXT NOT NULL,
+      run_id      TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS verdicts_by_problem ON verdicts (problem_id, id);
   `);
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
   if (!columns.some((c) => c.name === "paper")) db.exec("ALTER TABLE runs ADD COLUMN paper TEXT");
+  const problemColumns = db.prepare("PRAGMA table_info(problems)").all() as { name: string }[];
+  if (!problemColumns.some((c) => c.name === "judge_asked")) db.exec("ALTER TABLE problems ADD COLUMN judge_asked TEXT");
   renameTasks(runsDir);
   moveMutes();
   importRuns(runsDir);
@@ -246,12 +280,73 @@ export function unsortedPosts(limit: number): { posts: PostRow[]; total: number 
 }
 
 // Every problem a post can still go to (not merged away), oldest first.
+const PROBLEM_COLUMNS = "id, name, category, summary, status, merged_into AS mergedInto, created_at AS createdAt, judge_asked AS judgeAsked";
+
 export function listProblems(): ProblemRow[] {
-  return use().prepare("SELECT id, name, category, summary, status, created_at AS createdAt FROM problems WHERE status != 'merged' ORDER BY id").all() as ProblemRow[];
+  return use().prepare(`SELECT ${PROBLEM_COLUMNS} FROM problems WHERE status != 'merged' ORDER BY id`).all() as ProblemRow[];
 }
 
 export function getProblem(id: number): ProblemRow | null {
-  return (use().prepare("SELECT id, name, category, summary, status, created_at AS createdAt FROM problems WHERE id = ?").get(id) as ProblemRow | undefined) ?? null;
+  return (use().prepare(`SELECT ${PROBLEM_COLUMNS} FROM problems WHERE id = ?`).get(id) as ProblemRow | undefined) ?? null;
+}
+
+export function setProblemStatus(id: number, status: "open" | "starred" | "killed") {
+  use().prepare("UPDATE problems SET status = ? WHERE id = ? AND status != 'merged'").run(status, id);
+}
+
+// Judge again: the judge run takes asked problems first, whatever their evidence.
+export function askJudge(id: number, asked = true) {
+  use().prepare("UPDATE problems SET judge_asked = ? WHERE id = ?").run(asked ? new Date().toISOString() : null, id);
+}
+
+// Two problems that are one: `from`'s mentions move to `into`, and `from` stays as merged, so a sort
+// that still names it is pointed on (saveSort follows merged_into).
+export function mergeProblem(from: number, into: number) {
+  const db = use();
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE mentions SET problem_id = ? WHERE problem_id = ?").run(into, from);
+    db.prepare("UPDATE problems SET status = 'merged', merged_into = ? WHERE id = ?").run(into, from);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+type VerdictDbRow = Omit<VerdictRow, "scores" | "competitors"> & { scores: string; competitors: string };
+const VERDICT_COLUMNS = "id, problem_id AS problemId, verdict, hard_no AS hardNo, scores, competitors, size, reason, test, mentions, created_at AS createdAt";
+const toVerdict = (r: VerdictDbRow): VerdictRow => ({ ...r, scores: JSON.parse(r.scores), competitors: JSON.parse(r.competitors) });
+
+// Every problem's newest verdict.
+export function latestVerdicts(): Map<number, VerdictRow> {
+  const rows = use().prepare(`SELECT ${VERDICT_COLUMNS} FROM verdicts WHERE id IN (SELECT MAX(id) FROM verdicts GROUP BY problem_id)`).all() as VerdictDbRow[];
+  return new Map(rows.map((r) => [r.problemId, toVerdict(r)]));
+}
+
+// A problem's verdicts, newest first.
+export function problemVerdicts(problemId: number): VerdictRow[] {
+  return (use().prepare(`SELECT ${VERDICT_COLUMNS} FROM verdicts WHERE problem_id = ? ORDER BY id DESC`).all(problemId) as VerdictDbRow[]).map(toVerdict);
+}
+
+export function saveVerdicts(runId: string, verdicts: Omit<VerdictRow, "id" | "createdAt">[]) {
+  const db = use();
+  const now = new Date().toISOString();
+  db.exec("BEGIN");
+  try {
+    const add = db.prepare(`
+      INSERT INTO verdicts (problem_id, verdict, hard_no, scores, competitors, size, reason, test, mentions, created_at, run_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const v of verdicts) {
+      add.run(v.problemId, v.verdict, v.hardNo, JSON.stringify(v.scores), JSON.stringify(v.competitors), v.size, v.reason, v.test, v.mentions, now, runId);
+      db.prepare("UPDATE problems SET judge_asked = NULL WHERE id = ?").run(v.problemId);
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
 }
 
 // One sort's result, all or nothing: the problems it opened, then every post's mention. A mention's
@@ -267,8 +362,13 @@ export function saveSort(runId: string, opened: { name: string; category: string
       INSERT OR REPLACE INTO mentions (post_id, problem_id, recurring, cost, workaround, quote, note, run_id, sorted_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    const merged = new Map((db.prepare("SELECT id, merged_into AS into FROM problems WHERE status = 'merged'").all() as { id: number; into: number }[]).map((r) => [r.id, r.into]));
+    const follow = (id: number) => {
+      for (let i = 0; i < 10 && merged.has(id); i++) id = merged.get(id)!;
+      return id;
+    };
     for (const m of found) {
-      const problem = m.problemId !== null && m.problemId < 0 ? ids[-m.problemId - 1] : m.problemId;
+      const problem = m.problemId !== null && m.problemId < 0 ? ids[-m.problemId - 1] : m.problemId === null ? null : follow(m.problemId);
       put.run(m.postId, problem ?? null, Number(m.recurring), m.cost, m.workaround, m.quote, m.note ?? null, runId, now);
     }
     db.exec("COMMIT");

@@ -23,6 +23,7 @@ import { Route as IdeasIndexRouteImport } from './routes/ideas.index'
 import { Route as IdeasIdRouteImport } from './routes/ideas.$id'
 import { Route as NewslettersChar123FeedChar125RouteImport } from './routes/newsletters.{-$feed}'
 import { Route as AdminAuthedIndexRouteImport } from './routes/admin/_authed/index'
+import { Route as AdminIdeasIdRouteImport } from './routes/admin/ideas.$id'
 import { Route as AdminMutesRemoveRouteImport } from './routes/admin/mutes.remove'
 import { Route as AdminRunTaskRouteImport } from './routes/admin/run.$task'
 import { Route as NewslettersFeedIdRouteImport } from './routes/newsletters.$feed.$id'
@@ -105,6 +106,11 @@ const AdminAuthedIndexRoute = AdminAuthedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminAuthedRoute,
 } as any)
+const AdminIdeasIdRoute = AdminIdeasIdRouteImport.update({
+  id: '/admin/ideas/$id',
+  path: '/admin/ideas/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminMutesRemoveRoute = AdminMutesRemoveRouteImport.update({
   id: '/remove',
   path: '/remove',
@@ -174,6 +180,7 @@ export interface FileRoutesByFullPath {
   '/ideas/$id': typeof IdeasIdRoute
   '/newsletters/{-$feed}': typeof NewslettersChar123FeedChar125Route
   '/ideas/': typeof IdeasIndexRoute
+  '/admin/ideas/$id': typeof AdminIdeasIdRoute
   '/admin/mutes/remove': typeof AdminMutesRemoveRoute
   '/admin/run/$task': typeof AdminRunTaskRoute
   '/newsletters/$feed/$id': typeof NewslettersFeedIdRoute
@@ -199,6 +206,7 @@ export interface FileRoutesByTo {
   '/ideas/$id': typeof IdeasIdRoute
   '/newsletters/{-$feed}': typeof NewslettersChar123FeedChar125Route
   '/ideas': typeof IdeasIndexRoute
+  '/admin/ideas/$id': typeof AdminIdeasIdRoute
   '/admin/mutes/remove': typeof AdminMutesRemoveRoute
   '/admin/run/$task': typeof AdminRunTaskRoute
   '/newsletters/$feed/$id': typeof NewslettersFeedIdRoute
@@ -226,6 +234,7 @@ export interface FileRoutesById {
   '/ideas/$id': typeof IdeasIdRoute
   '/newsletters/{-$feed}': typeof NewslettersChar123FeedChar125Route
   '/ideas/': typeof IdeasIndexRoute
+  '/admin/ideas/$id': typeof AdminIdeasIdRoute
   '/admin/mutes/remove': typeof AdminMutesRemoveRoute
   '/admin/run/$task': typeof AdminRunTaskRoute
   '/newsletters/$feed/$id': typeof NewslettersFeedIdRoute
@@ -254,6 +263,7 @@ export interface FileRouteTypes {
     | '/ideas/$id'
     | '/newsletters/{-$feed}'
     | '/ideas/'
+    | '/admin/ideas/$id'
     | '/admin/mutes/remove'
     | '/admin/run/$task'
     | '/newsletters/$feed/$id'
@@ -279,6 +289,7 @@ export interface FileRouteTypes {
     | '/ideas/$id'
     | '/newsletters/{-$feed}'
     | '/ideas'
+    | '/admin/ideas/$id'
     | '/admin/mutes/remove'
     | '/admin/run/$task'
     | '/newsletters/$feed/$id'
@@ -305,6 +316,7 @@ export interface FileRouteTypes {
     | '/ideas/$id'
     | '/newsletters/{-$feed}'
     | '/ideas/'
+    | '/admin/ideas/$id'
     | '/admin/mutes/remove'
     | '/admin/run/$task'
     | '/newsletters/$feed/$id'
@@ -332,6 +344,7 @@ export interface RootRouteChildren {
   IdeasIdRoute: typeof IdeasIdRoute
   NewslettersChar123FeedChar125Route: typeof NewslettersChar123FeedChar125Route
   IdeasIndexRoute: typeof IdeasIndexRoute
+  AdminIdeasIdRoute: typeof AdminIdeasIdRoute
   AdminRunTaskRoute: typeof AdminRunTaskRoute
   NewslettersFeedIdRoute: typeof NewslettersFeedIdRoute
   ReadChar123TaskChar125Char123RunIdChar125Route: typeof ReadChar123TaskChar125Char123RunIdChar125Route
@@ -436,6 +449,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminAuthedIndexRouteImport
       parentRoute: typeof AdminAuthedRoute
+    }
+    '/admin/ideas/$id': {
+      id: '/admin/ideas/$id'
+      path: '/admin/ideas/$id'
+      fullPath: '/admin/ideas/$id'
+      preLoaderRoute: typeof AdminIdeasIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/admin/mutes/remove': {
       id: '/admin/mutes/remove'
@@ -593,6 +613,7 @@ const rootRouteChildren: RootRouteChildren = {
   IdeasIdRoute: IdeasIdRoute,
   NewslettersChar123FeedChar125Route: NewslettersChar123FeedChar125Route,
   IdeasIndexRoute: IdeasIndexRoute,
+  AdminIdeasIdRoute: AdminIdeasIdRoute,
   AdminRunTaskRoute: AdminRunTaskRoute,
   NewslettersFeedIdRoute: NewslettersFeedIdRoute,
   ReadChar123TaskChar125Char123RunIdChar125Route:

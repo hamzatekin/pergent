@@ -33,6 +33,16 @@ function Weeks({ weeks, big }: { weeks: number[]; big?: boolean }) {
   );
 }
 
+const VERDICT: Record<string, string> = { worth: "Worth testing", watch: "Watch", pass: "Pass" };
+
+function VerdictBadge({ verdict }: { verdict: ProblemItem["verdict"] }) {
+  return verdict ? (
+    <span className="verdict" data-verdict={verdict}>
+      {VERDICT[verdict]}
+    </span>
+  ) : null;
+}
+
 function TrendBadge({ trend }: { trend: ProblemItem["trend"] }) {
   return trend ? (
     <span className="trend" data-trend={trend}>
@@ -66,15 +76,28 @@ export function IdeasBoard({ data }: { data: IdeasPage }) {
         {data.lastSort ? `, last sorted ${data.lastSort}` : ""}.{totals.waiting > 0 && ` ${totals.waiting.toLocaleString("en-GB")} waiting for the next sorts.`}
       </p>
       <nav className="feed-chips">
-        <Link to="/ideas" search={{ all: data.all || undefined }} className="chip" data-active={!data.category}>
+        <Link to="/ideas" search={{ all: data.all || undefined, show: data.show }} className="chip" data-active={!data.category}>
           All
         </Link>
         {data.categories
           .filter((c) => c.count > 0 || c.slug === data.category)
           .map((c) => (
-            <Link key={c.slug} to="/ideas" search={{ category: c.slug, all: data.all || undefined }} className="chip" data-active={c.slug === data.category}>
+            <Link key={c.slug} to="/ideas" search={{ category: c.slug, all: data.all || undefined, show: data.show }} className="chip" data-active={c.slug === data.category}>
               {c.name}
               <span className="chip-count">{c.count}</span>
+            </Link>
+          ))}
+      </nav>
+      <nav className="feed-chips">
+        <Link to="/ideas" search={{ category: data.category, all: data.all || undefined }} className="chip" data-active={!data.show}>
+          Everything
+        </Link>
+        {data.shows
+          .filter((s) => s.count > 0 || s.show === data.show)
+          .map((s) => (
+            <Link key={s.show} to="/ideas" search={{ category: data.category, all: data.all || undefined, show: s.show }} className="chip" data-active={s.show === data.show}>
+              {s.label}
+              <span className="chip-count">{s.count}</span>
             </Link>
           ))}
       </nav>
@@ -84,7 +107,10 @@ export function IdeasBoard({ data }: { data: IdeasPage }) {
             <li key={p.id}>
               <Link to="/ideas/$id" params={{ id: String(p.id) }} className="problem-row">
                 <span className="problem-main">
-                  <span className="problem-name">{p.name}</span>
+                  <span className="problem-name">
+                    {p.status === "starred" && <span className="star" aria-label="Starred">★ </span>}
+                    {p.name}
+                  </span>
                   <span className="problem-summary">{p.summary}</span>
                   <span className="problem-meta">
                     {!data.category && <span>{p.category}</span>}
@@ -95,7 +121,10 @@ export function IdeasBoard({ data }: { data: IdeasPage }) {
                   </span>
                 </span>
                 <span className="problem-side">
-                  <TrendBadge trend={p.trend} />
+                  <span className="badges">
+                    <VerdictBadge verdict={p.verdict} />
+                    <TrendBadge trend={p.trend} />
+                  </span>
                   <Weeks weeks={p.weeks} />
                 </span>
               </Link>
@@ -110,11 +139,11 @@ export function IdeasBoard({ data }: { data: IdeasPage }) {
       {(data.oneOffs > 0 || data.all) && (
         <p className="note more">
           {data.all ? (
-            <Link to="/ideas" search={{ category: data.category }}>
+            <Link to="/ideas" search={{ category: data.category, show: data.show }}>
               Only problems more than one person raised
             </Link>
           ) : (
-            <Link to="/ideas" search={{ category: data.category, all: true }}>
+            <Link to="/ideas" search={{ category: data.category, all: true, show: data.show }}>
               Show {plural(data.oneOffs, "problem")} only one person raised so far
             </Link>
           )}
@@ -151,10 +180,18 @@ export function ProblemView({ data }: { data: ProblemPage }) {
     <Shell nav={data.nav} active="ideas" header={header}>
       <article className="problem">
         <div className="problem-head">
-          <h2 className="masthead">{p.name}</h2>
-          <TrendBadge trend={p.trend} />
+          <h2 className="masthead">
+            {p.status === "starred" && <span className="star" aria-label="Starred">★ </span>}
+            {p.name}
+          </h2>
+          <span className="badges">
+            {p.status === "killed" && <span className="verdict">Killed</span>}
+            <TrendBadge trend={p.trend} />
+          </span>
         </div>
         <p className="problem-lede">{p.summary}</p>
+        <Actions data={data} />
+        <VerdictCard data={data} />
         <div className="problem-facts">
           <dl className="stats">
             {facts.map(([k, v, wide]) => (
@@ -198,5 +235,115 @@ export function ProblemView({ data }: { data: ProblemPage }) {
         </ol>
       </article>
     </Shell>
+  );
+}
+
+// Star, Kill, Judge again and Merge: plain forms posting to /admin/ideas/<id>, which redirects back.
+function Actions({ data }: { data: ProblemPage }) {
+  const { problem: p } = data;
+  const action = `/admin/ideas/${p.id}`;
+  const button = (name: string, label: string, primary = false, disabled = false) => (
+    <form method="post" action={action}>
+      <input type="hidden" name="action" value={name} />
+      <button type="submit" className={primary ? "btn primary" : "btn"} disabled={disabled}>
+        {label}
+      </button>
+    </form>
+  );
+  return (
+    <div className="problem-actions">
+      {p.status === "starred" ? button("reopen", "Unstar") : p.status !== "killed" && button("star", "★ Star")}
+      {p.status === "killed" ? button("reopen", "Reopen") : button("kill", "Kill")}
+      {data.canJudge && button("judge", data.judging ? "Judging…" : data.asked ? "Asked, judging next run" : data.verdict ? "Judge again" : "Judge now", false, data.asked)}
+      {data.mergeTargets.length > 0 && (
+        <form method="post" action={action} className="merge">
+          <input type="hidden" name="action" value="merge" />
+          <select name="into" aria-label="Merge into" defaultValue="">
+            <option value="" disabled>
+              Merge into…
+            </option>
+            {data.mergeTargets.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="btn">
+            Merge
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// The verdict: code's call from the model's six scores, the reason, the competitors the search found,
+// the market guess and the smallest test.
+function VerdictCard({ data }: { data: ProblemPage }) {
+  const v = data.verdict;
+  if (!v)
+    return (
+      <p className="callout">
+        {data.overBar
+          ? "Not judged yet. The nightly run will take it, or press Judge now."
+          : "Not judged yet: the nightly run waits for 4 mentions from 3 people, or a paid job and 2 more posts. Judge now to judge it anyway."}
+      </p>
+    );
+  return (
+    <section className="verdict-card" data-verdict={v.verdict}>
+      <header className="verdict-top">
+        <VerdictBadge verdict={v.verdict} />
+        <span className="note">
+          judged {v.day} at {plural(v.mentions, "mention")}
+          {data.earlier.length > 0 && `; before: ${data.earlier.map((e) => `${e.label} on ${e.day}`).join(", ")}`}
+        </span>
+      </header>
+      {v.hardNo && <p className="hard-no">Hard no: {v.hardNo}</p>}
+      <p className="verdict-reason">{v.reason}</p>
+      <ol className="scores">
+        {v.scores.map((s) => (
+          <li key={s.key}>
+            <span className="score-label">{s.label}</span>
+            <span className="dots" role="img" aria-label={`${s.score} of 5`}>
+              {[1, 2, 3, 4, 5].map((i) => (
+                <span key={i} data-on={i <= s.score || undefined} />
+              ))}
+            </span>
+            <span className="score-why">{s.why}</span>
+          </li>
+        ))}
+      </ol>
+      {v.test && (
+        <div className="verdict-test">
+          <h4>Smallest test</h4>
+          <p>{v.test}</p>
+        </div>
+      )}
+      {v.competitors.length > 0 && (
+        <div className="verdict-part">
+          <h4>What exists</h4>
+          <ul className="competitors">
+            {v.competitors.map((c) => (
+              <li key={c.name}>
+                {c.url ? (
+                  <a href={c.url} target="_blank" rel="noreferrer">
+                    {c.name} ↗
+                  </a>
+                ) : (
+                  <strong>{c.name}</strong>
+                )}{" "}
+                {c.note}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {v.size && (
+        <div className="verdict-part">
+          <h4>Market, a guess</h4>
+          <p>{v.size}</p>
+        </div>
+      )}
+    </section>
   );
 }

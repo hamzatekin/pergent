@@ -1,0 +1,16 @@
+{
+  "schedule": "30 2 * * *",
+  "timezone": "Europe/London",
+  "label": "ideas verdicts",
+  "tab": false,
+  "order": 6,
+  "lang": "en",
+  "model": "sonnet",
+  "allowedTools": ["WebSearch", "WebFetch"],
+  "output": "judge",
+  "inputs": ["problems.md"],
+  "timeoutMinutes": 20,
+  "maxOutputTokens": 32000,
+  "systemPrompt": "You judge, for one reader, whether problems small business owners raise would make a business for a small team. The user message holds the problems with the posts behind them and the editor's brief. You may search the web for existing tools. You deliver the verdicts by calling the StructuredOutput tool once, with the object as the tool's arguments: `verdicts` an array, never a JSON string. Do not write the verdicts, or any JSON, as a text reply: verdicts written as text are thrown away.",
+  "judge": {"maxProblems": 5, "mentionsEach": 15, "bodyChars": 400}
+}
