@@ -8,7 +8,7 @@ const SCHEDULER: Record<Nav["scheduler"], string> = { on: "Scheduler on", paused
 
 // Every page's frame: a sidebar from md up (the briefings, the dashboard, the scheduler's state), and
 // on a phone the same links as a row in the top bar instead. `header` is the bar's own row: the page's
-// title on the left, its actions on the right. `active` is a task name, "newsletters" or "admin".
+// title on the left, its actions on the right. `active` is a task name, "ideas", "newsletters" or "admin".
 export function Shell({ nav, active, header, children }: { nav: Nav; active: string; header: ReactNode; children: ReactNode }) {
   return (
     <div className="shell">
@@ -25,6 +25,12 @@ export function Shell({ nav, active, header, children }: { nav: Nav; active: str
               {t.label}
             </Link>
           ))}
+          {nav.ideas && (
+            <Link to="/ideas" className="nav-item" data-active={active === "ideas"}>
+              <Icon name="bulb" />
+              Ideas
+            </Link>
+          )}
           {nav.newsletters && (
             <Link to="/newsletters/{-$feed}" params={{ feed: undefined }} className="nav-item" data-active={active === "newsletters"}>
               <Icon name="mail" />
@@ -56,6 +62,11 @@ export function Shell({ nav, active, header, children }: { nav: Nav; active: str
                 {t.label}
               </Link>
             ))}
+            {nav.ideas && (
+              <Link to="/ideas" className="mtab" data-active={active === "ideas"}>
+                Ideas
+              </Link>
+            )}
             {nav.newsletters && (
               <Link to="/newsletters/{-$feed}" params={{ feed: undefined }} className="mtab" data-active={active === "newsletters"}>
                 Newsletters

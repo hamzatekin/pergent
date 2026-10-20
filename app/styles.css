@@ -805,6 +805,125 @@ a.chip:active {
   content: "·";
   @apply ml-2 text-faint;
 }
+/* The Ideas pages (components/Ideas.tsx): the radar's problems as one list, each row its name, summary
+   and counts with its trend and 8 weeks of mentions on the right; a problem's page with its counts and
+   every post that raised it. */
+.problems {
+  @apply overflow-hidden rounded-xl bg-surface shadow-border;
+}
+.problems li {
+  @apply border-b border-line last:border-0;
+}
+.problem-row {
+  @apply flex items-start justify-between gap-4 px-3.5 py-2.5 hover:bg-bg;
+}
+.problem-main {
+  @apply flex min-w-0 flex-col gap-0.5;
+}
+.problem-name {
+  @apply text-[13.5px] font-medium text-ink text-pretty;
+}
+.problem-summary {
+  @apply text-[13px] text-soft text-pretty md:line-clamp-1;
+}
+.problem-meta {
+  @apply flex flex-wrap gap-x-2 text-[12px] text-muted;
+}
+.problem-meta span + span::before {
+  content: "·";
+  @apply mr-2 text-faint;
+}
+.problem-side {
+  @apply flex shrink-0 flex-col items-end gap-1.5 pt-0.5;
+}
+.trend {
+  @apply rounded-full bg-inset px-2 text-[11.5px] font-medium leading-[19px] text-soft;
+}
+.trend[data-trend="new"] {
+  @apply bg-good/10 text-good;
+}
+.trend[data-trend="rising"] {
+  @apply bg-accent/10 text-accent;
+}
+.trend[data-trend="fading"] {
+  @apply text-faint;
+}
+.weeks rect {
+  fill: var(--color-faint);
+}
+.weeks rect[data-now] {
+  fill: var(--color-accent);
+}
+.weeks rect[data-empty] {
+  fill: var(--color-line);
+}
+.note.more {
+  @apply mt-3;
+}
+.problem {
+  @apply mx-auto max-w-[720px];
+}
+.problem-head {
+  @apply flex items-start justify-between gap-3;
+}
+.problem-head .trend {
+  @apply mt-2 shrink-0;
+}
+.problem-lede {
+  @apply mt-1 text-[14.5px] leading-[1.55] text-soft text-pretty;
+}
+.problem-facts {
+  @apply my-4 flex flex-col gap-4 rounded-xl bg-surface p-4 shadow-border md:flex-row md:items-end md:justify-between;
+}
+.problem-facts .stats {
+  @apply my-0 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4;
+}
+.problem-facts .stats [data-wide] {
+  @apply col-span-2 sm:col-span-4;
+}
+.problem-facts dd {
+  @apply text-[13.5px] text-ink;
+}
+.problem-weeks figcaption {
+  @apply mt-1 text-[11.5px] text-muted;
+}
+.problem-h {
+  @apply mb-2 mt-6 text-[12px] font-medium uppercase tracking-[0.04em] text-muted;
+}
+.mentions {
+  @apply overflow-hidden rounded-xl bg-surface shadow-border;
+}
+.mention {
+  @apply border-b border-line px-4 py-3 last:border-0;
+}
+.mention-quote {
+  @apply text-[14px] leading-[1.5] text-ink text-pretty;
+}
+.mention-meta {
+  @apply mt-1 flex flex-wrap gap-x-2 text-[12px] text-muted;
+}
+.mention-meta > * + *::before {
+  content: "·";
+  @apply mr-2 inline-block text-faint;
+}
+.mention-meta a {
+  @apply text-ink underline decoration-black/20 underline-offset-[3px] hover:decoration-black/60;
+}
+.mention .chips {
+  @apply mt-2;
+}
+.mention .chip {
+  @apply h-auto min-h-6 py-0.5;
+}
+.mention-post {
+  @apply mt-2 text-[12.5px] text-muted;
+}
+.mention-post summary {
+  @apply cursor-pointer select-none truncate hover:text-ink;
+}
+.mention-post p {
+  @apply mt-1.5 whitespace-pre-line text-[13px] leading-[1.55] text-soft;
+}
 .issue {
   @apply mx-auto max-w-[620px];
 }

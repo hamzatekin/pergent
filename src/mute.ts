@@ -1,10 +1,11 @@
-// The never-show list of a task with `"mute": true` (pains): products, sources or kinds of pain the
-// reader does not want to see again, each a phrase. A phrase is matched as whole words, ignoring case,
-// so "QuickBooks" matches "quickbooks-online" and "QuickBooks's" but not "QuickBooksy". The list lives
-// in the database (db.ts); the runner writes it to muted.md in the run directory before the before
-// scripts start, where fetch-pains.ts drops the posts that mention a phrase and previous.ts the stories,
-// and the prompt tells the model to leave out what is still about one. The server hides the stories
-// that match, in old papers too. No imports from runner.ts or db.ts: the before scripts import this.
+// The never-show list of a task with `"mute": true` (the ideas radar; pains, which it replaced, until
+// 2026-10-20): products, sources or kinds of pain the reader does not want to see again, each a phrase.
+// A phrase is matched as whole words, ignoring case, so "QuickBooks" matches "quickbooks-online" and
+// "QuickBooks's" but not "QuickBooksy". The list lives in the database (db.ts); the runner writes it to
+// muted.md in the run directory before the before scripts start, where previous.ts leaves out the
+// stories that mention a phrase. The ideas radar sets aside the posts that mention one before its sort
+// (src/ideas.ts) and its page hides the problems that do. For a paper, the server hides the stories that
+// match, in old papers too. No imports from runner.ts or db.ts: the before scripts import this.
 import type { Paper, Story } from "./paper.ts";
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
