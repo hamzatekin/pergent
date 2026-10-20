@@ -1,19 +1,20 @@
 import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
-import { getProblem, latestVerdicts, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type ProblemRow, type VerdictRow } from "#src/db.ts";
-import { CATEGORIES, QUESTIONS, VERDICTS, judgeBar, problemStats, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
+import { getProblem, latestVerdicts, listBriefs, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type BriefRow, type ProblemRow, type VerdictRow } from "#src/db.ts";
+import { BRIEF_GROUPS, CATEGORIES, QUESTIONS, VERDICTS, judgeBar, problemStats, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
 import { mentions } from "#src/mute.ts";
 import { listRuns, listTasks, loadTask, type TaskConfig } from "#src/runner.ts";
 import { isRunning, isWaiting } from "#src/scheduler.ts";
 import { taskSources, type TaskSources } from "#src/sources.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
-import { ago, formatDay } from "./format.ts";
+import { ago, formatDate, formatDay } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
 
 // The task whose runs collect and sort the posts (tasks/ideas), and the one that judges (tasks/ideas-judge).
 const TASK = "ideas";
 const JUDGE = "ideas-judge";
+const BRIEF = "ideas-brief";
 
 export type ProblemItem = {
   id: number;
@@ -36,6 +37,24 @@ export type ProblemItem = {
   /** Mentions per week, oldest first, the last one this week. */
   weeks: number[];
 };
+export type BriefView = {
+  id: number;
+  when: string;
+  /** Written in the last 12 hours: the board shows it open, an older one closed. */
+  fresh: boolean;
+  since: string;
+  summary: string;
+  groups: { group: string; items: { problem: number; name: string; text: string }[] }[];
+  next: string;
+};
+export type BriefState = {
+  /** The newest brief, or every brief on the briefs page. */
+  briefs: BriefView[];
+  /** A brief is being written (Brief me was pressed and the run is going or waiting). */
+  briefing: boolean;
+  canBrief: boolean;
+};
+export type BriefsPage = { nav: Nav } & BriefState;
 export type Show = Verdict | "starred" | "killed" | "unjudged";
 export type IdeasPage = {
   nav: Nav;
@@ -52,6 +71,7 @@ export type IdeasPage = {
   totals: { posts: number; sorted: number; raising: number; problems: number; waiting: number };
   lastSort?: string;
   sources: TaskSources;
+  brief: BriefState;
 };
 export type VerdictView = {
   verdict: Verdict;
@@ -110,6 +130,30 @@ function item(p: ProblemRow, s: ProblemStats, v?: VerdictRow): ProblemItem {
     first: formatDay(s.first),
     last: formatDay(s.last),
     weeks: [...s.weeks].reverse(),
+  };
+}
+
+function briefView(b: BriefRow, names: Map<number, string>): BriefView {
+  return {
+    id: b.id,
+    when: formatDate(b.createdAt, "Europe/London"),
+    fresh: Date.now() - Date.parse(b.createdAt) < 12 * 3_600_000,
+    since: formatDay(b.since, "Europe/London"),
+    summary: b.summary,
+    groups: BRIEF_GROUPS.map((group) => ({
+      group,
+      items: b.items.filter((i) => i.group === group && names.has(i.problem)).map((i) => ({ problem: i.problem, name: names.get(i.problem)!, text: i.text })),
+    })).filter((g) => g.items.length),
+    next: b.next,
+  };
+}
+
+async function briefState(limit: number): Promise<BriefState> {
+  const names = new Map(listProblems().map((p) => [p.id, p.name]));
+  return {
+    briefs: listBriefs(limit).map((b) => briefView(b, names)),
+    briefing: isRunning(BRIEF) || isWaiting(BRIEF),
+    canBrief: (await listTasks()).includes(BRIEF),
   };
 }
 
@@ -173,6 +217,7 @@ export const getIdeasPage = createServerFn({ method: "GET" })
       totals: { ...totals, waiting: totals.posts - totals.sorted },
       lastSort: lastSort && ago(lastSort.finishedAt ?? lastSort.startedAt),
       sources: await taskSources(TASK, config),
+      brief: await briefState(1),
     };
   });
 
@@ -229,3 +274,10 @@ export const getProblemPage = createServerFn({ method: "GET" })
       })),
     };
   });
+
+// Every brief, newest first.
+export const getBriefsPage = createServerFn({ method: "GET" }).handler(async (): Promise<BriefsPage> => {
+  gate("/ideas/briefs");
+  const { configs: _, ...sidebar } = await nav();
+  return { nav: sidebar, ...(await briefState(100)) };
+});
