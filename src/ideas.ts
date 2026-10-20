@@ -6,9 +6,12 @@
 // trend label. The model never counts.
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { listProblems, mentionFacts, saveSort, unsortedPosts, type Mention, type PostRow } from "./db.ts";
+import { latestVerdicts, listProblems, mentionFacts, problemMentions, saveSort, saveVerdicts, unsortedPosts, type Mention, type PostRow, type ProblemRow, type Score, type VerdictRow } from "./db.ts";
 import { mentions } from "./mute.ts";
 import type { TaskConfig } from "./runner.ts";
+
+// The task that collects and sorts; its never-show list is the radar's.
+export const RADAR = "ideas";
 
 // Who has the problem. Fixed, so the page can filter by it and counts stay comparable; a task can set
 // its own under "categories". The last one takes whatever fits nowhere else.
@@ -225,4 +228,152 @@ export function problemStats(now = Date.now()): Map<number, ProblemStats> {
     else if (thisWeek === 0 && lastWeek === 0 && before >= 2) s.trend = "fading";
   }
   return new Map([...stats].map(([id, { people_: _, ...s }]) => [id, s]));
+}
+
+// The verdict: whether a problem is worth a small team testing as a business. The model answers fixed
+// questions with evidence (judgeSchema); code turns the answers into the verdict (verdictOf), so it does
+// not drift from run to run. A problem is judged once it has the evidence (`judgeBar`), again when its
+// mentions have grown by half or its verdict is a month old, and whenever the page asks.
+export const QUESTIONS: Record<string, { label: string; ask: string }> = {
+  pain: { label: "Pain", ask: "Does it come back, and what does it cost them? 5: every week or more, with hours or money named by several people. 3: recurring but mild, or costly but rare. 1: a one-off annoyance." },
+  pay: { label: "Willing to pay", ask: "Are they already paying to deal with it? 5: job posts with budgets, a VA, an accountant or a tool they pay for and work around. 3: they say they would pay. 1: they expect it free." },
+  gap: { label: "Gap", ask: "What exists, and why doesn't it solve it? Search for it. 5: nothing does it, or the tools that exist miss this case the way the posts say. 3: tools exist but are too dear or too complex for a small business. 1: good, cheap tools already do it and the posters just don't know." },
+  build: { label: "Buildable", ask: "Could two or three people with AI ship a first version in weeks? 5: yes, on public APIs of tools they already use (Shopify, Square, Xero, QuickBooks, Google). 3: months, or one hard integration. 1: it means replacing a big platform, a licence, hardware, or data nobody can get." },
+  reach: { label: "Reachable", ask: "Can you find and sell to these people? 5: a named trade that gathers in places you can name (the subreddit or forum itself, an app store). 1: anyone and nowhere in particular." },
+  size: { label: "Size", ask: "How many such businesses in the UK and the US, at what monthly price? 5: 100,000 or more at $30 a month or more. 3: around 10,000. 1: a few hundred. A rough guess, said as one." },
+};
+
+export type Verdict = VerdictRow["verdict"];
+export const VERDICTS: Record<Verdict, string> = { worth: "Worth testing", watch: "Watch", pass: "Pass" };
+
+// Pass: a hard no, not buildable by a small team (build 2 or less), a market already served well (gap
+// 1), or two weak answers. Worth testing: pain, willingness to pay and the gap all 4 or more, buildable
+// and reachable 3 or more. Watch: everything between.
+export function verdictOf(hardNo: string, scores: Record<string, Score>): Verdict {
+  const n = (k: string) => scores[k]?.score ?? 0;
+  const weak = Object.keys(QUESTIONS).filter((k) => n(k) <= 2).length;
+  if (hardNo || n("build") <= 2 || n("gap") <= 1 || weak >= 2) return "pass";
+  if (n("pain") >= 4 && n("pay") >= 4 && n("gap") >= 4 && n("build") >= 3 && n("reach") >= 3) return "worth";
+  return "watch";
+}
+
+// Enough evidence to judge: 4 mentions from 3 people, or a paid job and 2 more posts.
+export const judgeBar = (s: ProblemStats) => (s.mentions >= 4 && s.people >= 3) || (s.jobs >= 1 && s.mentions >= 3);
+
+// The problems the next judge run takes, asked ones first, then those with the most people: open or
+// starred, not muted, over the bar, and never judged, grown by half since, or judged 30 days ago.
+export function toJudge(max: number, muted: string[], now = Date.now()): { p: ProblemRow; s: ProblemStats; last?: VerdictRow }[] {
+  const stats = problemStats(now);
+  const verdicts = latestVerdicts();
+  return listProblems()
+    .filter((p) => p.status !== "killed" && stats.has(p.id) && !muted.some((m) => mentions(`${p.name}\n${p.summary}`, m)))
+    .map((p) => ({ p, s: stats.get(p.id)!, last: verdicts.get(p.id) }))
+    .filter(({ p, s, last }) => p.judgeAsked || (judgeBar(s) && (!last || s.mentions >= last.mentions * 1.5 || now - Date.parse(last.createdAt) > 30 * 86_400_000)))
+    .sort((a, b) => Number(!!b.p.judgeAsked) - Number(!!a.p.judgeAsked) || b.s.people - a.s.people)
+    .slice(0, max);
+}
+
+export function judgeSchema() {
+  const text = (description: string) => ({ type: "string", description });
+  // Each question is two flat fields, `pain` and `pain_why`: given a nested { score, why }, Sonnet twice
+  // sent bare numbers, was refused by the schema and wrote the whole answer again.
+  const questions = Object.fromEntries(
+    Object.entries(QUESTIONS).flatMap(([k, q]) => [
+      [k, { type: "integer", minimum: 1, maximum: 5, description: `${q.label}, 1 to 5. ${q.ask}` }],
+      [`${k}_why`, text(`Why that ${q.label.toLowerCase()} score, in one or two sentences of evidence: the posts, or what the search found.`)],
+    ]),
+  );
+  return {
+    type: "object",
+    required: ["verdicts"],
+    additionalProperties: false,
+    properties: {
+      verdicts: {
+        type: "array",
+        description: "One per problem of problems.md, in any order.",
+        items: {
+          type: "object",
+          required: ["problem", "hard_no", ...Object.keys(questions), "competitors", "market", "reason", "test"],
+          additionalProperties: false,
+          properties: {
+            problem: { type: "integer", description: "The problem's number." },
+            hard_no: text("\"\" or, when one of the hard no's applies, which one and why, in a sentence."),
+            ...questions,
+            competitors: {
+              type: "array",
+              description: "The tools the search found that do this or come close, at most 5, best known first. Empty when none.",
+              items: {
+                type: "object",
+                required: ["name", "url", "note"],
+                additionalProperties: false,
+                properties: { name: text("Its name."), url: text("Its site, as found."), note: text("Its price if found, and why it does or doesn't solve this, in a sentence.") } ,
+              },
+            },
+            market: text("The rough market: how many such businesses in the UK and the US, times a plausible monthly price, as a range, saying it is a guess."),
+            reason: text("The case for and against in one paragraph of three to five sentences, plain, for someone deciding whether to spend a weekend on it."),
+            test: text("The smallest test to run this week before building: a landing page posted where they gather, a concierge version done by hand, a template to sell. One or two sentences, specific to this problem."),
+          },
+        },
+      },
+    },
+  };
+}
+
+// Writes problems.md: each problem to judge with its counts and the posts behind it. False when there is
+// nothing to judge.
+export async function prepareJudge(dir: string, config: TaskConfig, muted: string[]): Promise<{ problems: number }> {
+  const { maxProblems = 5, mentionsEach = 15, bodyChars = 400 } = (config.judge ?? {}) as { maxProblems?: number; mentionsEach?: number; bodyChars?: number };
+  const picked = toJudge(maxProblems, muted);
+  const blocks = picked.map(({ p, s, last }) => {
+    const facts = [
+      `${s.people} people, ${s.mentions} mentions, from ${s.sources.join(", ")} (${s.communities.slice(0, 6).join(", ")})`,
+      `${s.recurring} say it recurs, ${s.costed} name a cost, ${s.workarounds} describe a workaround`,
+      s.jobs ? `${s.jobs} paid job posts, budgets: ${[...new Set(s.budgets)].slice(0, 6).join("; ")}` : "no paid job posts",
+      `first seen ${s.first.slice(0, 10)}, last ${s.last.slice(0, 10)}${s.trend ? `, ${s.trend}` : ""}`,
+      ...(last ? [`judged before on ${last.createdAt.slice(0, 10)} at ${last.mentions} mentions: ${VERDICTS[last.verdict]}`] : []),
+    ];
+    const posts = problemMentions(p.id)
+      .slice(0, mentionsEach)
+      .map((m) => {
+        const body = m.post.body.length > bodyChars ? `${m.post.body.slice(0, bodyChars)}…` : m.post.body;
+        const by = [m.post.community, m.post.postedAt.slice(0, 10), m.post.budget && `budget ${m.post.budget}`].filter(Boolean).join(" · ");
+        const read = [m.recurring && "recurs", m.cost && `cost: ${m.cost}`, m.workaround && `today: ${m.workaround}`].filter(Boolean).join("; ");
+        return `- ${by}\n  ${m.post.title}${body ? `\n  ${body.replace(/\n+/g, " ")}` : ""}${read ? `\n  (${read})` : ""}`;
+      });
+    return `## Problem ${p.id}: ${p.name}\n\nCategory: ${p.category}. ${p.summary}\n\n${facts.map((f) => `- ${f}`).join("\n")}\n\nThe posts, newest first:\n\n${posts.join("\n")}`;
+  });
+  await writeFile(join(dir, "problems.md"), `# Problems to judge (${picked.length})\n\n${blocks.join("\n\n")}\n`);
+  await writeFile(join(dir, "judge.json"), JSON.stringify(picked.map(({ p, s }) => ({ id: p.id, mentions: s.mentions }))));
+  return { problems: picked.length };
+}
+
+type JudgeOutput = {
+  verdicts: ({ problem: number; hard_no: string; competitors: { name: string; url: string; note: string }[]; market: string; reason: string; test: string } & Record<string, unknown>)[];
+};
+
+// Stores a verdict for every judged problem the answer covers, derived by verdictOf. Returns output.md.
+export async function saveJudgeOutput(runId: string, output: unknown, dir: string): Promise<string | null> {
+  const out = output as JudgeOutput | undefined;
+  if (!out || !Array.isArray(out.verdicts)) return null;
+  const picked = JSON.parse(await readFile(join(dir, "judge.json"), "utf8")) as { id: number; mentions: number }[];
+  const counts = new Map(picked.map((p) => [p.id, p.mentions]));
+  const rows: Omit<VerdictRow, "id" | "createdAt">[] = [];
+  for (const v of out.verdicts) {
+    if (!counts.has(v?.problem) || rows.some((r) => r.problemId === v.problem)) continue;
+    const scores = Object.fromEntries(
+      Object.keys(QUESTIONS).map((k) => [k, { score: Math.min(5, Math.max(1, Math.round(Number(v[k]) || 1))), why: String(v[`${k}_why`] ?? "").trim() }]),
+    );
+    const hardNo = String(v.hard_no ?? "").trim();
+    const competitors = (Array.isArray(v.competitors) ? v.competitors : []).slice(0, 5).map((c) => ({ name: String(c?.name ?? "").trim(), url: /^https?:\/\//.test(String(c?.url)) ? String(c.url) : "", note: String(c?.note ?? "").trim() })).filter((c) => c.name);
+    rows.push({ problemId: v.problem, verdict: verdictOf(hardNo, scores), hardNo, scores, competitors, size: String(v.market ?? "").trim(), reason: String(v.reason ?? "").trim(), test: String(v.test ?? "").trim(), mentions: counts.get(v.problem)! });
+  }
+  if (!rows.length) return null;
+  saveVerdicts(runId, rows);
+  const names = new Map(listProblems().map((p) => [p.id, p.name]));
+  return [
+    `# Verdicts, ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    "",
+    ...rows.map((r) => `- ${r.problemId}: ${names.get(r.problemId) ?? "?"}: **${VERDICTS[r.verdict]}** (${Object.entries(r.scores).map(([k, v]) => `${k} ${v.score}`).join(", ")})${r.hardNo ? `, hard no: ${r.hardNo}` : ""}`),
+    ...(picked.length > rows.length ? ["", `${picked.length - rows.length} problems were left out of the answer and wait for the next run.`] : []),
+  ].join("\n") + "\n";
 }
