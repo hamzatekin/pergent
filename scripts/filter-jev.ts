@@ -13,13 +13,12 @@
 //   about      what an item is, for the question (default "Turkish news post")
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { classify } from "../src/jev.ts";
 
 const config = JSON.parse(await readFile(join(process.env.TASK_DIR!, "task.json"), "utf8"));
 const files: string[] = config.filter?.files ?? [];
 const threshold: number = config.filter?.threshold ?? 0.8;
 const apiKey = process.env.TYPESAFE_API_KEY;
-const BATCH = 20;
-const CONCURRENCY = 6;
 
 // The kinds Jev picks from. Only DROP kinds are removed; opinion stays, since the prompt already
 // tells the model to take a journalist's news and leave their comment.
@@ -39,7 +38,6 @@ const DROP = new Set<string>(config.filter?.drop ?? ["clickbait", "filler", "pra
 const about: string = config.filter?.about ?? "Turkish news post";
 
 type Item = { file: string; start: number; end: number; text: string };
-type ChoiceAnswer = { type: "choice"; choice: string; probabilities: Record<string, number> };
 
 // An item is a line starting with "- " plus its indented continuation lines (a post's text and URL).
 function parse(file: string, lines: string[]): Item[] {
@@ -52,30 +50,6 @@ function parse(file: string, lines: string[]): Item[] {
     i = end - 1;
   }
   return items;
-}
-
-async function classify(batch: Item[]): Promise<(ChoiceAnswer | undefined)[]> {
-  const questions = Object.fromEntries(
-    batch.map((_, i) => [
-      `p${i}`,
-      { type: "choice", instructions: `What kind of ${about} is \`posts[${i}]\`? Judge the post's own text.`, criteria: KINDS },
-    ]),
-  );
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch("https://api.typesafe.ai/v1/systemone", {
-      method: "POST",
-      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: "jev-latest", state: { posts: batch.map((b) => b.text) }, questions }),
-      signal: AbortSignal.timeout(60_000),
-    });
-    if ((res.status === 429 || res.status === 529) && attempt < 2) {
-      await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
-      continue;
-    }
-    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
-    const body = (await res.json()) as { answers: Record<string, ChoiceAnswer> };
-    return batch.map((_, i) => body.answers[`p${i}`]);
-  }
 }
 
 if (!apiKey) {
@@ -92,28 +66,13 @@ for (const f of files) {
   items.push(...parse(f, lines));
 }
 
-const batches: Item[][] = [];
-for (let i = 0; i < items.length; i += BATCH) batches.push(items.slice(i, i + BATCH));
+const { answers, requests, failures } = await classify(items.map((i) => i.text), KINDS, about, apiKey);
 const dropped: { item: Item; kind: string; p: number }[] = [];
-const failures: string[] = [];
-let next = 0;
-await Promise.all(
-  Array.from({ length: CONCURRENCY }, async () => {
-    while (next < batches.length) {
-      const batch = batches[next++];
-      try {
-        const answers = await classify(batch);
-        batch.forEach((item, i) => {
-          const a = answers[i];
-          const p = a?.probabilities?.[a.choice] ?? 0;
-          if (a && DROP.has(a.choice) && p >= threshold) dropped.push({ item, kind: a.choice, p });
-        });
-      } catch (err) {
-        failures.push(err instanceof Error ? err.message : String(err));
-      }
-    }
-  }),
-);
+items.forEach((item, i) => {
+  const a = answers[i];
+  const p = a?.probabilities?.[a.choice] ?? 0;
+  if (a && DROP.has(a.choice) && p >= threshold) dropped.push({ item, kind: a.choice, p });
+});
 
 // Rewrite each file without its dropped items, and the blank line after each, if there is one.
 const gone = new Set(dropped.map((d) => d.item));
@@ -129,7 +88,7 @@ for (const [f, lines] of texts) {
 
 const byKind = [...DROP].map((k) => `${dropped.filter((d) => d.kind === k).length} ${k}`).join(", ");
 const log = [
-  `jev-latest: ${items.length} items in ${batches.length} requests, dropped ${dropped.length} (${byKind}) at p >= ${threshold}, ${failures.length} requests failed`,
+  `jev-latest: ${items.length} items in ${requests} requests, dropped ${dropped.length} (${byKind}) at p >= ${threshold}, ${failures.length} requests failed`,
   ...failures.map((f) => `failed: ${f}`),
   ...dropped.map((d) => `${d.kind} ${d.p.toFixed(2)} ${d.item.file}: ${d.item.text.replace(/\s+/g, " ").slice(0, 300)}`),
 ];

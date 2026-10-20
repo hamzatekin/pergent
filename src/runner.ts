@@ -3,7 +3,7 @@ import { createWriteStream } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { getRun, listMutes, openDb, saveIssues, saveRun, listRuns as listRunRows } from "./db.ts";
+import { getRun, listMutes, openDb, saveIssues, savePosts, saveRun, listRuns as listRunRows } from "./db.ts";
 import { PAPER_SCHEMA, fromMarkdown, parsePaper, toMarkdown, type Paper } from "./paper.ts";
 import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
@@ -51,6 +51,8 @@ export type TaskConfig = {
   notify?: NotifyRule;
   /** Gives the task's page a toggle to a printed newspaper layout (app/server/newspaper-view.ts): the masthead's name and motto. */
   newspaper?: { name?: string; motto?: string };
+  /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar's collect runs). */
+  tab?: boolean;
   [extra: string]: unknown;
 };
 
@@ -66,6 +68,7 @@ export type RunMeta = {
   turns?: number;
 };
 
+// A task without a prompt.md has an empty prompt, and its run is its before command alone.
 export type Task = { name: string; config: TaskConfig; prompt: string };
 
 export async function listTasks(): Promise<string[]> {
@@ -82,7 +85,7 @@ export async function listTasks(): Promise<string[]> {
 export async function loadTask(name: string): Promise<Task> {
   const dir = join(TASKS_DIR, name);
   const config: TaskConfig = JSON.parse(await readFile(join(dir, "task.json"), "utf8"));
-  const prompt = await readFile(join(dir, "prompt.md"), "utf8");
+  const prompt = await readFile(join(dir, "prompt.md"), "utf8").catch(() => "");
   return { name, config, prompt };
 }
 
@@ -191,7 +194,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   const runId = startedAt.toISOString().replace(/[:.]/g, "-");
   const dir = runDir(name, runId);
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, "prompt.md"), prompt);
+  if (prompt) await writeFile(join(dir, "prompt.md"), prompt);
   const running: RunMeta = { task: name, runId, startedAt: startedAt.toISOString(), status: "running" };
   await writeFile(join(dir, "meta.json"), JSON.stringify(running, null, 2));
   saveRun(running);
@@ -199,12 +202,19 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   if (config.mute) await writeFile(join(dir, "muted.md"), mutedMarkdown(listMutes(name)));
 
   if (config.before) {
-    const ok = await oneAtATime(() => runBefore(config.before!, dir, join(TASKS_DIR, name)));
+    let ok = await oneAtATime(() => runBefore(config.before!, dir, join(TASKS_DIR, name)));
     // Newsletter issues as published (scripts/fetch-newsletters.ts) go to the Newsletters page whatever
     // becomes of the paper.
     await readFile(join(dir, "issues.json"), "utf8").then((t) => saveIssues(name, runId, JSON.parse(t))).catch(() => {});
-    if (!ok) {
-      const meta: RunMeta = { ...running, finishedAt: new Date().toISOString(), status: "failed" };
+    // Posts for the ideas radar (scripts/collect-posts.ts), likewise; a run whose posts could not be
+    // saved failed, since they are what it is for.
+    await readFile(join(dir, "posts.json"), "utf8").then((t) => savePosts(name, runId, JSON.parse(t))).catch(async (err) => {
+      if (err?.code === "ENOENT") return;
+      ok = false;
+      await writeFile(join(dir, "save.log"), `posts.json not saved: ${err}\n`);
+    });
+    if (!ok || !prompt) {
+      const meta: RunMeta = { ...running, finishedAt: new Date().toISOString(), status: ok ? "ok" : "failed" };
       await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2));
       await writeFile(join(dir, "output.md"), "");
       saveRun(meta);

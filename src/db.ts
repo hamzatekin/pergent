@@ -13,6 +13,24 @@ export type RunRow = { meta: RunMeta; output: string; images: Record<string, str
 // for reading it whole on the Newsletters page. `date` is ISO, `html` cleaned of the email's styling.
 export type NewIssue = { feed: string; title: string; url: string; date: string; html: string };
 export type IssueRow = { id: number; feed: string; title: string; url: string; date: string };
+// A post the ideas radar collected (scripts/collect-posts.ts writes them to a run's posts.json): a
+// Reddit post, a Freelancer job or a forum topic, with the kind Jev gave it. `kept` is false when
+// the kind is one the task drops; such a post keeps no body and is stored only so it is not fetched
+// and judged again.
+export type NewPost = {
+  id: string;
+  source: string;
+  community: string;
+  author: string;
+  postedAt: string;
+  title: string;
+  body: string;
+  url: string;
+  budget?: string;
+  kind?: string | null;
+  kindP?: number | null;
+  kept: boolean;
+};
 
 let db: DatabaseSync | undefined;
 
@@ -53,6 +71,23 @@ export function openDb(runsDir: string): DatabaseSync {
       run_id TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS issues_by_feed ON issues (feed, date);
+    CREATE TABLE IF NOT EXISTS posts (
+      id        TEXT PRIMARY KEY,
+      source    TEXT NOT NULL,
+      community TEXT NOT NULL,
+      author    TEXT NOT NULL DEFAULT '',
+      posted_at TEXT NOT NULL,
+      title     TEXT NOT NULL,
+      body      TEXT NOT NULL DEFAULT '',
+      url       TEXT NOT NULL,
+      budget    TEXT,
+      kind      TEXT,
+      kind_p    REAL,
+      kept      INTEGER NOT NULL,
+      task      TEXT NOT NULL,
+      run_id    TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS posts_by_date ON posts (posted_at);
   `);
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
@@ -149,6 +184,24 @@ export function removeMute(task: string, phrase: string) {
 export function saveIssues(task: string, runId: string, issues: NewIssue[]) {
   const insert = use().prepare("INSERT OR IGNORE INTO issues (url, feed, title, date, html, task, run_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
   for (const i of issues) insert.run(i.url, i.feed, i.title, i.date, i.html, task, runId);
+}
+
+// A post is kept once, by id; nothing is ever deleted, since the radar's counts reach back to the first post.
+export function savePosts(task: string, runId: string, posts: NewPost[]) {
+  const insert = use().prepare(`
+    INSERT OR IGNORE INTO posts (id, source, community, author, posted_at, title, body, url, budget, kind, kind_p, kept, task, run_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  use().exec("BEGIN");
+  try {
+    for (const p of posts) {
+      insert.run(p.id, p.source, p.community, p.author, p.postedAt, p.title, p.kept ? p.body : "", p.url, p.budget ?? null, p.kind ?? null, p.kindP ?? null, Number(p.kept), task, runId);
+    }
+    use().exec("COMMIT");
+  } catch (err) {
+    use().exec("ROLLBACK");
+    throw err;
+  }
 }
 
 // The newest issues, of one newsletter or all of them, without their text.
