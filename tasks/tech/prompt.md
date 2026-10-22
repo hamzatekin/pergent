@@ -33,6 +33,16 @@ Sections:
 
 "🍿 Worth a read": sharp takes, good essays, and stories that don't fit above.
 
+The page is also laid out as a printed newspaper, and you lay out its front page. For every story of importance 2 or 3, also write these three fields; leave them out of briefs (importance 1):
+- `display`: the headline as a printed paper would set it, short and strong, 2 to 6 words, no emoji ("Node 24 goes LTS", "Claude Code gets a browser"). It says what happened; no clickbait, no question. `headline` stays the plain one-liner with its emoji.
+- `kicker`: 2 to 4 words set above the headline, naming the subject: the project, company or field ("React Native", "Anthropic", "Browser security").
+- `spot`: one sentence under the headline adding the key fact or number. It does not repeat the first sentence of `body`.
+
+Use `place` to build the front page, and leave it out of every other story:
+- `lead`: the main headline under the masthead, the day's biggest story for this reader. Exactly one; its `display` at most 5 words.
+- `top`: the band above the masthead, the 2 or 3 stories the reader will most want to open after the lead, from different sections if possible.
+- `front`: the rest of the front page, 4 to 6 stories from different sections.
+
 `context`: the "Context" block described above, two or three sentences of background, only when needed. Leave the field out otherwise.
 
 `source`: a link copied from the files (the x.com post, the article URL, or the HN discussion). Every story must have one; a story without a source is a bug. Merge threads and duplicate coverage of the same thing into one story; if a story appears in more than one file, mention it once and say it was everywhere. Leave out a section that has nothing. If nothing meaningful happened, one section with one story saying so.

@@ -427,7 +427,7 @@ a.chip {
 /* The printed newspaper (components/Newspaper.tsx), after Posta, Milliyet and Hürriyet: newsprint
    sheets, a red slab masthead, the manşet in Anton capitals, the other headlines in Oswald, the text
    in Source Serif, red kicker bars, hairline column rules. A sheet runs edge to edge on a phone. The
-   page's lang is tr, so the capitals are Turkish (i → İ). */
+   capitals follow the page's lang, so news's are Turkish (i → İ) and tech's English. */
 .np {
   @apply -mx-4 md:mx-0;
   font-family: var(--font-serif);
@@ -535,6 +535,26 @@ a.chip {
 }
 .np-manset .np-body {
   @apply text-[16.5px];
+}
+
+/* A section that is only a list (tech's TL;DR), boxed under the manşet, its lines in two columns on a
+   wide page; and a section's own lead at the top of its page. */
+.np-box {
+  @apply mt-5 border-t-[3px] border-press bg-newsprint-dark px-4 pb-2 pt-2.5;
+}
+.np-box .np-body :is(ul, ol) {
+  @apply mb-1 md:columns-2 md:gap-8;
+  column-rule: 1px solid var(--color-rule);
+}
+.np-box li {
+  @apply mb-1;
+  break-inside: avoid;
+}
+.np-box li::marker {
+  @apply text-press;
+}
+.np-intro {
+  @apply mb-4 text-[16.5px];
 }
 
 /* Stories in ruled columns. Each one draws its rule on the left and top and is pulled back a pixel,

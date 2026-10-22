@@ -5,7 +5,7 @@ import { Marked, type Token, type Tokens } from "marked";
 // that sizes it on the page (3 leads a section, 2 is a card, 1 is a one-line brief). New runs return
 // it as structured output against PAPER_SCHEMA; runs from before that are parsed out of their markdown
 // with fromMarkdown, so both reach the site (app/server/paper-view.ts) the same way. A task with a
-// newspaper layout (news) also has the model lay out a printed front page: a kicker above the headline,
+// newspaper layout (news, tech) also has the model lay out a printed front page: a kicker above the headline,
 // a short display headline, a spot under it, and the story's place on page one (app/server/newspaper-view.ts).
 export type Story = {
   headline: string;
