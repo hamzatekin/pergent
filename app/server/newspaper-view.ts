@@ -5,6 +5,7 @@ import { canonical, host, isHttp, renderMarkdown, type Paper, type Story } from 
 // sürmanşet band above the masthead, the manşet under it and a few more stories, then a page per
 // section. The model picks each story's place and writes its kicker, display headline and spot
 // (src/paper.ts); a paper from before those fields gets its front page from importance and order.
+// news is set in it in Turkish and tech in English; the words the page prints itself follow `lang`.
 export type NewsStory = {
   /** The story's anchor, for the "continued on page" links. */
   id: string;
@@ -25,24 +26,37 @@ export type NewsStory = {
   /** The inner page the story is printed on, when it is on one. */
   page?: number;
 };
-export type NewsPage = { number: number; heading: string; lead?: NewsStory; stories: NewsStory[]; briefs: NewsStory[] };
+export type NewsPage = {
+  number: number;
+  heading: string;
+  /** The section's own lead markdown, as HTML, printed at the top of its page. */
+  intro?: string;
+  lead?: NewsStory;
+  stories: NewsStory[];
+  briefs: NewsStory[];
+};
+/** A section that is only its lead markdown (tech's TL;DR list), boxed on page one. */
+export type NewsBox = { heading: string; html: string };
 export type NewspaperView = {
   name: string;
   motto?: string;
+  lang: string;
   date: string;
   issue: number;
   price?: string;
   lead?: NewsStory;
   top: NewsStory[];
   front: NewsStory[];
+  boxes: NewsBox[];
   /** The leads of the inner pages that are not on page one, as boxes at its foot pointing inside. */
   teasers: NewsStory[];
   pages: NewsPage[];
 };
 export type NewspaperConfig = { name?: string; motto?: string };
 
-// "🏛️ Gündem ve Siyaset" is "Gündem ve Siyaset" on its page's header strip.
-const plainHeading = (s: string) => s.replace(/^[\p{Extended_Pictographic}\p{Emoji_Modifier}️‍\s]+/u, "").trim();
+// "🏛️ Gündem ve Siyaset" is "Gündem ve Siyaset" on its page's header strip, and tech's "🚀 Claude …"
+// headline is "Claude …" in print.
+const plain = (s: string) => s.replace(/^[\p{Extended_Pictographic}\p{Emoji_Modifier}️‍\s]+/u, "").trim();
 
 export function newspaperView(
   paper: Paper,
@@ -55,7 +69,8 @@ export function newspaperView(
   const placed = paper.sections.some((s) => s.stories.some((st) => st.place));
 
   const sections = paper.sections.map((section, i) => ({
-    heading: plainHeading(section.heading ?? ""),
+    heading: plain(section.heading ?? ""),
+    intro: section.lead?.trim() ? renderMarkdown(section.lead) : undefined,
     stories: section.stories.map((story, j): NewsStory & { place?: Story["place"] } => {
       const source = story.source && isHttp(story.source) ? story.source : undefined;
       const image = source ? byLink.get(canonical(source)) : undefined;
@@ -63,7 +78,7 @@ export function newspaperView(
       return {
         id: `s${i}-${j}`,
         kicker: story.kicker?.trim() || undefined,
-        headline: story.display?.trim() || story.headline,
+        headline: plain(story.display?.trim() || story.headline),
         spot: story.spot?.trim() || undefined,
         body: renderMarkdown(story.body),
         context: story.context ? renderMarkdown(story.context) : undefined,
@@ -117,19 +132,22 @@ export function newspaperView(
     const cardsHere = rest.filter((s) => s.importance > 1);
     const pageLead = cardsHere.find((s) => s.importance === 3) ?? cardsHere[0];
     for (const s of rest) s.page = number;
-    pages.push({ number, heading: section.heading, lead: pageLead, stories: cardsHere.filter((s) => s !== pageLead), briefs: rest.filter((s) => s.importance === 1) });
+    pages.push({ number, heading: section.heading, intro: section.intro, lead: pageLead, stories: cardsHere.filter((s) => s !== pageLead), briefs: rest.filter((s) => s.importance === 1) });
   }
+  const boxes = sections.filter((s) => !s.stories.length && s.intro).map((s) => ({ heading: s.heading, html: s.intro! }));
   const teasers = pages.map((p) => p.lead).filter((s): s is NewsStory => !!s && !top.includes(s)).slice(0, 4);
 
   return {
     name: meta.config.name ?? "Gazete",
     motto: meta.config.motto,
+    lang: meta.lang,
     date: longDate(meta.startedAt, meta.lang, meta.timezone),
     issue: meta.issue,
     price: meta.costUsd === undefined ? undefined : new Intl.NumberFormat(meta.lang, { style: "currency", currency: "USD" }).format(meta.costUsd),
     lead: lead && strip(lead),
     top: top.map(strip),
     front: front.map(strip),
+    boxes,
     teasers: teasers.map(strip),
     pages: pages.map((p) => ({ ...p, lead: p.lead && strip(p.lead), stories: p.stories.map(strip), briefs: p.briefs.map(strip) })),
   };

@@ -50,7 +50,7 @@ export type TaskConfig = {
   mute?: boolean;
   /** Pushes the paper's biggest stories to the reader's phone through ntfy (src/notify.ts, NTFY_TOPIC): those of `importance` or more in sections whose heading contains `section`. */
   notify?: NotifyRule;
-  /** Gives the task's page a toggle to a printed newspaper layout (app/server/newspaper-view.ts): the masthead's name and motto. */
+  /** Lays the task's page out as a printed newspaper instead of cards (app/server/newspaper-view.ts): the masthead's name and motto. */
   newspaper?: { name?: string; motto?: string };
   /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar). */
   tab?: boolean;
