@@ -2,16 +2,16 @@ import { Link } from "@tanstack/react-router";
 import type { Family, JobsPage, Mode, Sponsor } from "../server/jobs.functions.ts";
 import { Shell } from "./Shell.tsx";
 
-type Search = { family?: Family; sponsor?: Sponsor; mode?: Mode; pay?: true; all?: true };
+type Search = { family?: Family; sponsor?: Sponsor; mode?: Mode; skill?: string; pay?: true; all?: true };
 
 const SPONSOR: Record<Sponsor, string> = { yes: "Sponsors", no: "No sponsorship" };
 const MODE: Record<Mode, string> = { remote: "Remote", hybrid: "Hybrid", office: "Office" };
 
-// The job market tracker's adverts (tasks/jobs-collect): what is open now, counted by family, by week
-// and in total, then the adverts themselves, frontend first, with chips for the family, sponsorship,
-// the work mode and whether a salary is given.
+// The job market tracker's adverts (tasks/jobs-collect, read by tasks/jobs-read): what is open now,
+// counted by family, by skill, by week and in total, then the adverts themselves, frontend first, with
+// chips for the family, sponsorship, the work mode, a skill and whether a salary is given.
 export function JobsBoard({ data }: { data: JobsPage }) {
-  const search: Search = { family: data.family, sponsor: data.sponsor, mode: data.mode, pay: data.pay || undefined };
+  const search: Search = { family: data.family, sponsor: data.sponsor, mode: data.mode, skill: data.skill, pay: data.pay || undefined };
   const t = data.totals;
   const header = (
     <>
@@ -26,7 +26,8 @@ export function JobsBoard({ data }: { data: JobsPage }) {
       <p className="note feed-note">
         Software developer adverts in the UK or remote from it, collected every morning
         {data.sources.length > 0 && ` from ${data.sources.map((s) => `${s.source} (${s.count})`).join(", ")}`}
-        {data.lastRun ? `, last ${data.lastRun}` : ""}.
+        {data.lastRun ? `, last ${data.lastRun}` : ""}. Haiku reads each new one for its role, skills and what it says about visas
+        {t.notDev > 0 && `, and set aside ${t.notDev} that ${t.notDev === 1 ? "is not a developer job" : "are not developer jobs"}`}.
       </p>
       {data.open === 0 ? (
         <p className="callout">Nothing collected yet. The collector runs every morning at 06:30.</p>
@@ -60,69 +61,113 @@ export function JobsBoard({ data }: { data: JobsPage }) {
                 <dt>With a salary</dt>
                 <dd>{t.withPay.toLocaleString("en-GB")}</dd>
               </div>
+              <div>
+                <dt>Read by the model</dt>
+                <dd>
+                  {t.read.toLocaleString("en-GB")} of {data.open.toLocaleString("en-GB")}
+                </dd>
+              </div>
+              <div>
+                <dt>Expect AI coding tools</dt>
+                <dd>{t.read ? `${t.aiTools}%` : "none read yet"}</dd>
+              </div>
             </dl>
           </div>
           <div className="jobs-tables">
-            <table className="jobs-table">
-              <caption>Open adverts by role</caption>
-              <thead>
-                <tr>
-                  <th>Role</th>
-                  <th>Open</th>
-                  <th>Sponsors</th>
-                  <th>Remote</th>
-                  <th>Median pay</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.families.map((f) => (
-                  <tr key={f.family} data-active={f.family === data.family || undefined}>
-                    <th>
-                      <Link to="/jobs" search={{ ...search, family: f.family }}>
-                        {f.label}
-                      </Link>
-                    </th>
-                    <td>{f.open}</td>
-                    <td>{f.open ? `${f.sponsors}%` : ""}</td>
-                    <td>{f.open ? `${f.remote}%` : ""}</td>
-                    <td>{f.median ?? ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {data.weeks.length > 0 && (
+            <div className="jobs-column">
               <table className="jobs-table">
-                <caption>New adverts by week</caption>
+                <caption>Open adverts by role</caption>
                 <thead>
                   <tr>
-                    <th>Week of</th>
-                    <th>New</th>
+                    <th>Role</th>
+                    <th>Open</th>
                     <th>Sponsors</th>
                     <th>Remote</th>
-                    <th>Frontend side</th>
+                    <th>Median pay</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.weeks.map((w) => (
-                    <tr key={w.label}>
+                  {data.families.map((f) => (
+                    <tr key={f.family} data-active={f.family === data.family || undefined}>
                       <th>
-                        {w.label}
-                        {w.first && <sup>*</sup>}
+                        <Link to="/jobs" search={{ ...search, family: f.family }}>
+                          {f.label}
+                        </Link>
                       </th>
-                      <td>{w.added}</td>
-                      <td>{w.added ? `${w.sponsors}%` : ""}</td>
-                      <td>{w.added ? `${w.remote}%` : ""}</td>
-                      <td>{w.added ? `${w.frontend}%` : ""}</td>
+                      <td>{f.open}</td>
+                      <td>{f.open ? `${f.sponsors}%` : ""}</td>
+                      <td>{f.open ? `${f.remote}%` : ""}</td>
+                      <td>{f.median ?? ""}</td>
                     </tr>
                   ))}
                 </tbody>
-                {data.weeks.some((w) => w.first) && (
-                  <tfoot>
+              </table>
+              {data.weeks.length > 0 && (
+                <table className="jobs-table">
+                  <caption>New adverts by week</caption>
+                  <thead>
                     <tr>
-                      <td colSpan={5}>* Collection started this week, so it holds every advert open that day.</td>
+                      <th>Week of</th>
+                      <th>New</th>
+                      <th>Sponsors</th>
+                      <th>Remote</th>
+                      <th>Frontend side</th>
                     </tr>
-                  </tfoot>
-                )}
+                  </thead>
+                  <tbody>
+                    {data.weeks.map((w) => (
+                      <tr key={w.label}>
+                        <th>
+                          {w.label}
+                          {w.first && <sup>*</sup>}
+                        </th>
+                        <td>{w.added}</td>
+                        <td>{w.added ? `${w.sponsors}%` : ""}</td>
+                        <td>{w.added ? `${w.remote}%` : ""}</td>
+                        <td>{w.added ? `${w.frontend}%` : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {data.weeks.some((w) => w.first) && (
+                    <tfoot>
+                      <tr>
+                        <td colSpan={5}>* Collection started this week, so it holds every advert open that day.</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              )}
+            </div>
+            {data.skills.length > 0 && (
+              <table className="jobs-table">
+                <caption>Most asked-for skills</caption>
+                <thead>
+                  <tr>
+                    <th>Skill</th>
+                    <th>Adverts</th>
+                    <th>Of all read</th>
+                    <th>Of frontend side</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.skills.map((k) => (
+                    <tr key={k.skill} data-active={k.skill.toLowerCase() === data.skill?.toLowerCase() || undefined}>
+                      <th>
+                        <Link to="/jobs" search={{ ...search, skill: k.skill }}>
+                          {k.skill}
+                        </Link>
+                      </th>
+                      <td>{k.adverts}</td>
+                      <td>{k.share}%</td>
+                      <td>{k.frontSide}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={4}>Frontend side is frontend, full stack and mobile roles. Skills named only as a plus are left out.</td>
+                  </tr>
+                </tfoot>
               </table>
             )}
           </div>
@@ -161,6 +206,11 @@ export function JobsBoard({ data }: { data: JobsPage }) {
             <Link to="/jobs" search={{ ...search, pay: data.pay ? undefined : true }} className="chip" data-active={data.pay}>
               With a salary
             </Link>
+            {data.skill && (
+              <Link to="/jobs" search={{ ...search, skill: undefined }} className="chip" data-active title="Show every skill">
+                {data.skill} ×
+              </Link>
+            )}
           </nav>
           {data.jobs.length > 0 ? (
             <ol className="jobs">
@@ -170,7 +220,11 @@ export function JobsBoard({ data }: { data: JobsPage }) {
                     <span className="job-main">
                       <span className="job-title">
                         {j.title}
-                        {j.isNew && <span className="trend" data-trend="new">New</span>}
+                        {j.isNew && (
+                          <span className="trend" data-trend="new">
+                            New
+                          </span>
+                        )}
                       </span>
                       <span className="job-meta">
                         <span className="job-company">{j.company}</span>
@@ -179,9 +233,17 @@ export function JobsBoard({ data }: { data: JobsPage }) {
                       </span>
                       <span className="job-meta">
                         <span>{j.family}</span>
+                        {j.years && <span>{j.years}</span>}
                         <span>{j.source}</span>
                         <span>seen {j.seen}</span>
                       </span>
+                      {j.skills.length > 0 && (
+                        <span className="job-skills">
+                          {j.skills.map((k) => (
+                            <span key={k}>{k}</span>
+                          ))}
+                        </span>
+                      )}
                     </span>
                     <span className="job-side">
                       {j.pay && <span className="job-pay">{j.pay}</span>}

@@ -825,9 +825,9 @@ a.chip:active {
   content: "·";
   @apply ml-2 text-faint;
 }
-/* The Jobs page (components/Jobs.tsx): the totals, two small tables (open adverts by role, new adverts
-   by week), chips to filter, then the adverts as one list, each row its title, company, place and work
-   mode with its pay and sponsorship on the right. */
+/* The Jobs page (components/Jobs.tsx): the totals, three small tables (open adverts by role, the most
+   asked-for skills, new adverts by week), chips to filter, then the adverts as one list, each row its
+   title, company, place, work mode and skills with its pay and sponsorship on the right. */
 .jobs-facts {
   @apply mb-3 rounded-xl bg-surface px-4 py-1 shadow-border;
 }
@@ -836,6 +836,9 @@ a.chip:active {
 }
 .jobs-tables {
   @apply mb-4 grid items-start gap-3 lg:grid-cols-2;
+}
+.jobs-column {
+  @apply grid gap-3;
 }
 .jobs-table {
   @apply w-full overflow-hidden rounded-xl bg-surface text-[13px] tabular-nums shadow-border;
@@ -901,6 +904,12 @@ a.chip:active {
 .job-meta span + span::before {
   content: "·";
   @apply mr-2 text-faint;
+}
+.job-skills {
+  @apply mt-1 flex flex-wrap gap-1;
+}
+.job-skills span {
+  @apply rounded-md bg-inset px-1.5 text-[11.5px] leading-[18px] text-soft;
 }
 .job-side {
   @apply flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 md:max-w-[15rem] md:flex-col md:items-end md:pt-0.5;

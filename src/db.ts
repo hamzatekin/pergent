@@ -221,6 +221,11 @@ export function openDb(runsDir: string): DatabaseSync {
   if (!columns.some((c) => c.name === "paper")) db.exec("ALTER TABLE runs ADD COLUMN paper TEXT");
   const problemColumns = db.prepare("PRAGMA table_info(problems)").all() as { name: string }[];
   if (!problemColumns.some((c) => c.name === "judge_asked")) db.exec("ALTER TABLE problems ADD COLUMN judge_asked TEXT");
+  // What the model read from an advert's text (src/jobs.ts), on the advert's row; read_at is empty until then.
+  const jobColumns = db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[];
+  for (const [name, type] of Object.entries(JOB_READ_COLUMNS)) {
+    if (!jobColumns.some((c) => c.name === name)) db.exec(`ALTER TABLE jobs ADD COLUMN ${name} ${type}`);
+  }
   renameTasks(runsDir);
   moveMutes();
   importRuns(runsDir);
@@ -365,27 +370,121 @@ export function saveJobs(task: string, runId: string, jobs: NewJob[]) {
   }
 }
 
-// An advert as the Jobs page reads it: what code read from it, without its body.
-export type JobRow = Omit<NewJob, "body"> & { firstSeen: string; lastSeen: string };
+// What the model read from an advert's text (src/jobs.ts). The family and sponsorship as the text tells
+// them sit beside code's own reading, which stays as it was.
+const JOB_READ_COLUMNS = {
+  text_family: "TEXT",
+  skills: "TEXT",
+  nice_skills: "TEXT",
+  min_years: "INTEGER",
+  text_sponsorship: "TEXT",
+  ai_tools: "INTEGER",
+  read_at: "TEXT",
+  read_run: "TEXT",
+};
+export type JobRead = {
+  /** frontend, fullstack, backend, mobile, data, devops, or "not a developer" when the job is not writing software. */
+  textFamily: string;
+  skills: string[];
+  niceSkills: string[];
+  /** The fewest years of experience it asks for, 0 when it names none. */
+  minYears: number;
+  /** offered, not offered, right to work, or not said. */
+  textSponsorship: string;
+  /** It expects AI coding tools in the daily work. */
+  aiTools: boolean;
+};
+
+// An advert as the Jobs page reads it: what code read from it and, once read, what the model did,
+// without its body.
+export type JobRow = Omit<NewJob, "body"> & { firstSeen: string; lastSeen: string; read: JobRead | null };
 const JOB_COLUMNS = `id, source, company, title, location, work_mode AS workMode, office_days AS officeDays, family, seniority,
   salary_min AS salaryMin, salary_max AS salaryMax, currency, salary_period AS salaryPeriod, salary_predicted AS salaryPredicted,
-  sponsorship, sponsor, url, posted_at AS postedAt, first_seen AS firstSeen, last_seen AS lastSeen`;
+  sponsorship, sponsor, url, posted_at AS postedAt, first_seen AS firstSeen, last_seen AS lastSeen,
+  text_family, skills, nice_skills, min_years, text_sponsorship, ai_tools, read_at`;
 
-// The adverts still open: seen by the newest collection, or within a day and a half of it, so a source
-// that failed one run does not close all its adverts.
-export function openJobs(): JobRow[] {
-  const newest = (use().prepare("SELECT MAX(last_seen) AS t FROM jobs").get() as { t: string | null }).t;
-  if (!newest) return [];
-  const since = new Date(Date.parse(newest) - 36 * 3_600_000).toISOString();
-  return (use().prepare(`SELECT ${JOB_COLUMNS} FROM jobs WHERE last_seen >= ? ORDER BY first_seen DESC`).all(since) as unknown as JobRow[]).map((j) => ({
+type JobDbRow = Omit<JobRow, "read" | "salaryPredicted"> & {
+  salaryPredicted: number;
+  text_family: string | null;
+  skills: string | null;
+  nice_skills: string | null;
+  min_years: number | null;
+  text_sponsorship: string | null;
+  ai_tools: number | null;
+  read_at: string | null;
+};
+function toJobRow({ text_family, skills, nice_skills, min_years, text_sponsorship, ai_tools, read_at, ...j }: JobDbRow): JobRow {
+  return {
     ...j,
     salaryPredicted: Boolean(j.salaryPredicted),
-  }));
+    read: read_at
+      ? {
+          textFamily: text_family ?? "",
+          skills: JSON.parse(skills ?? "[]"),
+          niceSkills: JSON.parse(nice_skills ?? "[]"),
+          minYears: min_years ?? 0,
+          textSponsorship: text_sponsorship ?? "not said",
+          aiTools: Boolean(ai_tools),
+        }
+      : null,
+  };
+}
+
+// The newest collection, and the time from which an advert still counts as open: within a day and a
+// half of it, so a source that failed one run does not close all its adverts.
+function openSince(): string | null {
+  const newest = (use().prepare("SELECT MAX(last_seen) AS t FROM jobs").get() as { t: string | null }).t;
+  return newest && new Date(Date.parse(newest) - 36 * 3_600_000).toISOString();
+}
+
+// The adverts still open.
+export function openJobs(): JobRow[] {
+  const since = openSince();
+  if (!since) return [];
+  return (use().prepare(`SELECT ${JOB_COLUMNS} FROM jobs WHERE last_seen >= ? ORDER BY first_seen DESC`).all(since) as unknown as JobDbRow[]).map(toJobRow);
 }
 
 // Every advert first seen since a time, open or closed, for the weekly counts.
 export function jobsSince(since: string): JobRow[] {
-  return (use().prepare(`SELECT ${JOB_COLUMNS} FROM jobs WHERE first_seen >= ?`).all(since) as unknown as JobRow[]).map((j) => ({ ...j, salaryPredicted: Boolean(j.salaryPredicted) }));
+  return (use().prepare(`SELECT ${JOB_COLUMNS} FROM jobs WHERE first_seen >= ?`).all(since) as unknown as JobDbRow[]).map(toJobRow);
+}
+
+// An advert waiting for the model to read it, with its text.
+export type UnreadJob = { id: string; company: string; title: string; location: string; body: string };
+
+// The open adverts with a text that no read has seen, newest first.
+export function unreadJobs(): UnreadJob[] {
+  const since = openSince();
+  if (!since) return [];
+  return use()
+    .prepare("SELECT id, company, title, location, body FROM jobs WHERE read_at IS NULL AND body != '' AND last_seen >= ? ORDER BY first_seen DESC, id")
+    .all(since) as unknown as UnreadJob[];
+}
+
+// Every stored text of these companies' adverts, open or closed, to find what they all share.
+export function companyBodies(companies: string[]): { company: string; body: string }[] {
+  if (!companies.length) return [];
+  return use()
+    .prepare(`SELECT company, body FROM jobs WHERE body != '' AND company IN (${companies.map(() => "?").join(", ")})`)
+    .all(...companies) as { company: string; body: string }[];
+}
+
+export function saveJobReads(runId: string, reads: Map<string, JobRead>) {
+  const now = new Date().toISOString();
+  const update = use().prepare(`
+    UPDATE jobs SET text_family = ?, skills = ?, nice_skills = ?, min_years = ?, text_sponsorship = ?, ai_tools = ?, read_at = ?, read_run = ?
+    WHERE id = ?
+  `);
+  use().exec("BEGIN");
+  try {
+    for (const [id, r] of reads) {
+      update.run(r.textFamily, JSON.stringify(r.skills), JSON.stringify(r.niceSkills), r.minYears, r.textSponsorship, Number(r.aiTools), now, runId, id);
+    }
+    use().exec("COMMIT");
+  } catch (err) {
+    use().exec("ROLLBACK");
+    throw err;
+  }
 }
 
 // When the first collection ran, which the weekly counts need: that week holds every advert open then.
