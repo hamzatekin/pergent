@@ -8,7 +8,7 @@
   "model": "claude-haiku-5-5",
   "allowedTools": [],
   "output": "read",
-  "inputs": ["adverts.md"],
+  "inputs": ["profile.md", "adverts.md"],
   "timeoutMinutes": 15,
   "maxOutputTokens": 32000,
   "effort": "low",

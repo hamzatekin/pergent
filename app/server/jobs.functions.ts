@@ -2,6 +2,8 @@ import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
 import { firstJobSeen, jobsSince, openJobs, type JobRow } from "#src/db.ts";
+import { FAMILIES, FAMILY_LABEL, FRONT_SIDE, familyOf, hasSkill, median, notDeveloper, sponsorNote, sponsorOf, sponsorWords as words, yearlyGbp, type Family, type Sponsor } from "#src/jobs.ts";
+import { HOME, RENTS_MONTH, worthAtHome } from "#src/pay.ts";
 import { listRuns } from "#src/runner.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
 import { ago, formatDay } from "./format.ts";
@@ -12,22 +14,8 @@ const TASK = "jobs-collect";
 const WEEKS = 8;
 const LIMIT = 150;
 const SKILLS = 20;
+export type { Family, Sponsor };
 
-// The reader works mostly on the frontend and is open to the rest: the list puts frontend roles first,
-// then the roles closest to it, and the adverts not read yet whose title does not tell ("Software
-// Engineer") in the middle.
-export const FAMILIES = ["frontend", "fullstack", "mobile", "general", "backend", "data", "devops"] as const;
-export type Family = (typeof FAMILIES)[number];
-const FAMILY_LABEL: Record<Family, string> = {
-  frontend: "Frontend",
-  fullstack: "Full stack",
-  mobile: "Mobile",
-  general: "Not read yet",
-  backend: "Backend",
-  data: "Data and AI",
-  devops: "Platform and DevOps",
-};
-export type Sponsor = "yes" | "no";
 export type Mode = "remote" | "hybrid" | "office";
 
 export type JobItem = {
@@ -44,11 +32,17 @@ export type JobItem = {
   pay: string | null;
   skills: string[];
   years: string | null;
+  /** What the pay is worth at home after tax and rent where the job is, like "£59k in Nottingham". */
+  worth: string | null;
+  worthNote: string;
+  fit: number | null;
+  fitWhy: string;
   source: string;
   seen: string;
   isNew: boolean;
 };
-export type FamilyRow = { family: Family; label: string; open: number; sponsors: number; remote: number; median: string | null };
+export type FamilyRow = { family: Family; label: string; open: number; sponsors: number; remote: number; median: string | null; atHome: string | null; good: number };
+export type PlaceRow = { place: string; withPay: number; median: string | null; atHome: string | null; rent: string };
 export type SkillRow = { skill: string; adverts: number; share: number; frontSide: number };
 export type WeekRow = { label: string; added: number; sponsors: number; remote: number; frontend: number; first: boolean };
 export type JobsPage = {
@@ -57,6 +51,7 @@ export type JobsPage = {
   sponsor?: Sponsor;
   mode?: Mode;
   skill?: string;
+  fit: boolean;
   pay: boolean;
   all: boolean;
   open: number;
@@ -64,6 +59,9 @@ export type JobsPage = {
   jobs: JobItem[];
   families: FamilyRow[];
   skills: SkillRow[];
+  places: PlaceRow[];
+  home: string;
+  rentsMonth: string;
   weeks: WeekRow[];
   totals: {
     sponsors: number;
@@ -77,6 +75,7 @@ export type JobsPage = {
     read: number;
     aiTools: number;
     notDev: number;
+    good: number;
   };
   sources: { source: string; count: number }[];
   lastRun?: string;
@@ -89,50 +88,25 @@ function gate(next: string) {
   setResponseHeader("cache-control", "private, no-store");
 }
 
-// What the advert's words say about sponsorship: code's patterns when they read it plainly, else the
-// model's reading of the text.
-function words(j: JobRow): string | null {
-  if (j.sponsorship && j.sponsorship !== "mentioned") return j.sponsorship;
-  if (j.read && j.read.textSponsorship !== "not said") return j.read.textSponsorship;
-  return j.sponsorship;
-}
-
-function sponsorOf(j: JobRow): Sponsor | null {
-  const w = words(j);
-  if (w === "not offered" || w === "right to work") return "no";
-  if (w === "offered" || j.sponsor) return "yes";
-  return null;
-}
-
-function sponsorNote(j: JobRow): string {
-  const w = words(j);
-  if (w === "not offered") return "Advert says no sponsorship";
-  if (w === "right to work") return "Asks for the right to work";
-  if (w === "offered") return j.sponsor ? `Advert says it sponsors · licensed as ${j.sponsor}` : "Advert says it sponsors";
-  if (j.sponsor) return `Licensed sponsor as ${j.sponsor}`;
-  return w === "mentioned" ? "Mentions visas, unclear" : "";
-}
-
-// The family the title names, else the one the model read from the text (src/jobs.ts).
-function familyOf(j: JobRow): Family {
-  if (j.family !== "general" && FAMILIES.includes(j.family as Family)) return j.family as Family;
-  const read = j.read?.textFamily;
-  return read && FAMILIES.includes(read as Family) ? (read as Family) : "general";
-}
-const FRONT_SIDE: Family[] = ["frontend", "fullstack", "mobile"];
-const notDeveloper = (j: JobRow) => j.read?.textFamily === "not a developer";
-const hasSkill = (j: JobRow, skill: string) => !!j.read && [...j.read.skills, ...j.read.niceSkills].some((s) => s.toLowerCase() === skill.toLowerCase());
 const modeOf = (j: JobRow) => j.workMode as Mode | null;
 
-// The employer's own yearly pay in pounds: the middle of the range, Adzuna's estimates left out.
-const yearlyGbp = (j: JobRow) =>
-  j.currency === "GBP" && j.salaryPeriod === "year" && !j.salaryPredicted && j.salaryMin ? ((j.salaryMin + (j.salaryMax ?? j.salaryMin)) / 2) : null;
+// A fit of 4 or 5 out of 5 is a good one.
+const GOOD_FIT = 4;
 
-function median(values: number[]) {
-  if (!values.length) return null;
-  const s = [...values].sort((a, b) => a - b);
-  const m = s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
-  return `£${Math.round(m / 1000)}k`;
+// What the employer's yearly pay in pounds is worth at home (src/pay.ts), the middle of its range.
+const worthOf = (j: JobRow) => {
+  const gross = yearlyGbp(j);
+  return gross === null ? null : worthAtHome(gross, j.location, j.workMode === "remote");
+};
+function worthText(j: JobRow): { worth: string | null; worthNote: string } {
+  const w = worthOf(j);
+  if (!w) return { worth: null, worthNote: "" };
+  const month = `£${w.leftMonthly.toLocaleString("en-GB")} a month after tax, National Insurance and the average one-bed rent`;
+  if (w.place === HOME) return { worth: null, worthNote: `${month} in ${HOME} (£${w.rent.toLocaleString("en-GB")})` };
+  return {
+    worth: `worth £${Math.round(w.atHome / 1000)}k in ${HOME}`,
+    worthNote: `${month} in ${w.place} (£${w.rent.toLocaleString("en-GB")}${w.area !== w.place ? `, ${w.area}` : ""}), which £${Math.round(w.atHome / 1000)}k leaves in ${HOME}`,
+  };
 }
 
 const SYMBOL: Record<string, string> = { GBP: "£", USD: "$", EUR: "€" };
@@ -167,7 +141,7 @@ function weekStart(t: number) {
 // The open adverts, frontend first, filtered by the chips; the families and the last 8 weeks counted
 // over all of them, so the chips and the table do not change with the filters.
 export const getJobsPage = createServerFn({ method: "GET" })
-  .validator((data: { family?: string; sponsor?: string; mode?: string; skill?: string; pay?: boolean; all?: boolean }) => data)
+  .validator((data: { family?: string; sponsor?: string; mode?: string; skill?: string; fit?: boolean; pay?: boolean; all?: boolean }) => data)
   .handler(async ({ data }): Promise<JobsPage> => {
     gate("/jobs");
     const { configs: _, ...sidebar } = await nav();
@@ -182,6 +156,8 @@ export const getJobsPage = createServerFn({ method: "GET" })
     const now = Date.now();
     const rank = (j: JobRow) => FAMILIES.indexOf(familyOf(j));
     const sponsorRank = (j: JobRow) => ({ yes: 0, null: 1, no: 2 })[String(sponsorOf(j)) as "yes" | "null" | "no"];
+    // The best fit for the reader first (tasks/jobs-read/profile.md), the adverts not read yet last.
+    const fitRank = (j: JobRow) => -(j.read?.fit ?? 0);
     const matching = open
       .filter(
         (j) =>
@@ -189,9 +165,10 @@ export const getJobsPage = createServerFn({ method: "GET" })
           (!sponsor || sponsorOf(j) === sponsor) &&
           (!mode || modeOf(j) === mode) &&
           (!data.skill || hasSkill(j, data.skill)) &&
+          (!data.fit || (j.read?.fit ?? 0) >= GOOD_FIT) &&
           (!data.pay || j.salaryMin),
       )
-      .sort((a, b) => rank(a) - rank(b) || sponsorRank(a) - sponsorRank(b) || b.firstSeen.localeCompare(a.firstSeen));
+      .sort((a, b) => fitRank(a) - fitRank(b) || rank(a) - rank(b) || sponsorRank(a) - sponsorRank(b) || b.firstSeen.localeCompare(a.firstSeen));
     const shown = data.all ? matching : matching.slice(0, LIMIT);
 
     const families: FamilyRow[] = FAMILIES.map((f) => {
@@ -203,8 +180,28 @@ export const getJobsPage = createServerFn({ method: "GET" })
         sponsors: pct(of.filter((j) => sponsorOf(j) === "yes").length, of.length),
         remote: pct(of.filter((j) => j.workMode === "remote").length, of.length),
         median: median(of.flatMap((j) => yearlyGbp(j) ?? [])),
+        atHome: median(of.flatMap((j) => worthOf(j)?.atHome ?? [])),
+        good: of.filter((j) => (j.read?.fit ?? 0) >= GOOD_FIT).length,
       };
     });
+
+    // Pay by the place the job is, against what it is worth at home: the places with the most adverts
+    // that give a salary.
+    const byPlace = new Map<string, { pay: number[]; home: number[]; rent: number }>();
+    for (const j of open) {
+      const w = worthOf(j);
+      const gross = yearlyGbp(j);
+      if (!w || gross === null) continue;
+      const key = w.place === HOME && j.workMode === "remote" ? "Remote" : w.place;
+      const row = byPlace.get(key) ?? { pay: [], home: [], rent: w.rent };
+      row.pay.push(gross);
+      row.home.push(w.atHome);
+      byPlace.set(key, row);
+    }
+    const places: PlaceRow[] = [...byPlace]
+      .sort((a, b) => b[1].pay.length - a[1].pay.length)
+      .slice(0, 10)
+      .map(([place, r]) => ({ place, withPay: r.pay.length, median: median(r.pay), atHome: median(r.home), rent: place === "Remote" ? `${HOME}'s` : `£${r.rent.toLocaleString("en-GB")}` }));
 
     // The technologies the read adverts ask for, the most asked first, with how many of the frontend
     // side's read adverts ask for each.
@@ -254,6 +251,7 @@ export const getJobsPage = createServerFn({ method: "GET" })
       sponsor,
       mode,
       skill: data.skill,
+      fit: !!data.fit,
       pay: !!data.pay,
       all: !!data.all,
       open: open.length,
@@ -271,12 +269,18 @@ export const getJobsPage = createServerFn({ method: "GET" })
         pay: pay(j),
         skills: j.read?.skills.slice(0, 6) ?? [],
         years: j.read?.minYears ? `${j.read.minYears}+ years` : null,
+        ...worthText(j),
+        fit: j.read?.fit ?? null,
+        fitWhy: j.read?.fitWhy ?? "",
         source: SOURCE[j.source] ?? j.source,
         seen: formatDay(j.firstSeen, "Europe/London"),
         isNew: now - Date.parse(j.firstSeen) < 3 * 86_400_000 && (!started || Date.parse(j.firstSeen) - Date.parse(started) > 86_400_000),
       })),
       families,
       skills,
+      places,
+      home: HOME,
+      rentsMonth: new Date(`${RENTS_MONTH}-01`).toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
       weeks,
       totals: {
         sponsors: pct(open.filter((j) => sponsorOf(j) === "yes").length, open.length),
@@ -290,6 +294,7 @@ export const getJobsPage = createServerFn({ method: "GET" })
         read: read.length,
         aiTools: pct(read.filter((j) => j.read!.aiTools).length, read.length),
         notDev: collected.length - open.length,
+        good: open.filter((j) => (j.read?.fit ?? 0) >= GOOD_FIT).length,
       },
       sources: [...bySource].map(([source, count]) => ({ source: SOURCE[source] ?? source, count })).sort((a, b) => b.count - a.count),
       lastRun: lastRun && ago(lastRun.finishedAt ?? lastRun.startedAt),

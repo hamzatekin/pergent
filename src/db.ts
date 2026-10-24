@@ -226,6 +226,8 @@ export function openDb(runsDir: string): DatabaseSync {
   for (const [name, type] of Object.entries(JOB_READ_COLUMNS)) {
     if (!jobColumns.some((c) => c.name === name)) db.exec(`ALTER TABLE jobs ADD COLUMN ${name} ${type}`);
   }
+  // The fit came a day after the first reads; the adverts read without it are read again, once.
+  if (jobColumns.some((c) => c.name === "read_at") && !jobColumns.some((c) => c.name === "fit")) db.exec("UPDATE jobs SET read_at = NULL");
   renameTasks(runsDir);
   moveMutes();
   importRuns(runsDir);
@@ -379,6 +381,8 @@ const JOB_READ_COLUMNS = {
   min_years: "INTEGER",
   text_sponsorship: "TEXT",
   ai_tools: "INTEGER",
+  fit: "INTEGER",
+  fit_why: "TEXT",
   read_at: "TEXT",
   read_run: "TEXT",
 };
@@ -393,17 +397,21 @@ export type JobRead = {
   textSponsorship: string;
   /** It expects AI coding tools in the daily work. */
   aiTools: boolean;
+  /** How well the reader (tasks/jobs-read/profile.md) fits the role, 1 to 5; null when the answer gave none. */
+  fit: number | null;
+  fitWhy: string;
 };
 
 // An advert as the Jobs page reads it: what code read from it and, once read, what the model did,
 // without its body.
 export type JobRow = Omit<NewJob, "body"> & { firstSeen: string; lastSeen: string; read: JobRead | null };
-const JOB_COLUMNS = `id, source, company, title, location, work_mode AS workMode, office_days AS officeDays, family, seniority,
+// Exported with toJobRow for scripts/job-market.ts, which reads the database read-only on its own.
+export const JOB_COLUMNS = `id, source, company, title, location, work_mode AS workMode, office_days AS officeDays, family, seniority,
   salary_min AS salaryMin, salary_max AS salaryMax, currency, salary_period AS salaryPeriod, salary_predicted AS salaryPredicted,
   sponsorship, sponsor, url, posted_at AS postedAt, first_seen AS firstSeen, last_seen AS lastSeen,
-  text_family, skills, nice_skills, min_years, text_sponsorship, ai_tools, read_at`;
+  text_family, skills, nice_skills, min_years, text_sponsorship, ai_tools, fit, fit_why, read_at`;
 
-type JobDbRow = Omit<JobRow, "read" | "salaryPredicted"> & {
+export type JobDbRow = Omit<JobRow, "read" | "salaryPredicted"> & {
   salaryPredicted: number;
   text_family: string | null;
   skills: string | null;
@@ -411,9 +419,11 @@ type JobDbRow = Omit<JobRow, "read" | "salaryPredicted"> & {
   min_years: number | null;
   text_sponsorship: string | null;
   ai_tools: number | null;
+  fit: number | null;
+  fit_why: string | null;
   read_at: string | null;
 };
-function toJobRow({ text_family, skills, nice_skills, min_years, text_sponsorship, ai_tools, read_at, ...j }: JobDbRow): JobRow {
+export function toJobRow({ text_family, skills, nice_skills, min_years, text_sponsorship, ai_tools, fit, fit_why, read_at, ...j }: JobDbRow): JobRow {
   return {
     ...j,
     salaryPredicted: Boolean(j.salaryPredicted),
@@ -425,6 +435,8 @@ function toJobRow({ text_family, skills, nice_skills, min_years, text_sponsorshi
           minYears: min_years ?? 0,
           textSponsorship: text_sponsorship ?? "not said",
           aiTools: Boolean(ai_tools),
+          fit,
+          fitWhy: fit_why ?? "",
         }
       : null,
   };
@@ -472,13 +484,13 @@ export function companyBodies(companies: string[]): { company: string; body: str
 export function saveJobReads(runId: string, reads: Map<string, JobRead>) {
   const now = new Date().toISOString();
   const update = use().prepare(`
-    UPDATE jobs SET text_family = ?, skills = ?, nice_skills = ?, min_years = ?, text_sponsorship = ?, ai_tools = ?, read_at = ?, read_run = ?
+    UPDATE jobs SET text_family = ?, skills = ?, nice_skills = ?, min_years = ?, text_sponsorship = ?, ai_tools = ?, fit = ?, fit_why = ?, read_at = ?, read_run = ?
     WHERE id = ?
   `);
   use().exec("BEGIN");
   try {
     for (const [id, r] of reads) {
-      update.run(r.textFamily, JSON.stringify(r.skills), JSON.stringify(r.niceSkills), r.minYears, r.textSponsorship, Number(r.aiTools), now, runId, id);
+      update.run(r.textFamily, JSON.stringify(r.skills), JSON.stringify(r.niceSkills), r.minYears, r.textSponsorship, Number(r.aiTools), r.fit, r.fitWhy, now, runId, id);
     }
     use().exec("COMMIT");
   } catch (err) {

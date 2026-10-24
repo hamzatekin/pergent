@@ -835,7 +835,7 @@ a.chip:active {
   @apply text-[13.5px] text-ink;
 }
 .jobs-tables {
-  @apply mb-4 grid items-start gap-3 lg:grid-cols-2;
+  @apply mb-4 grid items-start gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)];
 }
 .jobs-column {
   @apply grid gap-3;
@@ -848,7 +848,7 @@ a.chip:active {
 }
 .jobs-table th,
 .jobs-table td {
-  @apply px-2.5 py-1.5 text-right font-normal md:px-3.5;
+  @apply px-2 py-1.5 text-right font-normal sm:px-2.5 md:px-3.5;
 }
 .jobs-table thead th {
   @apply text-[12px] whitespace-nowrap text-muted;
@@ -858,6 +858,10 @@ a.chip:active {
 }
 .jobs-table tbody th {
   @apply text-left text-ink;
+}
+/* Columns a phone has no room for. */
+.jobs-table .wide {
+  @apply hidden sm:table-cell;
 }
 .jobs-table thead th:first-child {
   @apply text-left;
@@ -925,6 +929,19 @@ a.chip:active {
 }
 .sponsor[data-sponsor="no"] {
   @apply bg-failed/5 text-failed;
+}
+.job-why {
+  @apply text-[12px] text-soft text-pretty;
+}
+.job-worth {
+  @apply text-[11.5px] tabular-nums text-muted;
+}
+.fit {
+  @apply rounded-full bg-inset px-2 text-[11.5px] font-medium leading-[19px] whitespace-nowrap text-muted;
+}
+.fit[data-fit="5"],
+.fit[data-fit="4"] {
+  @apply bg-accent/10 text-accent;
 }
 .job-note {
   @apply text-[11.5px] text-faint md:text-right;

@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import type { Family, JobsPage, Mode, Sponsor } from "../server/jobs.functions.ts";
 import { Shell } from "./Shell.tsx";
 
-type Search = { family?: Family; sponsor?: Sponsor; mode?: Mode; skill?: string; pay?: true; all?: true };
+type Search = { family?: Family; sponsor?: Sponsor; mode?: Mode; skill?: string; fit?: true; pay?: true; all?: true };
 
 const SPONSOR: Record<Sponsor, string> = { yes: "Sponsors", no: "No sponsorship" };
 const MODE: Record<Mode, string> = { remote: "Remote", hybrid: "Hybrid", office: "Office" };
@@ -11,7 +11,7 @@ const MODE: Record<Mode, string> = { remote: "Remote", hybrid: "Hybrid", office:
 // counted by family, by skill, by week and in total, then the adverts themselves, frontend first, with
 // chips for the family, sponsorship, the work mode, a skill and whether a salary is given.
 export function JobsBoard({ data }: { data: JobsPage }) {
-  const search: Search = { family: data.family, sponsor: data.sponsor, mode: data.mode, skill: data.skill, pay: data.pay || undefined };
+  const search: Search = { family: data.family, sponsor: data.sponsor, mode: data.mode, skill: data.skill, fit: data.fit || undefined, pay: data.pay || undefined };
   const t = data.totals;
   const header = (
     <>
@@ -62,6 +62,10 @@ export function JobsBoard({ data }: { data: JobsPage }) {
                 <dd>{t.withPay.toLocaleString("en-GB")}</dd>
               </div>
               <div>
+                <dt>Good fit for you</dt>
+                <dd>{t.read ? t.good.toLocaleString("en-GB") : "none read yet"}</dd>
+              </div>
+              <div>
                 <dt>Read by the model</dt>
                 <dd>
                   {t.read.toLocaleString("en-GB")} of {data.open.toLocaleString("en-GB")}
@@ -82,8 +86,10 @@ export function JobsBoard({ data }: { data: JobsPage }) {
                     <th>Role</th>
                     <th>Open</th>
                     <th>Sponsors</th>
-                    <th>Remote</th>
+                    <th className="wide">Remote</th>
                     <th>Median pay</th>
+                    <th>In {data.home}</th>
+                    <th className="wide">Good fit</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -96,12 +102,47 @@ export function JobsBoard({ data }: { data: JobsPage }) {
                       </th>
                       <td>{f.open}</td>
                       <td>{f.open ? `${f.sponsors}%` : ""}</td>
-                      <td>{f.open ? `${f.remote}%` : ""}</td>
+                      <td className="wide">{f.open ? `${f.remote}%` : ""}</td>
                       <td>{f.median ?? ""}</td>
+                      <td>{f.atHome ?? ""}</td>
+                      <td className="wide">{f.open ? f.good : ""}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              {data.places.length > 0 && (
+                <table className="jobs-table">
+                  <caption>Pay by place, and what it is worth in {data.home}</caption>
+                  <thead>
+                    <tr>
+                      <th>Place</th>
+                      <th className="wide">With pay</th>
+                      <th>Median pay</th>
+                      <th>Worth in {data.home}</th>
+                      <th className="wide">One-bed rent</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.places.map((p) => (
+                      <tr key={p.place}>
+                        <th>{p.place}</th>
+                        <td className="wide">{p.withPay}</td>
+                        <td>{p.median ?? ""}</td>
+                        <td>{p.atHome ?? ""}</td>
+                        <td className="wide">{p.rent}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={5}>
+                        Worth in {data.home} is the salary that leaves as much there after 2026/27 income tax and National Insurance (Scottish rates in Scotland) and a
+                        month's average one-bed rent (ONS, {data.rentsMonth}). Remote jobs are taken as done from {data.home}. Pension and student loan are left out.
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
               {data.weeks.length > 0 && (
                 <table className="jobs-table">
                   <caption>New adverts by week</caption>
@@ -203,6 +244,9 @@ export function JobsBoard({ data }: { data: JobsPage }) {
               </Link>
             ))}
             <span className="chips-gap" />
+            <Link to="/jobs" search={{ ...search, fit: data.fit ? undefined : true }} className="chip" data-active={data.fit}>
+              Good fit
+            </Link>
             <Link to="/jobs" search={{ ...search, pay: data.pay ? undefined : true }} className="chip" data-active={data.pay}>
               With a salary
             </Link>
@@ -237,6 +281,7 @@ export function JobsBoard({ data }: { data: JobsPage }) {
                         <span>{j.source}</span>
                         <span>seen {j.seen}</span>
                       </span>
+                      {j.fitWhy && <span className="job-why">{j.fitWhy}</span>}
                       {j.skills.length > 0 && (
                         <span className="job-skills">
                           {j.skills.map((k) => (
@@ -246,7 +291,21 @@ export function JobsBoard({ data }: { data: JobsPage }) {
                       )}
                     </span>
                     <span className="job-side">
-                      {j.pay && <span className="job-pay">{j.pay}</span>}
+                      {j.fit !== null && (
+                        <span className="fit" data-fit={j.fit} title={j.fitWhy}>
+                          Fit {j.fit}/5
+                        </span>
+                      )}
+                      {j.pay && (
+                        <span className="job-pay" title={j.worthNote || undefined}>
+                          {j.pay}
+                        </span>
+                      )}
+                      {j.worth && (
+                        <span className="job-worth" title={j.worthNote}>
+                          {j.worth}
+                        </span>
+                      )}
                       {j.sponsor && (
                         <span className="sponsor" data-sponsor={j.sponsor} title={j.sponsorNote}>
                           {SPONSOR[j.sponsor]}
