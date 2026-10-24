@@ -11,7 +11,7 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       # The password for the dashboard at /admin (costs, logs, run button). Unset, /admin is off.
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      # TypeSafe API key (console.typesafe.ai/keys). Set, every story gets a 0-10 rating from Jev.
+      # TypeSafe API key (console.typesafe.ai/keys). Set, Jev scores every story for the reader, filters news and runs the ideas radar.
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
       # An Aletheia capture key. Set, a logged-in reader gets "Save to notes" on every story.
       ALETHEIA_CAPTURE_KEY: ${ALETHEIA_CAPTURE_KEY:-}
