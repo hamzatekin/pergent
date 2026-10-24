@@ -1,9 +1,10 @@
-// Writes market.md for the weekly job market paper (tasks/jobs-weekly): the facts of the week, counted by
+// Writes market.md for the job market paper (tasks/jobs-weekly, every morning): the facts of the week, counted by
 // code from the jobs table (../../pergent.db, opened read-only) that jobs-collect fills and jobs-read
 // reads, so the model only writes them up. This week is the last 7 days by first_seen, the week before
 // the 7 days before that; an advert is open when the newest collection or one within 36 hours of it saw
-// it. Then a shortlist of open adverts at employers that sponsor, new this week, that jobs-read judged a
-// fit of 3 or more for the reader, the best fit first, then those matching the reader's stack (under
+// it. Then a shortlist of every open advert at an employer that sponsors, however long ago it was first
+// seen (the list builds up as the collector finds more, and an advert leaves it when it closes), that
+// jobs-read judged a fit of 3 or more for the reader, the best fit first, then those matching the reader's stack (under
 // "market.stack" in task.json). Pay is also given as what it is worth in the reader's home area after
 // tax and rent (src/pay.ts).
 import { writeFile, readFile } from "node:fs/promises";
@@ -38,7 +39,7 @@ const count = (jobs: JobRow[], test: (j: JobRow) => boolean) => jobs.filter(test
 const lines: string[] = [];
 const out = (...l: string[]) => lines.push(...l);
 
-out(`# The job market, week to ${day(now)}`, "");
+out(`# The job market, ${day(now)}`, "");
 out(
   `UK software developer adverts (in the UK or remote from it, no managers), from employers' own job boards (Greenhouse, Lever, Ashby), HN "Who is hiring?", Himalayas, Adzuna and Reed. Counted by code; the role, skills and visa wording of each advert were read from its text by a model.`,
   "",
@@ -135,21 +136,23 @@ const years = front.flatMap((j) => (j.read?.minYears ? [j.read.minYears] : [])).
 if (years.length) out(`- Frontend side adverts naming the years of experience: ${years.length}, median ${years[Math.floor(years.length / 2)]}+ years`);
 out("");
 
-// The shortlist: sponsors, new this week, a fit of 3 or more; the best fit first, then stack matches,
-// then frontend before full stack before mobile before the rest, then newest.
+// The shortlist: open, sponsors, a fit of 3 or more; the best fit first, then stack matches, then
+// frontend before full stack before mobile before the rest, then newest.
 const fit = (j: JobRow) => [...(j.read?.skills ?? []), ...(j.read?.niceSkills ?? [])].filter((s) => stack.includes(s.toLowerCase()));
 const side = (j: JobRow) => (FRONT_SIDE.includes(familyOf(j)) ? FRONT_SIDE.indexOf(familyOf(j)) : FRONT_SIDE.length);
 const picks = open
-  .filter((j) => sponsorOf(j) === "yes" && thisWeek.includes(j) && (j.read?.fit ?? 0) >= 3)
+  .filter((j) => sponsorOf(j) === "yes" && (j.read?.fit ?? 0) >= 3)
   .sort((a, b) => b.read!.fit! - a.read!.fit! || fit(b).length - fit(a).length || side(a) - side(b) || b.firstSeen.localeCompare(a.firstSeen))
   .slice(0, market.shortlist ?? 25);
-out(`## Shortlist: open adverts at employers that sponsor, new this week, judged a fit for the reader (${picks.length})`, "");
+const fits = open.filter((j) => sponsorOf(j) === "yes" && (j.read?.fit ?? 0) >= 3).length;
+out(`## Shortlist: open adverts at employers that sponsor, judged a fit for the reader (${picks.length}${fits > picks.length ? ` of ${fits}` : ""})`, "");
 out(`The fit (1 to 5) was judged by a model against the reader's profile. Ordered by fit, then by how much of the reader's stack (${(market.stack ?? []).join(", ")}) they ask for.`, "");
 for (const j of picks) {
   const pay = yearlyGbp(j) ? `£${Math.round(j.salaryMin! / 1000)}k${j.salaryMax && j.salaryMax !== j.salaryMin ? `–${Math.round(j.salaryMax / 1000)}k` : ""}` : "pay not given";
   out(
     `### ${j.title} at ${j.company}`,
     `- ${j.url}`,
+    `- First seen ${day(Date.parse(j.firstSeen))}${Date.parse(j.firstSeen) >= now - 1.5 * DAY && !firstWeek ? " (new since yesterday)" : ""}`,
     `- ${FAMILY_LABEL[familyOf(j)]} · ${j.location || "no location"} · ${j.workMode ?? "work mode not said"}${j.officeDays ? `, ${j.officeDays} days in office` : ""} · ${pay}${j.read?.minYears ? ` · ${j.read.minYears}+ years` : ""}`,
     `- Skills: ${j.read?.skills.join(", ") || "not read"}${j.read?.niceSkills.length ? `; a plus: ${j.read.niceSkills.join(", ")}` : ""}`,
     `- Fit for the reader: ${j.read!.fit}/5, ${j.read!.fitWhy}`,
@@ -160,4 +163,4 @@ for (const j of picks) {
   );
 }
 await writeFile("market.md", lines.join("\n") + "\n");
-console.log(`market.md: ${open.length} open, ${thisWeek.length} new this week, ${picks.length} on the shortlist`);
+console.log(`market.md: ${open.length} open, ${thisWeek.length} new this week, ${picks.length} of ${fits} on the shortlist`);
