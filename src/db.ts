@@ -56,6 +56,37 @@ export type NewPost = {
   kept: boolean;
 };
 
+// A job advert the job market tracker collected (scripts/collect-jobs.ts writes them to a run's jobs.json,
+// with the fields code read from it). An advert already stored comes back with an empty body and only
+// marks the day it was last seen; one that stops being seen has closed.
+export type NewJob = {
+  id: string;
+  source: string;
+  company: string;
+  title: string;
+  location: string;
+  /** remote, hybrid or office, when the advert says. */
+  workMode: string | null;
+  officeDays: number | null;
+  /** frontend, backend, fullstack, mobile, data, devops, or general when the title does not say. */
+  family: string;
+  seniority: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  currency: string | null;
+  /** year, month, week, day or hour. */
+  salaryPeriod: string | null;
+  /** Adzuna's own estimate, not the employer's figure. */
+  salaryPredicted: boolean;
+  /** offered, not offered, right to work (the advert asks for it, which usually means no sponsorship), or
+   * mentioned (it speaks of sponsorship or visas in words code cannot read). */
+  sponsorship: string | null;
+  sponsor: string | null;
+  url: string;
+  postedAt: string | null;
+  body: string;
+};
+
 let db: DatabaseSync | undefined;
 
 export function openDb(runsDir: string): DatabaseSync {
@@ -158,6 +189,32 @@ export function openDb(runsDir: string): DatabaseSync {
       created_at TEXT NOT NULL,
       run_id     TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS jobs (
+      id               TEXT PRIMARY KEY,
+      source           TEXT NOT NULL,
+      company          TEXT NOT NULL,
+      title            TEXT NOT NULL,
+      location         TEXT NOT NULL,
+      work_mode        TEXT,
+      office_days      INTEGER,
+      family           TEXT NOT NULL,
+      seniority        TEXT,
+      salary_min       REAL,
+      salary_max       REAL,
+      currency         TEXT,
+      salary_period    TEXT,
+      salary_predicted INTEGER NOT NULL DEFAULT 0,
+      sponsorship      TEXT,
+      sponsor          TEXT,
+      url              TEXT NOT NULL,
+      posted_at        TEXT,
+      body             TEXT NOT NULL DEFAULT '',
+      first_seen       TEXT NOT NULL,
+      last_seen        TEXT NOT NULL,
+      task             TEXT NOT NULL,
+      run_id           TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS jobs_by_first_seen ON jobs (first_seen);
   `);
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
@@ -269,6 +326,37 @@ export function savePosts(task: string, runId: string, posts: NewPost[]) {
   try {
     for (const p of posts) {
       insert.run(p.id, p.source, p.community, p.author, p.postedAt, p.title, p.kept ? p.body : "", p.url, p.budget ?? null, p.kind ?? null, p.kindP ?? null, Number(p.kept), task, runId);
+    }
+    use().exec("COMMIT");
+  } catch (err) {
+    use().exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// An advert is stored once, by id, with its body; seen again, it gets the day and whatever code reads
+// from it now (the register and the patterns can change), and keeps its body and first_seen.
+export function saveJobs(task: string, runId: string, jobs: NewJob[]) {
+  const now = new Date().toISOString();
+  const upsert = use().prepare(`
+    INSERT INTO jobs (id, source, company, title, location, work_mode, office_days, family, seniority, salary_min, salary_max, currency,
+      salary_period, salary_predicted, sponsorship, sponsor, url, posted_at, body, first_seen, last_seen, task, run_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (id) DO UPDATE SET
+      title = excluded.title, location = excluded.location, work_mode = excluded.work_mode, family = excluded.family,
+      seniority = excluded.seniority, sponsor = excluded.sponsor, url = excluded.url, last_seen = excluded.last_seen,
+      office_days = CASE WHEN excluded.body = '' THEN jobs.office_days ELSE excluded.office_days END,
+      sponsorship = CASE WHEN excluded.body = '' THEN jobs.sponsorship ELSE excluded.sponsorship END,
+      salary_min = COALESCE(excluded.salary_min, jobs.salary_min), salary_max = COALESCE(excluded.salary_max, jobs.salary_max),
+      currency = COALESCE(excluded.currency, jobs.currency), salary_period = COALESCE(excluded.salary_period, jobs.salary_period)
+  `);
+  use().exec("BEGIN");
+  try {
+    for (const j of jobs) {
+      upsert.run(
+        j.id, j.source, j.company, j.title, j.location, j.workMode, j.officeDays, j.family, j.seniority, j.salaryMin, j.salaryMax, j.currency,
+        j.salaryPeriod, Number(j.salaryPredicted), j.sponsorship, j.sponsor, j.url, j.postedAt, j.body, now, now, task, runId,
+      );
     }
     use().exec("COMMIT");
   } catch (err) {

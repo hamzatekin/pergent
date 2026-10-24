@@ -19,6 +19,10 @@ services:
       NTFY_TOPIC: ${NTFY_TOPIC:-}
       # The site's public address, so a notification opens the paper. Optional.
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # Free keys from developer.adzuna.com and reed.co.uk/developers. Set, the job tracker also reads Adzuna and Reed.
+      ADZUNA_APP_ID: ${ADZUNA_APP_ID:-}
+      ADZUNA_APP_KEY: ${ADZUNA_APP_KEY:-}
+      REED_API_KEY: ${REED_API_KEY:-}
     volumes:
       - runs:/app/runs
       - claude-home:/root/.claude

@@ -3,7 +3,7 @@ import { createWriteStream } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { getRun, listMutes, openDb, saveIssues, savePosts, saveRun, listRuns as listRunRows } from "./db.ts";
+import { getRun, listMutes, openDb, saveIssues, saveJobs, savePosts, saveRun, listRuns as listRunRows } from "./db.ts";
 import { PAPER_SCHEMA, fromMarkdown, parsePaper, toMarkdown, type Paper } from "./paper.ts";
 import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
@@ -261,6 +261,12 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
       if (err?.code === "ENOENT") return;
       ok = false;
       await writeFile(join(dir, "save.log"), `posts.json not saved: ${err}\n`);
+    });
+    // Job adverts for the job market tracker (scripts/collect-jobs.ts), the same way.
+    await readFile(join(dir, "jobs.json"), "utf8").then((t) => saveJobs(name, runId, JSON.parse(t))).catch(async (err) => {
+      if (err?.code === "ENOENT") return;
+      ok = false;
+      await writeFile(join(dir, "save.log"), `jobs.json not saved: ${err}\n`);
     });
     if (!ok || !prompt) return end(ok, "");
   }
