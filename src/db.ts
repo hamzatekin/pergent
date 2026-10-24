@@ -598,7 +598,7 @@ export function saveSort(runId: string, opened: { name: string; category: string
       INSERT OR REPLACE INTO mentions (post_id, problem_id, recurring, cost, workaround, quote, note, run_id, sorted_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const merged = new Map((db.prepare("SELECT id, merged_into AS into FROM problems WHERE status = 'merged'").all() as { id: number; into: number }[]).map((r) => [r.id, r.into]));
+    const merged = new Map((db.prepare("SELECT id, merged_into AS target FROM problems WHERE status = 'merged'").all() as { id: number; target: number }[]).map((r) => [r.id, r.target]));
     const follow = (id: number) => {
       for (let i = 0; i < 10 && merged.has(id); i++) id = merged.get(id)!;
       return id;

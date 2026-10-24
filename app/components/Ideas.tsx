@@ -363,11 +363,18 @@ function useRefreshWhile(busy: boolean) {
 function BriefMe({ state, label = "Brief me" }: { state: BriefState; label?: string }) {
   if (!state.canBrief) return null;
   return (
-    <form method="post" action="/admin/ideas/brief">
-      <button type="submit" className="btn primary" disabled={state.briefing}>
-        {state.briefing ? "Writing your brief…" : label}
-      </button>
-    </form>
+    <div className="brief-me">
+      <form method="post" action="/admin/ideas/brief">
+        <button type="submit" className="btn primary" disabled={state.briefing}>
+          {state.briefing ? "Writing your brief…" : label}
+        </button>
+      </form>
+      {state.lastRun && (
+        <p className={state.lastRun.failed ? "note failed" : "note"}>
+          {state.lastRun.text} <a href={state.lastRun.href}>See the run</a>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -384,7 +391,7 @@ function BriefPanel({ state }: { state: BriefState }) {
       </div>
     );
   return (
-    <details className="brief" open={latest.fresh || state.briefing}>
+    <details className="brief" open={latest.fresh || state.briefing || !!state.lastRun}>
       <summary>
         <span className="brief-title">Brief</span>
         <span className="stamp">{latest.when}</span>

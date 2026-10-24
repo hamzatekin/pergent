@@ -1034,6 +1034,9 @@ a.chip:active {
 .brief-body .note {
   @apply mt-2 text-[12px];
 }
+.brief-me {
+  @apply flex flex-wrap items-center gap-x-3 gap-y-1;
+}
 .brief-foot {
   @apply mt-3 flex items-center gap-3 border-t border-line pt-3;
 }
