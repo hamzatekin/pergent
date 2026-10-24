@@ -1,0 +1,22 @@
+{
+  "schedule": "0 8 * * 1",
+  "timezone": "Europe/London",
+  "label": "job market",
+  "icon": "briefcase",
+  "order": 4,
+  "lang": "en",
+  "contextLabel": "What it means for you",
+  "briefsLabel": "Also worth a look",
+  "model": "claude-haiku-5-5",
+  "allowedTools": [],
+  "inputs": ["market.md", "previous.md"],
+  "timeoutMinutes": 10,
+  "rate": false,
+  "before": "node ../../../scripts/previous.ts && node ../../../scripts/job-market.ts",
+  "previous": { "days": 8 },
+  "market": {
+    "stack": ["React", "TypeScript", "JavaScript", "React Native", "Expo", "Next.js", "Node.js", "HTML", "CSS", "Tailwind CSS", "GraphQL"],
+    "shortlist": 25,
+    "skills": 20
+  }
+}

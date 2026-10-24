@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { HOME } from "./pay.ts";
 import type { TaskConfig } from "./runner.ts";
 
 // What a task reads and how its paper is made, for the Sources panel on its page. Built from the task's
@@ -167,6 +168,38 @@ function settlementGroups(cfg: any): SourceGroup[] {
   return groups;
 }
 
+// The job tracker's sources (scripts/collect-jobs.ts, under jobs-collect's own "collect"), for the
+// weekly paper, whose own before only counts what that task collected.
+async function jobGroups(): Promise<SourceGroup[]> {
+  const cfg = await readFile(join(TASKS_DIR, "jobs-collect", "task.json"), "utf8").then((t) => JSON.parse(t).collect, () => null);
+  if (!cfg) return [];
+  const BOARD: Record<string, (slug: string) => string> = {
+    greenhouse: (s) => `https://job-boards.greenhouse.io/${s}`,
+    lever: (s) => `https://jobs.lever.co/${s}`,
+    ashby: (s) => `https://jobs.ashbyhq.com/${s}`,
+  };
+  const boards = Object.entries((cfg.boards ?? {}) as Record<string, (string | { slug: string; name?: string })[]>).flatMap(([kind, list]) =>
+    list.map((b) => (typeof b === "string" ? { slug: b, name: words(b) } : { slug: b.slug, name: b.name ?? words(b.slug) })).map((b) => ({ label: b.name, href: BOARD[kind]?.(b.slug) })),
+  );
+  const groups: SourceGroup[] = [];
+  if (boards.length) groups.push({ title: plural(boards.length, "employer job board"), note: "Every open developer advert, in full, from their Greenhouse, Lever or Ashby board.", links: boards.sort((a, b) => a.label.localeCompare(b.label)) });
+  const sites: SourceLink[] = [];
+  if (cfg.hn) sites.push({ label: "HN Who is hiring?", href: "https://news.ycombinator.com/submitted?id=whoishiring" });
+  if (cfg.himalayas) sites.push({ label: "Himalayas", href: "https://himalayas.app" });
+  if (cfg.adzuna) sites.push({ label: "Adzuna", href: "https://www.adzuna.co.uk" });
+  if (cfg.reed) sites.push({ label: "Reed", href: "https://www.reed.co.uk" });
+  if (sites.length) groups.push({ title: "Job sites", note: "New developer adverts in the UK or remote from it, through their public APIs.", links: sites });
+  groups.push({
+    title: "Public data",
+    note: "Who holds a sponsor licence, and what a one-bed rents for where the job is.",
+    links: [
+      { label: "Register of licensed sponsors", href: "https://www.gov.uk/government/publications/register-of-licensed-sponsors-workers" },
+      { label: "ONS private rents", href: "https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics" },
+    ],
+  });
+  return groups;
+}
+
 /** The Sources panel of `task`. */
 export async function taskSources(task: string, config: TaskConfig): Promise<TaskSources> {
   const scripts = [...(config.before ?? "").matchAll(/scripts\/([\w-]+)\.ts/g)].map((m) => m[1]);
@@ -203,6 +236,11 @@ export async function taskSources(task: string, config: TaskConfig): Promise<Tas
       }
     }
     if (script === "fetch-settlement") groups.push(...settlementGroups(c.settlement));
+    if (script === "job-market") {
+      groups.push(...(await jobGroups()));
+      how.push("Every morning the adverts are collected, and Haiku reads each new one for its role, skills, visa wording and how well it fits you.");
+      how.push(`Code counts the week: roles, skills, sponsorship, remote work, and pay after tax and rent as it would be in ${HOME}.`);
+    }
     // The filter and the for-you score only run with TypeSafe's key, so the panel only claims them then.
     if (script === "filter-jev" && jev) {
       const drop = ((c.filter?.drop ?? ["clickbait", "filler", "praise"]) as string[]).map((k) => k.replace(/-/g, " "));

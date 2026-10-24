@@ -145,8 +145,8 @@ const OUTPUTS: Record<string, Output> = {
     save: (runId, output, dir) => saveBriefOutput(runId, output, dir),
   },
   read: {
-    prepare: async (_task, _runId, dir, config) => {
-      const { adverts, waiting } = await prepareRead(dir, config);
+    prepare: async (task, _runId, dir, config) => {
+      const { adverts, waiting } = await prepareRead(dir, join(TASKS_DIR, task), config);
       return { go: adverts > 0, note: adverts ? `${adverts} adverts to read${waiting ? `, ${waiting} more waiting for the next runs` : ""}` : "No advert to read" };
     },
     schema: readSchema,

@@ -4,11 +4,75 @@
 // saveReadOutput stores that on the advert. The counting stays code (app/server/jobs.functions.ts).
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { companyBodies, saveJobReads, unreadJobs, type JobRead, type UnreadJob } from "./db.ts";
+import { companyBodies, saveJobReads, unreadJobs, type JobRead, type JobRow, type UnreadJob } from "./db.ts";
 import type { TaskConfig } from "./runner.ts";
 
 export const TEXT_FAMILIES = ["frontend", "fullstack", "backend", "mobile", "data", "devops", "not a developer"] as const;
 const SPONSORSHIP = ["offered", "not offered", "right to work", "not said"] as const;
+
+// What code makes of an advert for the Jobs page and the weekly paper (scripts/job-market.ts).
+
+// The reader works mostly on the frontend and is open to the rest: the list puts frontend roles first,
+// then the roles closest to it, and the adverts not read yet whose title does not tell ("Software
+// Engineer") in the middle.
+export const FAMILIES = ["frontend", "fullstack", "mobile", "general", "backend", "data", "devops"] as const;
+export type Family = (typeof FAMILIES)[number];
+export const FAMILY_LABEL: Record<Family, string> = {
+  frontend: "Frontend",
+  fullstack: "Full stack",
+  mobile: "Mobile",
+  general: "Not read yet",
+  backend: "Backend",
+  data: "Data and AI",
+  devops: "Platform and DevOps",
+};
+export type Sponsor = "yes" | "no";
+
+// What the advert's words say about sponsorship: code's patterns when they read it plainly, else the
+// model's reading of the text.
+export function sponsorWords(j: JobRow): string | null {
+  if (j.sponsorship && j.sponsorship !== "mentioned") return j.sponsorship;
+  if (j.read && j.read.textSponsorship !== "not said") return j.read.textSponsorship;
+  return j.sponsorship;
+}
+
+export function sponsorOf(j: JobRow): Sponsor | null {
+  const w = sponsorWords(j);
+  if (w === "not offered" || w === "right to work") return "no";
+  if (w === "offered" || j.sponsor) return "yes";
+  return null;
+}
+
+export function sponsorNote(j: JobRow): string {
+  const w = sponsorWords(j);
+  if (w === "not offered") return "Advert says no sponsorship";
+  if (w === "right to work") return "Asks for the right to work";
+  if (w === "offered") return j.sponsor ? `Advert says it sponsors · licensed as ${j.sponsor}` : "Advert says it sponsors";
+  if (j.sponsor) return `Licensed sponsor as ${j.sponsor}`;
+  return w === "mentioned" ? "Mentions visas, unclear" : "";
+}
+
+// The family the title names, else the one the model read from the text (prepareRead below).
+export function familyOf(j: JobRow): Family {
+  if (j.family !== "general" && FAMILIES.includes(j.family as Family)) return j.family as Family;
+  const read = j.read?.textFamily;
+  return read && FAMILIES.includes(read as Family) ? (read as Family) : "general";
+}
+export const FRONT_SIDE: Family[] = ["frontend", "fullstack", "mobile"];
+export const notDeveloper = (j: JobRow) => j.read?.textFamily === "not a developer";
+export const hasSkill = (j: JobRow, skill: string) => !!j.read && [...j.read.skills, ...j.read.niceSkills].some((s) => s.toLowerCase() === skill.toLowerCase());
+
+// The employer's own yearly pay in pounds: the middle of the range, Adzuna's estimates left out.
+export const yearlyGbp = (j: JobRow) =>
+  j.currency === "GBP" && j.salaryPeriod === "year" && !j.salaryPredicted && j.salaryMin ? ((j.salaryMin + (j.salaryMax ?? j.salaryMin)) / 2) : null;
+
+export function median(values: number[]) {
+  if (!values.length) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const m = s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+  return `£${Math.round(m / 1000)}k`;
+}
+
 
 const readConfig = (config: TaskConfig) => (config.read ?? {}) as { maxChars?: number; advertChars?: number; companyChars?: number };
 
@@ -25,7 +89,7 @@ export function readSchema() {
         description: "Every advert of adverts.md, once each, in any order.",
         items: {
           type: "object",
-          required: ["ref", "family", "skills", "niceToHave", "minYears", "sponsorship", "aiTools"],
+          required: ["ref", "family", "skills", "niceToHave", "minYears", "sponsorship", "aiTools", "fit", "fitWhy"],
           additionalProperties: false,
           properties: {
             ref: text("The advert's ref from adverts.md, like a12."),
@@ -47,6 +111,12 @@ export function readSchema() {
                 "What this advert says about visa sponsorship: offered (it sponsors visas or helps with them), not offered (it cannot sponsor), right to work (it asks for the existing right to work in the UK without saying either), or not said.",
             },
             aiTools: { type: "boolean", description: "The advert expects or encourages using AI coding tools (Copilot, Cursor, Claude Code, coding agents) in the daily work. Building AI features is not this; that goes in skills." },
+            fit: {
+              type: "integer",
+              description:
+                "How well the reader in profile.md fits this role, 1 to 5: 5 a strong match (the role's core is what they are strongest in, at their level), 4 a good match with a gap or two they could close, 3 possible but a stretch (much of the stack or the level is new to them), 2 a poor match (the role's core is something they don't do), 1 not for them (management, research, hardware, or wholly another field). Judge the work and the level, not the visa or the place.",
+            },
+            fitWhy: text("Why, in at most 20 words, naming what matches and the main gap, like \"React and TypeScript product UI at their level; no Go experience\"."),
           },
         },
       },
@@ -78,10 +148,12 @@ const clip = (lines: string[], chars: number) => {
   return text.length > chars ? `${text.slice(0, chars)}…` : text;
 };
 
-// Writes adverts.md (the open adverts no read has seen, newest companies first, grouped by company with
+// Writes profile.md (the reader, whom each advert's fit is judged against: the task directory's own
+// profile.md), adverts.md (the open adverts no read has seen, newest companies first, grouped by company with
 // what all of a company's adverts say shown once, up to `read.maxChars` in all) and read.json, the refs
 // saveReadOutput checks the answer against. Returns how many adverts went in and how many wait.
-export async function prepareRead(dir: string, config: TaskConfig): Promise<{ adverts: number; waiting: number }> {
+export async function prepareRead(dir: string, taskDir: string, config: TaskConfig): Promise<{ adverts: number; waiting: number }> {
+  await writeFile(join(dir, "profile.md"), await readFile(join(taskDir, "profile.md"), "utf8"));
   const { maxChars = 150_000, advertChars = 3500, companyChars = 1500 } = readConfig(config);
   const unread = unreadJobs();
   const byCompany = new Map<string, UnreadJob[]>();
@@ -170,7 +242,9 @@ function skillList(raw: unknown, max: number, not = new Set<string>()): string[]
   return [...out.values()].slice(0, max);
 }
 
-type ReadOutput = { adverts: { ref: string; family: string; skills: string[]; niceToHave: string[]; minYears: number; sponsorship: string; aiTools: boolean }[] };
+type ReadOutput = {
+  adverts: { ref: string; family: string; skills: string[]; niceToHave: string[]; minYears: number; sponsorship: string; aiTools: boolean; fit: number; fitWhy: string }[];
+};
 
 // Stores the reads by ref. An advert the answer left out stays unread and comes back next run.
 // Returns the run's summary in markdown, or null when the answer is not a read at all.
@@ -190,6 +264,8 @@ export async function saveReadOutput(runId: string, output: unknown, dir: string
       minYears: Number.isInteger(a.minYears) && a.minYears > 0 && a.minYears <= 20 ? a.minYears : 0,
       textSponsorship: SPONSORSHIP.includes(a.sponsorship as (typeof SPONSORSHIP)[number]) ? a.sponsorship : "not said",
       aiTools: a.aiTools === true,
+      fit: Number.isInteger(a.fit) && a.fit >= 1 && a.fit <= 5 ? a.fit : null,
+      fitWhy: String(a.fitWhy ?? "").trim().slice(0, 200),
     });
   }
   saveJobReads(runId, reads);
@@ -208,5 +284,6 @@ export async function saveReadOutput(runId: string, output: unknown, dir: string
     `- Family: ${count((r) => r.textFamily)}`,
     `- Sponsorship: ${count((r) => r.textSponsorship)}`,
     `- AI coding tools: ${all.filter((r) => r.aiTools).length}`,
+    `- Fit: ${count((r) => (r.fit ? `${r.fit}/5` : "none"))}`,
   ].join("\n") + "\n";
 }
