@@ -16,7 +16,7 @@
       "UK", "U.K.", "United Kingdom", "GB", "Great Britain", "England", "Scotland", "Wales", "Northern Ireland",
       "London", "Manchester", "Edinburgh", "Glasgow", "Bristol", "Cardiff", "Leeds", "Birmingham", "Cambridge",
       "Oxford", "Belfast", "Newcastle", "Sheffield", "Nottingham", "Liverpool", "Brighton", "Reading", "Bath",
-      "Southampton", "Milton Keynes", "Leicester", "Dundee", "Aberdeen", "Guildford", "Swindon", "York"
+      "Southampton", "Milton Keynes", "Leicester", "Dundee", "Aberdeen", "Guildford", "Swindon"
     ],
     "regions": ["Europe", "EMEA", "Worldwide", "Anywhere", "Global", "International"],
     "boards": {

@@ -365,6 +365,34 @@ export function saveJobs(task: string, runId: string, jobs: NewJob[]) {
   }
 }
 
+// An advert as the Jobs page reads it: what code read from it, without its body.
+export type JobRow = Omit<NewJob, "body"> & { firstSeen: string; lastSeen: string };
+const JOB_COLUMNS = `id, source, company, title, location, work_mode AS workMode, office_days AS officeDays, family, seniority,
+  salary_min AS salaryMin, salary_max AS salaryMax, currency, salary_period AS salaryPeriod, salary_predicted AS salaryPredicted,
+  sponsorship, sponsor, url, posted_at AS postedAt, first_seen AS firstSeen, last_seen AS lastSeen`;
+
+// The adverts still open: seen by the newest collection, or within a day and a half of it, so a source
+// that failed one run does not close all its adverts.
+export function openJobs(): JobRow[] {
+  const newest = (use().prepare("SELECT MAX(last_seen) AS t FROM jobs").get() as { t: string | null }).t;
+  if (!newest) return [];
+  const since = new Date(Date.parse(newest) - 36 * 3_600_000).toISOString();
+  return (use().prepare(`SELECT ${JOB_COLUMNS} FROM jobs WHERE last_seen >= ? ORDER BY first_seen DESC`).all(since) as unknown as JobRow[]).map((j) => ({
+    ...j,
+    salaryPredicted: Boolean(j.salaryPredicted),
+  }));
+}
+
+// Every advert first seen since a time, open or closed, for the weekly counts.
+export function jobsSince(since: string): JobRow[] {
+  return (use().prepare(`SELECT ${JOB_COLUMNS} FROM jobs WHERE first_seen >= ?`).all(since) as unknown as JobRow[]).map((j) => ({ ...j, salaryPredicted: Boolean(j.salaryPredicted) }));
+}
+
+// When the first collection ran, which the weekly counts need: that week holds every advert open then.
+export function firstJobSeen(): string | null {
+  return (use().prepare("SELECT MIN(first_seen) AS t FROM jobs").get() as { t: string | null }).t;
+}
+
 // A post's columns as PostRow names them, from `posts p`.
 const POST_COLUMNS = "p.id, p.source, p.community, p.author, p.posted_at AS postedAt, p.title, p.body, p.url, p.budget, p.kind";
 
