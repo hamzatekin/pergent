@@ -1,0 +1,75 @@
+{
+  "schedule": "30 6 * * *",
+  "timezone": "Europe/London",
+  "label": "jobs collect",
+  "tab": false,
+  "order": 8,
+  "lang": "en",
+  "before": "node ../../../scripts/collect-jobs.ts",
+  "collect": {
+    "budgetSeconds": 240,
+    "titles": {
+      "include": "engineer|developer|programmer|\\bswe\\b|\\bsde\\b",
+      "exclude": "manager|management|director|head of|\\bvp\\b|vice president|chief|\\bcto\\b|recruit|talent|sales|business develop|solutions? (engineer|architect)|support engineer|customer|account|advocate|relations|evangelist|field|electrical|mechanical|civil|structural|chemical|process engineer|hardware|electronic|asic|fpga|silicon|analog|\\brf\\b|firmware|embedded|manufactur|technician|network engineer|it support|desktop|validation|verification|compensation|partner\\b|engagement|\\bgrc\\b|\\bgtm\\b|professional services|\\bit (operations|systems)"
+    },
+    "places": [
+      "UK", "U.K.", "United Kingdom", "GB", "Great Britain", "England", "Scotland", "Wales", "Northern Ireland",
+      "London", "Manchester", "Edinburgh", "Glasgow", "Bristol", "Cardiff", "Leeds", "Birmingham", "Cambridge",
+      "Oxford", "Belfast", "Newcastle", "Sheffield", "Nottingham", "Liverpool", "Brighton", "Reading", "Bath",
+      "Southampton", "Milton Keynes", "Leicester", "Dundee", "Aberdeen", "Guildford", "Swindon", "York"
+    ],
+    "regions": ["Europe", "EMEA", "Worldwide", "Anywhere", "Global", "International"],
+    "boards": {
+      "greenhouse": ["monzo", "deliveroo", "gocardless", "tide", "datadog", "stripe", "gitlab", "elastic", "intercom", "vercel", "contentful", "form3", "gymshark"],
+      "lever": [
+        { "slug": "zopa", "name": "Zopa" },
+        { "slug": "moonpig", "name": "Moonpig" },
+        { "slug": "spotify", "name": "Spotify" },
+        { "slug": "palantir", "name": "Palantir" }
+      ],
+      "ashby": [
+        { "slug": "paddle", "name": "Paddle" },
+        { "slug": "trainline", "name": "Trainline" },
+        { "slug": "synthesia", "name": "Synthesia" },
+        { "slug": "elevenlabs", "name": "ElevenLabs" },
+        { "slug": "multiverse", "name": "Multiverse" },
+        { "slug": "incident", "name": "incident.io" },
+        { "slug": "zego", "name": "Zego" },
+        { "slug": "lendable", "name": "Lendable" },
+        { "slug": "wayve", "name": "Wayve" },
+        { "slug": "faculty", "name": "Faculty" },
+        { "slug": "motorway", "name": "Motorway" },
+        { "slug": "moneybox", "name": "Moneybox" },
+        { "slug": "pleo", "name": "Pleo" },
+        { "slug": "posthog", "name": "PostHog" },
+        { "slug": "sanity", "name": "Sanity" },
+        { "slug": "supabase", "name": "Supabase" }
+      ]
+    },
+    "hn": true,
+    "himalayas": { "country": "United Kingdom", "queries": ["software engineer", "developer"], "days": 2, "pages": 15 },
+    "adzuna": {
+      "country": "gb",
+      "category": "it-jobs",
+      "queries": ["software developer", "software engineer", "frontend developer", "backend developer", "full stack developer", "react native"],
+      "days": 2,
+      "pages": 2
+    },
+    "reed": {
+      "queries": ["software developer", "software engineer", "frontend developer", "backend developer", "full stack developer", "react native"],
+      "days": 2,
+      "details": 200
+    },
+    "sponsors": {
+      "Deliveroo": "Roofoods Ltd",
+      "Stripe": "Stripe Payments UK Ltd",
+      "ElevenLabs": "Eleven Labs Ltd",
+      "Faculty": "Faculty Science Limited",
+      "Elastic": "Elasticsearch Limited",
+      "Moneybox": "Digital Moneybox Limited",
+      "Kraken Tech": "Kraken Technologies Limited",
+      "Datadog": "Datadog Ireland Limited",
+      "Fin": "Intercom Software UK Limited"
+    }
+  }
+}
