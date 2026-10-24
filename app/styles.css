@@ -825,6 +825,101 @@ a.chip:active {
   content: "·";
   @apply ml-2 text-faint;
 }
+/* The Jobs page (components/Jobs.tsx): the totals, two small tables (open adverts by role, new adverts
+   by week), chips to filter, then the adverts as one list, each row its title, company, place and work
+   mode with its pay and sponsorship on the right. */
+.jobs-facts {
+  @apply mb-3 rounded-xl bg-surface px-4 py-1 shadow-border;
+}
+.jobs-facts dd {
+  @apply text-[13.5px] text-ink;
+}
+.jobs-tables {
+  @apply mb-4 grid items-start gap-3 lg:grid-cols-2;
+}
+.jobs-table {
+  @apply w-full overflow-hidden rounded-xl bg-surface text-[13px] tabular-nums shadow-border;
+}
+.jobs-table caption {
+  @apply px-3.5 pt-2.5 pb-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-muted;
+}
+.jobs-table th,
+.jobs-table td {
+  @apply px-2.5 py-1.5 text-right font-normal md:px-3.5;
+}
+.jobs-table thead th {
+  @apply text-[12px] whitespace-nowrap text-muted;
+}
+.jobs-table tbody tr {
+  @apply border-t border-line;
+}
+.jobs-table tbody th {
+  @apply text-left text-ink;
+}
+.jobs-table thead th:first-child {
+  @apply text-left;
+}
+.jobs-table tbody th a {
+  @apply hover:underline;
+}
+.jobs-table tr[data-active] th {
+  @apply font-medium;
+}
+.jobs-table td {
+  @apply text-soft;
+}
+.jobs-table tfoot td {
+  @apply border-t border-line text-left text-[12px] text-muted;
+}
+.jobs-table sup {
+  @apply ml-0.5 text-faint;
+}
+.chips-gap {
+  @apply w-2;
+}
+.jobs {
+  @apply overflow-hidden rounded-xl bg-surface shadow-border;
+}
+.jobs li {
+  @apply border-b border-line last:border-0;
+}
+.job-row {
+  @apply flex flex-col gap-1.5 px-3.5 py-2.5 hover:bg-bg md:flex-row md:items-start md:justify-between md:gap-4;
+}
+.job-main {
+  @apply flex min-w-0 flex-col gap-0.5;
+}
+.job-title {
+  @apply flex flex-wrap items-center gap-x-2 text-[13.5px] font-medium text-ink text-pretty;
+}
+.job-company {
+  @apply text-soft;
+}
+.job-meta {
+  @apply flex flex-wrap gap-x-2 text-[12px] text-muted;
+}
+.job-meta span + span::before {
+  content: "·";
+  @apply mr-2 text-faint;
+}
+.job-side {
+  @apply flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 md:max-w-[15rem] md:flex-col md:items-end md:pt-0.5;
+}
+.job-pay {
+  @apply text-[13px] tabular-nums text-ink;
+}
+.sponsor {
+  @apply rounded-full bg-inset px-2 text-[11.5px] font-medium leading-[19px] whitespace-nowrap text-muted;
+}
+.sponsor[data-sponsor="yes"] {
+  @apply bg-good/10 text-good;
+}
+.sponsor[data-sponsor="no"] {
+  @apply bg-failed/5 text-failed;
+}
+.job-note {
+  @apply text-[11.5px] text-faint md:text-right;
+}
 /* The Ideas pages (components/Ideas.tsx): the radar's problems as one list, each row its name, summary
    and counts with its trend and 8 weeks of mentions on the right; a problem's page with its counts and
    every post that raised it. */

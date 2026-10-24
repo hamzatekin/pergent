@@ -10,6 +10,8 @@ export type Nav = {
   newsletters: boolean;
   /** The Ideas page, the radar's problems (tasks/ideas): likewise. */
   ideas: boolean;
+  /** The Jobs page, the job market tracker's adverts (tasks/jobs-collect): likewise. */
+  jobs: boolean;
 };
 
 // What the sidebar shows on every page: a link per task in tab order (not a task with `tab: false`), the scheduler's state at the
@@ -29,6 +31,7 @@ export async function nav(): Promise<Nav & { configs: Map<string, TaskConfig> }>
     admin: !!PASSWORD,
     newsletters: loggedIn(),
     ideas: loggedIn() && all.includes("ideas"),
+    jobs: loggedIn() && all.includes("jobs-collect"),
     configs,
   };
 }

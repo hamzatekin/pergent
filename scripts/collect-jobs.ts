@@ -174,8 +174,12 @@ function salary(s: string): Pick<Job, "salaryMin" | "salaryMax" | "currency" | "
 }
 
 // In the UK, or remote from it: a location naming one of `places`, or remote with no other country or
-// one of `regions`. A location this cannot place ("Remote (US)", "Berlin") is left out.
+// one of `regions`. A location this cannot place ("Remote (US)", "Berlin") is left out, and so is an
+// American town that shares a British name ("Cambridge, MA", "New York, NY") unless the UK is named too.
+const US = /,\s*(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\b|\bnew york\b|\b(united states|usa|u\.s\.)\b/i;
+const UK = /\b(UK|U\.K\.|United Kingdom|Great Britain|England|Scotland|Wales|Northern Ireland|London)\b/i;
 function wanted(location: string, remote = false) {
+  if (US.test(location)) return UK.test(location.replace(/\bnew london\b/gi, ""));
   if (places.test(location)) return true;
   if (!(remote || /remote/i.test(location))) return false;
   const rest = location.replace(/remote|hybrid|[(),;/|-]/gi, " ").trim();

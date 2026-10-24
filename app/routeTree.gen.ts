@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as AdminAuthedRouteImport } from './routes/admin/_authed'
 import { Route as AdminLoginRouteImport } from './routes/admin/login'
 import { Route as AdminLogoutRouteImport } from './routes/admin/logout'
@@ -40,6 +41,11 @@ import { Route as AdminAuthedRunsTaskRunIdFilesFileRouteImport } from './routes/
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JobsRoute = JobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminAuthedRoute = AdminAuthedRouteImport.update({
@@ -180,6 +186,7 @@ const AdminAuthedRunsTaskRunIdFilesFileRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/jobs': typeof JobsRoute
   '/admin': typeof AdminAuthedRouteWithChildren
   '/admin/login': typeof AdminLoginRoute
   '/admin/logout': typeof AdminLogoutRoute
@@ -209,6 +216,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/jobs': typeof JobsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/logout': typeof AdminLogoutRoute
   '/admin/mutes': typeof AdminMutesRouteWithChildren
@@ -238,6 +246,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/jobs': typeof JobsRoute
   '/admin/_authed': typeof AdminAuthedRouteWithChildren
   '/admin/login': typeof AdminLoginRoute
   '/admin/logout': typeof AdminLogoutRoute
@@ -269,6 +278,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/jobs'
     | '/admin'
     | '/admin/login'
     | '/admin/logout'
@@ -298,6 +308,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/jobs'
     | '/admin/login'
     | '/admin/logout'
     | '/admin/mutes'
@@ -326,6 +337,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/jobs'
     | '/admin/_authed'
     | '/admin/login'
     | '/admin/logout'
@@ -356,6 +368,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  JobsRoute: typeof JobsRoute
   AdminAuthedRoute: typeof AdminAuthedRouteWithChildren
   AdminLoginRoute: typeof AdminLoginRoute
   AdminLogoutRoute: typeof AdminLogoutRoute
@@ -383,6 +396,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jobs': {
+      id: '/jobs'
+      path: '/jobs'
+      fullPath: '/jobs'
+      preLoaderRoute: typeof JobsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/_authed': {
@@ -641,6 +661,7 @@ const ApiTasksRouteWithChildren = ApiTasksRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  JobsRoute: JobsRoute,
   AdminAuthedRoute: AdminAuthedRouteWithChildren,
   AdminLoginRoute: AdminLoginRoute,
   AdminLogoutRoute: AdminLogoutRoute,
