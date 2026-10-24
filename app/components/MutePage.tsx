@@ -44,8 +44,8 @@ export function MutePage({ data }: { data: Data }) {
         </button>
       </form>
       <p className="note">
-        Posts that mention a muted name are left out of the fetch, the paper is told to skip pains about it, and stories that mention it are hidden, in old papers too. A
-        headline stands for pains like it.
+        Posts that mention a muted name are set aside before the sort, problems that mention it are hidden from the board, and stories that mention it are hidden, in
+        old papers too. A headline stands for pains like it.
       </p>
       <h2 className="admin-head">Muted ({muted.length})</h2>
       {muted.length ? (

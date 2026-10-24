@@ -13,7 +13,6 @@ export const HOME = "Nottingham";
 type Area = { code: string; region: string; rent: number; month?: string };
 const rents = JSON.parse(readFileSync(new URL("./rents.json", import.meta.url), "utf8")) as { source: string; month: string; oneBed: Record<string, Area> };
 export const RENTS_MONTH = rents.month;
-export const RENTS_SOURCE = rents.source;
 
 // Personal allowance £12,570, less £1 for every £2 over £100,000.
 const allowance = (gross: number) => Math.max(0, 12_570 - Math.max(0, gross - 100_000) / 2);

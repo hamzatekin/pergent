@@ -11,10 +11,22 @@ npm install
 npm run dev            # http://localhost:4321 with hot reload
 npm run build          # the site -> dist/
 npm run serve          # the built site, as in production: http://localhost:4321
+npm run typecheck      # the only check: tsc for src/, then for app/
+npm run task -- list   # the tasks in tasks/
 npm run task -- run tech
 npm run task -- costs  # cost, turns and duration of recent runs
 ADMIN_PASSWORD=pick-one npm run serve   # plus the dashboard at http://localhost:4321/admin
 ```
+
+## Tasks
+
+Each directory in `tasks/` is one task: `task.json` (model, tools, schedule, the `before` scripts that fetch its input) and usually `prompt.md`.
+
+- Papers, each a tab: `news` (the Turkish daily, laid out as a printed newspaper), `tech` (AI and web dev from X, Hacker News and newsletters, also a newspaper), `webdev` (the weekly pick of the same newsletters), `settlement` (the UK earned settlement reform) and `jobs-weekly` (the job market).
+- The ideas radar, shown on `/ideas`: `ideas` collects and sorts small business owners' posts into problems, `ideas-judge` gives the biggest a verdict, `ideas-brief` writes a brief on demand.
+- The job market tracker, shown on `/jobs`: `jobs-collect` collects UK developer adverts, `jobs-read` has Haiku read each one for its role, skills, sponsorship and fit.
+
+`/ideas`, `/jobs` and `/newsletters` (the newsletter issues as published) are behind the dashboard's login. CLAUDE.md has the details of every task and script.
 
 ## Deploy (Coolify)
 
@@ -36,7 +48,7 @@ In Coolify:
 First real run, from the server's terminal in Coolify:
 
 ```sh
-node src/cli.ts run tech
+node --disable-warning=ExperimentalWarning src/cli.ts run tech
 ```
 
 What lives where:
