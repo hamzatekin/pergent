@@ -1,5 +1,5 @@
 {
-  "schedule": "0 8 * * 1",
+  "schedule": "0 8 * * *",
   "timezone": "Europe/London",
   "label": "job market",
   "icon": "briefcase",
@@ -13,10 +13,10 @@
   "timeoutMinutes": 10,
   "rate": false,
   "before": "node ../../../scripts/previous.ts && node ../../../scripts/job-market.ts",
-  "previous": { "days": 8 },
+  "previous": { "days": 2 },
   "market": {
     "stack": ["React", "TypeScript", "JavaScript", "React Native", "Expo", "Next.js", "Node.js", "HTML", "CSS", "Tailwind CSS", "GraphQL"],
-    "shortlist": 25,
+    "shortlist": 40,
     "skills": 20
   }
 }
