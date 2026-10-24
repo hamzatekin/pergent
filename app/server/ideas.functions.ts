@@ -1,7 +1,7 @@
 import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
-import { getProblem, latestVerdicts, listBriefs, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type BriefRow, type ProblemRow, type VerdictRow } from "#src/db.ts";
+import { getProblem, getRun, latestVerdicts, listBriefs, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type BriefRow, type ProblemRow, type VerdictRow } from "#src/db.ts";
 import { BRIEF_GROUPS, CATEGORIES, QUESTIONS, VERDICTS, judgeBar, problemStats, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
 import { mentions } from "#src/mute.ts";
 import { listRuns, listTasks, loadTask, type TaskConfig } from "#src/runner.ts";
@@ -53,6 +53,8 @@ export type BriefState = {
   /** A brief is being written (Brief me was pressed and the run is going or waiting). */
   briefing: boolean;
   canBrief: boolean;
+  /** The last Brief me that wrote no brief: it failed, was cut off, or found nothing to brief on. */
+  lastRun: { failed: boolean; text: string; href: string } | null;
 };
 export type BriefsPage = { nav: Nav } & BriefState;
 export type Show = Verdict | "starred" | "killed" | "unjudged";
@@ -150,11 +152,28 @@ function briefView(b: BriefRow, names: Map<number, string>): BriefView {
 
 async function briefState(limit: number): Promise<BriefState> {
   const names = new Map(listProblems().map((p) => [p.id, p.name]));
+  const briefs = listBriefs(limit);
+  const briefing = isRunning(BRIEF) || isWaiting(BRIEF);
   return {
-    briefs: listBriefs(limit).map((b) => briefView(b, names)),
-    briefing: isRunning(BRIEF) || isWaiting(BRIEF),
+    briefs: briefs.map((b) => briefView(b, names)),
+    briefing,
     canBrief: (await listTasks()).includes(BRIEF),
+    lastRun: briefing ? null : lastBriefRun(briefs[0]),
   };
+}
+
+// Brief me went back to the button with nothing new to show when its run failed or had nothing to
+// brief on, which looked like a button that does nothing. The page says what became of it instead:
+// the newest brief run, when it started after the newest brief and wrote none. A row still `running`
+// that this server is not running was cut off.
+function lastBriefRun(latest: BriefRow | undefined): BriefState["lastRun"] {
+  const run = listRuns(BRIEF)[0];
+  if (!run || (latest && run.startedAt <= latest.createdAt)) return null;
+  const when = formatDate(run.startedAt, "Europe/London");
+  const href = `/admin/runs/${BRIEF}/${run.runId}`;
+  if (run.status !== "ok") return { failed: true, text: `The brief asked for on ${when} ${run.status === "running" ? "was cut off" : "failed"}.`, href };
+  const note = (getRun(BRIEF, run.runId)?.output ?? "").trim();
+  return { failed: false, text: `No brief on ${when}. ${note || "The run wrote none."}`, href };
 }
 
 // The order of the board: starred first, then by verdict (worth testing, watch, not judged yet, pass),

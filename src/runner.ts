@@ -280,7 +280,13 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
     if (!ok || !prompt) return end(ok, "");
   }
   if (custom) {
-    const { go, note } = await custom.prepare(name, runId, dir, config);
+    // A prepare that throws fails the run, rather than leaving its row `running` until the next restart.
+    const prepared = await custom.prepare(name, runId, dir, config).catch(async (err) => {
+      await writeFile(join(dir, "prepare.log"), `failed: ${err?.stack ?? err}\n`);
+      return null;
+    });
+    if (!prepared) return end(false, "");
+    const { go, note } = prepared;
     await writeFile(join(dir, "prepare.log"), note + "\n");
     if (!go) return end(true, `${note}.\n`);
   }
