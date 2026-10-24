@@ -1,0 +1,17 @@
+{
+  "schedule": "45 * * * *",
+  "timezone": "Europe/London",
+  "label": "jobs read",
+  "tab": false,
+  "order": 9,
+  "lang": "en",
+  "model": "claude-haiku-5-5",
+  "allowedTools": [],
+  "output": "read",
+  "inputs": ["adverts.md"],
+  "timeoutMinutes": 15,
+  "maxOutputTokens": 32000,
+  "effort": "low",
+  "systemPrompt": "You read software developer job adverts and say for each what the role works on and with. The user message holds the adverts and the editor's brief. You deliver the reading by calling the StructuredOutput tool once, with the object as the tool's arguments: an `adverts` array, never a JSON string. Do not write the reading, or any JSON, as a text reply: a reading written as text is thrown away.",
+  "read": {"maxChars": 150000, "advertChars": 3500, "companyChars": 1500}
+}

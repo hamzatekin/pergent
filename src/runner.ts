@@ -9,6 +9,7 @@ import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
 import { notifyPaper, type NotifyRule } from "./notify.ts";
+import { prepareRead, readSchema, saveReadOutput } from "./jobs.ts";
 import { RADAR, briefSchema, judgeSchema, prepareBrief, prepareJudge, prepareSort, saveBriefOutput, saveJudgeOutput, saveSortOutput, sortSchema } from "./ideas.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -54,7 +55,7 @@ export type TaskConfig = {
   newspaper?: { name?: string; motto?: string };
   /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar). */
   tab?: boolean;
-  /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort", "judge" and "brief"). */
+  /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort", "judge" and "brief", the job tracker's "read"). */
   output?: string;
   [extra: string]: unknown;
 };
@@ -142,6 +143,14 @@ const OUTPUTS: Record<string, Output> = {
     },
     schema: briefSchema,
     save: (runId, output, dir) => saveBriefOutput(runId, output, dir),
+  },
+  read: {
+    prepare: async (_task, _runId, dir, config) => {
+      const { adverts, waiting } = await prepareRead(dir, config);
+      return { go: adverts > 0, note: adverts ? `${adverts} adverts to read${waiting ? `, ${waiting} more waiting for the next runs` : ""}` : "No advert to read" };
+    },
+    schema: readSchema,
+    save: (runId, output, dir) => saveReadOutput(runId, output, dir),
   },
 };
 
