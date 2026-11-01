@@ -1,4 +1,4 @@
-# Deployed on the Hetzner box by deploy.sh from hamzatekin/box: every push to main is built, health
+# Deployed on the Hetzner box by pier (hamzatekin/pier): every push to main is built, health
 # checked and started, and Traefik there does HTTPS. The variables below come from .env next to this
 # file on the box (git-ignored).
 services:
@@ -36,7 +36,7 @@ services:
     cpus: 2
     mem_limit: 2g
     pids_limit: 512
-    # Traefik only routes to healthy containers, and deploy.sh waits for healthy (and goes back to the
+    # Traefik only routes to healthy containers, and pier waits for healthy (and goes back to the
     # previous version if it never gets there). start_interval checks every 2 s while the container
     # starts, so a deploy is down for the start time, not a full interval. The image has node but no
     # curl, and 127.0.0.1 avoids the IPv6-localhost trap.
