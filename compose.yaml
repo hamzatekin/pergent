@@ -1,8 +1,10 @@
-# Coolify deploys this as a Docker Compose app: set the domain on the "app" service (port 4321) and fill
-# the variables below in Coolify's Environment Variables tab. Coolify's own proxy does HTTPS.
+# Deployed on the Hetzner box by deploy.sh from hamzatekin/box: every push to main is built, health
+# checked and started, and Traefik there does HTTPS. The variables below come from .env next to this
+# file on the box (git-ignored).
 services:
   app:
     build: .
+    image: pergent:${TAG:-dev}
     restart: unless-stopped
     environment:
       HOST: 0.0.0.0
@@ -34,14 +36,40 @@ services:
     cpus: 2
     mem_limit: 2g
     pids_limit: 512
-    # Coolify reads this block (its Healthcheck page is ignored for compose apps) and Traefik only routes
-    # to healthy containers. The image has node but no curl, and 127.0.0.1 avoids the IPv6-localhost trap.
+    # Traefik only routes to healthy containers, and deploy.sh waits for healthy (and goes back to the
+    # previous version if it never gets there). start_interval checks every 2 s while the container
+    # starts, so a deploy is down for the start time, not a full interval. The image has node but no
+    # curl, and 127.0.0.1 avoids the IPv6-localhost trap.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4321/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
-      interval: 30s
+      interval: 10s
       timeout: 5s
-      start_period: 10s
+      start_period: 30s
+      start_interval: 2s
       retries: 3
+    networks: [default, proxy]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.services.pergent.loadbalancer.server.port=4321
+      - traefik.http.routers.pergent.rule=Host(`pergent.hamzatekin.dev`)
+      - traefik.http.routers.pergent.entrypoints=https
+      - traefik.http.routers.pergent.tls.certresolver=letsencrypt
+      - traefik.http.routers.pergent.middlewares=compress@file
+      - traefik.http.routers.pergent.service=pergent
+      # www answers a permanent redirect to the bare host, keeping the path. $$ is a literal $ here.
+      - traefik.http.routers.pergent-www.rule=Host(`www.pergent.hamzatekin.dev`)
+      - traefik.http.routers.pergent-www.entrypoints=https
+      - traefik.http.routers.pergent-www.tls.certresolver=letsencrypt
+      - traefik.http.routers.pergent-www.middlewares=pergent-www
+      - traefik.http.routers.pergent-www.service=pergent
+      - traefik.http.middlewares.pergent-www.redirectregex.regex=^https://www\.pergent\.hamzatekin\.dev(?::\d+)?/(.*)
+      - traefik.http.middlewares.pergent-www.redirectregex.replacement=https://pergent.hamzatekin.dev/$${1}
+      - traefik.http.middlewares.pergent-www.redirectregex.permanent=true
+
+networks:
+  proxy:
+    external: true
 
 volumes:
   runs:
