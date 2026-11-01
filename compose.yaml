@@ -66,6 +66,8 @@ services:
       - traefik.http.middlewares.pergent-www.redirectregex.regex=^https://www\.pergent\.hamzatekin\.dev(?::\d+)?/(.*)
       - traefik.http.middlewares.pergent-www.redirectregex.replacement=https://pergent.hamzatekin.dev/$${1}
       - traefik.http.middlewares.pergent-www.redirectregex.permanent=true
+      # pier's app-health check (hamzatekin/box ops/app-health.sh): this must answer 2xx, every minute.
+      - pier.health.url=https://pergent.hamzatekin.dev/healthz
 
 networks:
   proxy:
