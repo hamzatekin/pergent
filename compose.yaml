@@ -64,6 +64,9 @@ services:
       - traefik.http.middlewares.pergent-www.redirectregex.permanent=true
       # pier's app-health check (hamzatekin/box ops/app-health.sh): this must answer 2xx, every minute.
       - pier.health.url=https://pergent.hamzatekin.dev/healthz
+      # pier's nightly backup (hamzatekin/pier ops/backup-databases.sh) copies these mounts to restic; the SQLite
+      # databases in them go through SQLite's online backup, so a run writing at 03:00 can't tear them.
+      - pier.backup.paths=/app/runs,/root/.claude
 
 networks:
   proxy:
