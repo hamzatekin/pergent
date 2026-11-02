@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import type { PaperPage as Data } from "../server/read.functions.ts";
 import { Icon } from "./Icon.tsx";
+import { LayoutToggle } from "./LayoutToggle.tsx";
 import { Newspaper } from "./Newspaper.tsx";
 import { Paper } from "./Paper.tsx";
 import { Shell } from "./Shell.tsx";
@@ -35,6 +36,7 @@ export function PaperPage({ data }: { data: Data }) {
         {data.run && <span className="stamp">{data.run.stamp}</span>}
       </h1>
       <div className="runnav">
+        {data.layout && <LayoutToggle task={task} current={data.layout} />}
         <RunArrow task={task} runId={older} label="Older run" glyph="left" keyName="ArrowLeft" />
         <RunArrow task={task} runId={newer} label="Newer run" glyph="right" keyName="ArrowRight" />
       </div>

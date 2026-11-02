@@ -12,7 +12,7 @@ export function Paper({ paper, labels }: { paper: PaperView; labels: Labels }) {
     <div className="paper">
       {paper.title && <h1 className="masthead">{paper.title}</h1>}
       {paper.sections.map((section, i) => (
-        <section key={i} className="section">
+        <section key={i} className="section" data-picks={section.picks || undefined}>
           {section.heading && (
             <h2 className="section-head">
               {section.heading}
@@ -28,6 +28,7 @@ export function Paper({ paper, labels }: { paper: PaperView; labels: Labels }) {
                 <article key={j} className="story" data-importance={story.importance}>
                   {story.image && <StoryImage key={story.image} src={story.image} />}
                   <div className="prose">
+                    {story.section && <p className="story-section">{story.section}</p>}
                     <StoryText story={story} labels={labels} />
                   </div>
                 </article>

@@ -1,4 +1,4 @@
-import { forReader, type StoryActions } from "./paper-view.ts";
+import { forReader, plain, topPicks, type StoryActions } from "./paper-view.ts";
 import { canonical, host, isHttp, renderMarkdown, type Paper, type Story } from "#src/paper.ts";
 
 // The paper laid out as a printed Turkish daily (Posta, Milliyet, Hürriyet): page one with the
@@ -21,6 +21,8 @@ export type NewsStory = {
   image?: string;
   importance: 1 | 2 | 3;
   forYou?: number;
+  /** A brief Jev scored directly useful, made a card (forReader). */
+  promoted?: boolean;
   mute?: string;
   save?: string;
   /** The inner page the story is printed on, when it is on one. */
@@ -53,10 +55,6 @@ export type NewspaperView = {
   pages: NewsPage[];
 };
 export type NewspaperConfig = { name?: string; motto?: string };
-
-// "🏛️ Gündem ve Siyaset" is "Gündem ve Siyaset" on its page's header strip, and tech's "🚀 Claude …"
-// headline is "Claude …" in print.
-const plain = (s: string) => s.replace(/^[\p{Extended_Pictographic}\p{Emoji_Modifier}️‍\s]+/u, "").trim();
 
 export function newspaperView(
   paper: Paper,
@@ -106,20 +104,33 @@ export function newspaperView(
   for (let rank = 0; rank < Math.max(0, ...cards.map((c) => c.length)); rank++) for (const c of cards) if (c[rank]) roundRobin.push(c[rank]);
 
   const all = sections.flatMap((s) => s.stories);
-  let lead = placed ? all.find((s) => s.place === "lead") : undefined;
-  let top = placed ? all.filter((s) => s.place === "top" && s !== lead) : [];
-  let front = placed ? all.filter((s) => (s.place === "front" || s.place === "lead") && s !== lead) : [];
-  const unused = () => roundRobin.filter((s) => s !== lead && !top.includes(s) && !front.includes(s));
-  lead ??= front.shift() ?? top.shift() ?? unused()[0];
-  if (!placed) top = unused().slice(0, 3);
-  top = top.slice(0, 3);
-  // A front page needs a few stories under the manşet: fill it from the sections it does not show yet.
-  const sectionOf = new Map(sections.flatMap((sec, i) => sec.stories.map((st) => [st as NewsStory, i] as const)));
-  for (const s of unused()) {
-    if (front.length >= 4) break;
-    if (![lead, ...front].some((f) => f && sectionOf.get(f) === sectionOf.get(s))) front.push(s);
+  // With Jev's scores, page one is what is most worth the reader's time (topPicks, the same picks the
+  // cards put at the top): the best as the manşet, the rest under it, and the next best in the
+  // sürmanşet band pointing inside. Without them, the model's places, else each section's cards in turn.
+  const picks = topPicks(sections.map((s) => s.stories));
+  let lead: NewsStory | undefined;
+  let top: NewsStory[] = [];
+  let front: NewsStory[] = [];
+  if (picks.length) {
+    [lead, ...front] = picks;
+    const next = all.filter((s) => s.importance > 1 && !picks.includes(s) && s.forYou !== undefined).sort((a, b) => b.forYou! - a.forYou!);
+    top = next.slice(0, 3);
+  } else {
+    lead = placed ? all.find((s) => s.place === "lead") : undefined;
+    top = placed ? all.filter((s) => s.place === "top" && s !== lead) : [];
+    front = placed ? all.filter((s) => (s.place === "front" || s.place === "lead") && s !== lead) : [];
+    const unused = () => roundRobin.filter((s) => s !== lead && !top.includes(s) && !front.includes(s));
+    lead ??= front.shift() ?? top.shift() ?? unused()[0];
+    if (!placed) top = unused().slice(0, 3);
+    top = top.slice(0, 3);
+    // A front page needs a few stories under the manşet: fill it from the sections it does not show yet.
+    const sectionOf = new Map(sections.flatMap((sec, i) => sec.stories.map((st) => [st as NewsStory, i] as const)));
+    for (const s of unused()) {
+      if (front.length >= 4) break;
+      if (![lead, ...front].some((f) => f && sectionOf.get(f) === sectionOf.get(s))) front.push(s);
+    }
+    front = front.slice(0, 6);
   }
-  front = front.slice(0, 6);
 
   // Inner pages: every section in order, without the stories printed whole on page one. The sürmanşet
   // band only teases, so its stories are printed inside too.
@@ -153,8 +164,8 @@ export function newspaperView(
   };
 }
 
-// The place and the for-you score were only needed to lay out the page; the browser does not get them.
-const strip = ({ place: _, forYou: __, ...story }: NewsStory & { place?: unknown }): NewsStory => story;
+// The place, the for-you score and the promotion were only needed to lay out the page; the browser does not get them.
+const strip = ({ place: _, forYou: __, promoted: ___, ...story }: NewsStory & { place?: unknown }): NewsStory => story;
 
 function longDate(iso: string, lang: string, timeZone?: string) {
   const opts: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "long", year: "numeric" };
