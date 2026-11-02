@@ -33,7 +33,6 @@ const words = (slug: string) => {
   const s = slug.replace(/[-_]+/g, " ").trim();
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
-const titleCase = (slug: string) => slug.split(/[-_\s]+/).map((w) => (w === "and" ? w : w === "uk" ? "UK" : words(w))).join(" ");
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** `claude-haiku-5-5` as "Haiku 5.5", `sonnet` as "Sonnet". */
@@ -131,43 +130,6 @@ function collectGroups(cfg: any): SourceGroup[] {
   return groups;
 }
 
-function settlementGroups(cfg: any): SourceGroup[] {
-  const groups: SourceGroup[] = [];
-  const pages = (cfg?.govuk?.pages ?? []) as string[];
-  if (pages.length)
-    groups.push({
-      title: plural(pages.length, "GOV.UK page"),
-      note: "Watched every day for a change.",
-      links: pages.map((p) => ({ label: words(p.split("/").pop()!), href: `https://www.gov.uk${p}` })),
-    });
-  const orgs = (cfg?.govuk?.organisations ?? []) as string[];
-  if (orgs.length)
-    groups.push({
-      title: "GOV.UK publications",
-      note: "New publications on settlement and the Skilled Worker route from:",
-      links: orgs.map((o) => ({ label: titleCase(o), href: `https://www.gov.uk/government/organisations/${o}` })),
-    });
-  if (cfg?.parliament)
-    groups.push({
-      title: "Parliament",
-      note: "Home Office written statements and answers, and what was said in Hansard about:",
-      links: [
-        { label: "Written questions and statements", href: "https://questions-statements.parliament.uk" },
-        ...((cfg.parliament.hansard ?? []) as string[]).map((t) => ({ label: `“${t}”` })),
-      ],
-    });
-  const queries = (cfg?.news?.queries ?? []) as string[];
-  if (queries.length)
-    groups.push({
-      title: "Google News",
-      note: "Headlines only, for:",
-      links: queries.map((q) => ({ label: q, href: `https://news.google.com/search?${new URLSearchParams({ q, hl: "en-GB", gl: "GB", ceid: "GB:en" })}` })),
-    });
-  const feeds = (cfg?.feeds ?? []) as { name: string; url: string }[];
-  if (feeds.length) groups.push({ title: plural(feeds.length, "feed"), note: "Posts about settlement.", links: feeds.map((f) => ({ label: f.name, href: origin(f.url) })) });
-  return groups;
-}
-
 // The job tracker's sources (scripts/collect-jobs.ts, under jobs-collect's own "collect"), for the
 // weekly paper, whose own before only counts what that task collected.
 async function jobGroups(): Promise<SourceGroup[]> {
@@ -235,7 +197,6 @@ export async function taskSources(task: string, config: TaskConfig): Promise<Tas
         how.push(`Jev (TypeSafe) reads every new post first and sets aside ${drop.join(", ").replace(/, ([^,]*)$/, " and $1")} when it is at least ${Math.round((c.filter?.threshold ?? 0.6) * 100)}% sure.`);
       }
     }
-    if (script === "fetch-settlement") groups.push(...settlementGroups(c.settlement));
     if (script === "job-market") {
       groups.push(...(await jobGroups()));
       how.push("Every morning the adverts are collected, and Haiku reads each new one for its role, skills, visa wording and how well it fits you.");
@@ -248,7 +209,6 @@ export async function taskSources(task: string, config: TaskConfig): Promise<Tas
     }
   }
   if (scripts.includes("previous")) how.push(`It is shown its own papers of the last ${c.previous?.days ?? 3} days, to know what it has already said.`);
-  if (scripts.includes("fetch-settlement")) how.push("It is shown its last paper, and carries its answers forward until a source changes them.");
   if (config.mute) how.push("Your never-show list is left out.");
   const tools = config.allowedTools ?? [];
   if (config.output === "sort") {
