@@ -19,6 +19,8 @@ export type StoryView = {
   save?: string;
   /** The section the story comes from, shown on a card in the picks at the top. */
   section?: string;
+  /** A brief Jev scored directly useful, made a card (forReader). */
+  promoted?: boolean;
 };
 /** The links a story's foot gets: never show (a task with a never-show list), save to notes (logged in). */
 export type StoryActions = (story: Story) => { mute?: string; save?: string };
@@ -42,13 +44,16 @@ const FOR_YOU = 2.5;
 // are not for them briefs and the briefs that are directly for them cards. When the model gave the
 // section a lead, the lead is the card that matters most to the reader. A paper without scores (old runs, no key, a task without `reader`)
 // keeps the model's order and sizes; a story whose request failed sits in the middle.
-export function forReader<T extends { importance: 1 | 2 | 3; forYou?: number }>(stories: T[]): T[] {
+export function forReader<T extends { importance: 1 | 2 | 3; forYou?: number; promoted?: boolean }>(stories: T[]): T[] {
   if (!stories.some((s) => s.forYou !== undefined)) return stories;
   const fit = (s: T) => s.forYou ?? 1.5;
   const hadLead = stories.some((s) => s.importance === 3);
   for (const s of stories) {
     if (s.importance > 1 && fit(s) < NOT_FOR_YOU) s.importance = 1;
-    else if (s.importance === 1 && fit(s) >= FOR_YOU) s.importance = 2;
+    else if (s.importance === 1 && fit(s) >= FOR_YOU) {
+      s.importance = 2;
+      s.promoted = true;
+    }
   }
   const sorted = [...stories].sort((a, b) => fit(b) - fit(a));
   const lead = hadLead ? sorted.find((s) => s.importance > 1) : undefined;
@@ -61,11 +66,15 @@ export function forReader<T extends { importance: 1 | 2 | 3; forYou?: number }>(
 // is in, never fewer than 3 nor more than 6, so the top is a short read whatever the day brought.
 // A paper without scores has no picks, and the page keeps the model's own order.
 const PICKS = { min: 3, max: 6, worth: 2 };
-export function topPicks<T extends { importance: 1 | 2 | 3; forYou?: number }>(sections: T[][]): T[] {
+// The first pick leads, so it is the best one the model wrote as a story: a brief Jev promoted is a
+// sentence long and would leave the lead card, or the manşet, nearly empty.
+export function topPicks<T extends { importance: 1 | 2 | 3; forYou?: number; promoted?: boolean }>(sections: T[][]): T[] {
   const scored = sections.flat().filter((s) => s.importance > 1 && s.forYou !== undefined);
   const sorted = [...scored].sort((a, b) => b.forYou! - a.forYou! || b.importance - a.importance);
   const worth = sorted.filter((s) => s.forYou! >= PICKS.worth).length;
-  return sorted.slice(0, Math.min(PICKS.max, Math.max(PICKS.min, worth)));
+  const picks = sorted.slice(0, Math.min(PICKS.max, Math.max(PICKS.min, worth)));
+  const lead = picks.find((s) => !s.promoted) ?? sorted.find((s) => !s.promoted);
+  return lead ? [lead, ...picks.filter((s) => s !== lead)].slice(0, PICKS.max) : picks;
 }
 
 // "🏛️ Gündem ve Siyaset" is "Gündem ve Siyaset" as a label, and tech's "🚀 Claude …" headline is "Claude …" in print.

@@ -1014,19 +1014,19 @@ a.chip:active {
 .trend[data-trend="fading"] {
   @apply text-faint;
 }
-.brief {
+.radar-brief {
   @apply mb-3 rounded-xl bg-surface px-4 py-3 shadow-border;
 }
-.brief summary {
+.radar-brief summary {
   @apply flex cursor-pointer list-none items-center gap-2 text-[14px] select-none;
 }
-.brief summary::-webkit-details-marker {
+.radar-brief summary::-webkit-details-marker {
   display: none;
 }
 .brief-title {
   @apply font-medium text-ink;
 }
-.brief summary .stamp {
+.radar-brief summary .stamp {
   @apply text-[12.5px] text-muted;
 }
 .brief-empty {

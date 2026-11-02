@@ -21,6 +21,8 @@ export type NewsStory = {
   image?: string;
   importance: 1 | 2 | 3;
   forYou?: number;
+  /** A brief Jev scored directly useful, made a card (forReader). */
+  promoted?: boolean;
   mute?: string;
   save?: string;
   /** The inner page the story is printed on, when it is on one. */
@@ -162,8 +164,8 @@ export function newspaperView(
   };
 }
 
-// The place and the for-you score were only needed to lay out the page; the browser does not get them.
-const strip = ({ place: _, forYou: __, ...story }: NewsStory & { place?: unknown }): NewsStory => story;
+// The place, the for-you score and the promotion were only needed to lay out the page; the browser does not get them.
+const strip = ({ place: _, forYou: __, promoted: ___, ...story }: NewsStory & { place?: unknown }): NewsStory => story;
 
 function longDate(iso: string, lang: string, timeZone?: string) {
   const opts: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "long", year: "numeric" };

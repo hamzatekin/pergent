@@ -385,13 +385,13 @@ function BriefPanel({ state }: { state: BriefState }) {
   const [latest] = state.briefs;
   if (!latest)
     return (
-      <div className="brief brief-empty">
+      <div className="radar-brief brief-empty">
         <p>Ask for a brief and the radar sums up what it found: what is worth a look, what is new or rising, which verdicts changed.</p>
         <BriefMe state={state} />
       </div>
     );
   return (
-    <details className="brief" open={latest.fresh || state.briefing || !!state.lastRun}>
+    <details className="radar-brief" open={latest.fresh || state.briefing || !!state.lastRun}>
       <summary>
         <span className="brief-title">Brief</span>
         <span className="stamp">{latest.when}</span>
@@ -454,7 +454,7 @@ export function BriefsList({ data }: { data: BriefsPage }) {
       <div className="briefs-list">
         {data.briefs.length ? (
           data.briefs.map((b) => (
-            <article key={b.id} className="brief">
+            <article key={b.id} className="radar-brief">
               <h3 className="brief-when">{b.when}</h3>
               <BriefBody brief={b} />
             </article>
