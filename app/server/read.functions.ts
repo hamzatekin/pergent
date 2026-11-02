@@ -1,5 +1,6 @@
 import { notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { getCookie } from "@tanstack/react-start/server";
 import { listRuns, readRun } from "#src/runner.ts";
 import { listMutes } from "#src/db.ts";
 import { hideMuted } from "#src/mute.ts";
@@ -12,6 +13,7 @@ import { nav, type Nav } from "./nav.ts";
 import { loggedIn } from "./admin.ts";
 import { canSaveNotes } from "./notes.ts";
 import { taskSources, type TaskSources } from "#src/sources.ts";
+import { isLayout, layoutCookieName, type Layout } from "../layout.ts";
 
 export type Note =
   | { kind: "paused"; lastReadDays: number | null }
@@ -33,6 +35,8 @@ export type PaperPage = {
   notes: Note[];
   /** The paper's title, for the page's <title>, whichever layout it is in. */
   title?: string;
+  /** The layout this reader has the task in, when the task has both (task.json `newspaper`): the toggle in the top bar. */
+  layout?: Layout;
   paper?: PaperView;
   newspaper?: NewspaperView;
   /** What the task reads and how its paper is made, for the closed Sources panel above the paper. */
@@ -67,6 +71,9 @@ export const getPaperPage = createServerFn({ method: "GET" })
     // by where it sits in the stored paper.
     let paper: PaperView | undefined;
     let newspaper: NewspaperView | undefined;
+    // A task with the newspaper layout has the columns too: the reader's cookie picks, else the task's `layout`.
+    const chosen = getCookie(layoutCookieName(task));
+    const layout: Layout | undefined = config.newspaper ? (isLayout(chosen) ? chosen : isLayout(config.layout) ? config.layout : "newspaper") : undefined;
     if (run) {
       const places = new Map<Story, string>();
       run.paper.sections.forEach((s, i) => s.stories.forEach((story, j) => places.set(story, `${task}/${current!.runId}/${i}/${j}`)));
@@ -81,12 +88,12 @@ export const getPaperPage = createServerFn({ method: "GET" })
         mute: config.mute ? `/admin/mute/${places.get(story)}` : undefined,
         save: saving ? places.get(story) : undefined,
       });
-      if (config.newspaper) {
+      if (layout === "newspaper") {
         // The issue number counts the task's good papers up to this one.
         const issue = finished.filter((r) => r.status === "ok" && r.startedAt <= current!.startedAt).length;
         const meta = { config: config.newspaper!, startedAt: current!.startedAt, timezone: config.timezone, lang: config.lang ?? "en", issue, costUsd: current!.costUsd };
         newspaper = newspaperView(shown, run.images, meta, actions);
-      } else paper = paperView(shown, run.images, actions);
+      } else paper = paperView(shown, run.images, actions, config.lang);
     }
 
     return {
@@ -101,6 +108,7 @@ export const getPaperPage = createServerFn({ method: "GET" })
       older: index >= 0 ? finished[index + 1]?.runId : undefined,
       notes,
       title: run?.paper.title,
+      layout,
       paper,
       newspaper,
       sources: await taskSources(task, config),

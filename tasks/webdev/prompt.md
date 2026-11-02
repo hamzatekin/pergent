@@ -29,6 +29,11 @@ Sections, in this order:
 
 If newsletters.md has no new issues, the paper is one section with one story saying so.
 
+The digest can also be laid out as a printed newspaper. For every story of importance 2 or 3, also write these three fields; leave them out of briefs (importance 1):
+- `display`: the headline as a printed paper would set it, short and strong, 2 to 6 words, no emoji ("Node 24 goes LTS", "Expo SDK 55 lands"). It says what happened; no clickbait, no question. `headline` stays the plain one-liner with its emoji.
+- `kicker`: 2 to 4 words set above the headline, naming the subject: the project, company or field ("React Native", "CSS", "Coding agents").
+- `spot`: one sentence under the headline adding the key fact or number. It does not repeat the first sentence of `body`.
+
 Write plainly, like explaining to a smart colleague. Short sentences. If a term needs it, add a few words saying what it means. Leave out `context` unless a story makes no sense without background.
 
 Deliver the paper by calling the StructuredOutput tool with it as the arguments (`sections` an array, not a string). Don't write the paper or any JSON as text.

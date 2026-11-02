@@ -159,6 +159,27 @@
 .arrow .icon {
   @apply size-4;
 }
+/* The layout toggle in the top bar, for a task with the newspaper layout: columns or newspaper, two
+   icons, the chosen one raised. */
+.layouts {
+  @apply mr-1.5 flex items-center gap-0.5 rounded-md p-0.5 shadow-border;
+}
+.layouts button {
+  @apply grid size-6 cursor-pointer place-items-center rounded-[5px] text-muted hover:text-ink;
+  transition-property: color, background-color, box-shadow, scale;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.layouts button:active {
+  scale: 0.96;
+}
+.layouts button[aria-pressed="true"] {
+  @apply bg-surface text-ink shadow-border;
+}
+.layouts .icon {
+  @apply size-4;
+}
 .stamp {
   @apply tabular-nums;
 }
@@ -327,6 +348,10 @@ a.chip {
 }
 .story .prose {
   @apply px-4 pb-4 pt-3.5;
+}
+/* On a card in the picks at the top, the section it comes from, above the headline. */
+.prose .story-section {
+  @apply mb-1 mt-0 text-[11.5px] font-medium uppercase tracking-[0.04em] text-accent;
 }
 .prose {
   @apply text-[14.5px] text-soft;

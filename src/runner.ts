@@ -50,6 +50,8 @@ export type TaskConfig = {
   mute?: boolean;
   /** Lays the task's page out as a printed newspaper instead of cards (app/server/newspaper-view.ts): the masthead's name and motto. */
   newspaper?: { name?: string; motto?: string };
+  /** For a task with `newspaper`, the layout a reader who has not chosen one gets: "newspaper" (the default) or "cards" (the columns). */
+  layout?: string;
   /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar). */
   tab?: boolean;
   /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort", "judge" and "brief", the job tracker's "read"). */
