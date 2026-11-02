@@ -8,7 +8,6 @@ import { PAPER_SCHEMA, fromMarkdown, parsePaper, toMarkdown, type Paper } from "
 import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
-import { notifyPaper, type NotifyRule } from "./notify.ts";
 import { prepareRead, readSchema, saveReadOutput } from "./jobs.ts";
 import { RADAR, briefSchema, judgeSchema, prepareBrief, prepareJudge, prepareSort, saveBriefOutput, saveJudgeOutput, saveSortOutput, sortSchema } from "./ideas.ts";
 
@@ -31,7 +30,7 @@ export type TaskConfig = {
   lang?: string;
   contextLabel?: string;
   briefsLabel?: string;
-  /** The sidebar's icon for the task, by name from app/components/Icon.tsx (sun, newspaper, cpu, flame, landmark). */
+  /** The sidebar's icon for the task, by name from app/components/Icon.tsx (sun, newspaper, cpu, flame). */
   icon?: string;
   /** Where the task's tab sits: lower first, default 0, ties by name. The first task is the front page. */
   order?: number;
@@ -49,8 +48,6 @@ export type TaskConfig = {
   maxOutputTokens?: number;
   /** true gives the task a never-show list (src/mute.ts): a "Never show" link on every story, and muted.md in each run directory. */
   mute?: boolean;
-  /** Pushes the paper's biggest stories to the reader's phone through ntfy (src/notify.ts, NTFY_TOPIC): those of `importance` or more in sections whose heading contains `section`. */
-  notify?: NotifyRule;
   /** Lays the task's page out as a printed newspaper instead of cards (app/server/newspaper-view.ts): the masthead's name and motto. */
   newspaper?: { name?: string; motto?: string };
   /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar). */
@@ -384,6 +381,5 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   if (paper) await addPreviewImages(paper, dir).catch((err) => writeFile(join(dir, "images.log"), `failed: ${err}\n`));
   const images = await readFile(join(dir, "images.json"), "utf8").then(JSON.parse, () => ({}));
   saveRun(meta, output, images, paper);
-  if (ok && config.notify) await notifyPaper(name, runId, paper, config.notify, dir).catch((err) => writeFile(join(dir, "notify.log"), `failed: ${err}\n`));
   return { meta, dir };
 }
