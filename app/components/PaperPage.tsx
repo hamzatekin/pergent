@@ -60,7 +60,7 @@ export function PaperPage({ data }: { data: Data }) {
         </p>
       ))}
       <Sources sources={data.sources} />
-      {data.paper && <Paper paper={data.paper} labels={{ contextLabel: data.contextLabel, briefsLabel: data.briefsLabel }} />}
+      {data.paper && <Paper paper={data.paper} layout={data.layout === "rows" ? "rows" : "cards"} labels={{ contextLabel: data.contextLabel, briefsLabel: data.briefsLabel }} />}
       {data.newspaper && <Newspaper paper={data.newspaper} labels={{ contextLabel: data.contextLabel, briefsLabel: data.briefsLabel }} />}
     </Shell>
   );
