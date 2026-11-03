@@ -6,10 +6,11 @@ type Labels = { contextLabel?: string; briefsLabel?: string };
 
 // The paper. Headlines and headings are text; bodies, leads and asides are the model's markdown,
 // rendered on the server (app/server/paper-view.ts) and set as HTML, unsanitized: the CSP (start.ts)
-// is what keeps a script in it from running.
-export function Paper({ paper, labels }: { paper: PaperView; labels: Labels }) {
+// is what keeps a script in it from running. The same paper in rows (layout "rows") is one story per
+// row, stacked in a single reading column, its image a thumbnail at the side (styles.css).
+export function Paper({ paper, labels, layout = "cards" }: { paper: PaperView; labels: Labels; layout?: "cards" | "rows" }) {
   return (
-    <div className="paper">
+    <div className="paper" data-layout={layout}>
       {paper.title && <h1 className="masthead">{paper.title}</h1>}
       {paper.sections.map((section, i) => (
         <section key={i} className="section" data-picks={section.picks || undefined}>

@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { layoutCookie, type Layout } from "../layout.ts";
 import { Icon } from "./Icon.tsx";
 
-// The switch between the columns and the printed newspaper, for a task that has both. A form posting to
+// The switch between the columns, the rows and the printed newspaper, for a task that has both. A form posting to
 // /layout, so it works before the page hydrates; once it has, the click sets the cookie here and the
 // page reloads its data in place.
 export function LayoutToggle({ task, current }: { task: string; current: Layout }) {
@@ -23,6 +23,9 @@ export function LayoutToggle({ task, current }: { task: string; current: Layout 
       <input type="hidden" name="next" value={pathname} />
       <button name="layout" value="cards" aria-pressed={current === "cards"} aria-label="Columns" title="Columns">
         <Icon name="grid" />
+      </button>
+      <button name="layout" value="rows" aria-pressed={current === "rows"} aria-label="Rows" title="Rows">
+        <Icon name="rows" />
       </button>
       <button name="layout" value="newspaper" aria-pressed={current === "newspaper"} aria-label="Newspaper" title="Newspaper">
         <Icon name="newspaper" />

@@ -71,7 +71,7 @@ export const getPaperPage = createServerFn({ method: "GET" })
     // by where it sits in the stored paper.
     let paper: PaperView | undefined;
     let newspaper: NewspaperView | undefined;
-    // A task with the newspaper layout has the columns too: the reader's cookie picks, else the task's `layout`.
+    // A task with the newspaper layout has the columns and the rows too: the reader's cookie picks, else the task's `layout`.
     const chosen = getCookie(layoutCookieName(task));
     const layout: Layout | undefined = config.newspaper ? (isLayout(chosen) ? chosen : isLayout(config.layout) ? config.layout : "newspaper") : undefined;
     if (run) {
