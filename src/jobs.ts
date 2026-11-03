@@ -66,6 +66,24 @@ export const hasSkill = (j: JobRow, skill: string) => !!j.read && [...j.read.ski
 export const yearlyGbp = (j: JobRow) =>
   j.currency === "GBP" && j.salaryPeriod === "year" && !j.salaryPredicted && j.salaryMin ? ((j.salaryMin + (j.salaryMax ?? j.salaryMin)) / 2) : null;
 
+// Worth applying: every open advert at an employer that sponsors that jobs-read judged a fit of
+// SHORTLIST_FIT or more for the reader, however long ago it was first seen (the list builds up as the
+// collector finds more, and an advert leaves it when it closes). The best fit first, then those asking
+// for more of the reader's stack (jobs-weekly's "market.stack"), then frontend before full stack before
+// mobile before the rest, then newest. The Jobs page shows it on top and market.md hands it to the note.
+export const SHORTLIST_FIT = 3;
+export const stackMatches = (j: JobRow, stack: string[]) => {
+  const want = stack.map((s) => s.toLowerCase());
+  return [...(j.read?.skills ?? []), ...(j.read?.niceSkills ?? [])].filter((s) => want.includes(s.toLowerCase()));
+};
+export function shortlist(open: JobRow[], stack: string[]): JobRow[] {
+  const side = (j: JobRow) => (FRONT_SIDE.includes(familyOf(j)) ? FRONT_SIDE.indexOf(familyOf(j)) : FRONT_SIDE.length);
+  const matches = new Map(open.map((j) => [j, stackMatches(j, stack).length]));
+  return open
+    .filter((j) => sponsorOf(j) === "yes" && (j.read?.fit ?? 0) >= SHORTLIST_FIT)
+    .sort((a, b) => b.read!.fit! - a.read!.fit! || matches.get(b)! - matches.get(a)! || side(a) - side(b) || b.firstSeen.localeCompare(a.firstSeen));
+}
+
 export function median(values: number[]) {
   if (!values.length) return null;
   const s = [...values].sort((a, b) => a - b);

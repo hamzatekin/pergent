@@ -878,6 +878,50 @@ a.chip:active {
 /* The Jobs page (components/Jobs.tsx): the totals, three small tables (open adverts by role, the most
    asked-for skills, new adverts by week), chips to filter, then the adverts as one list, each row its
    title, company, place, work mode and skills with its pay and sponsorship on the right. */
+/* The morning note (tasks/jobs-weekly) and Worth applying, on top of the Jobs page. */
+.jobs-note {
+  @apply mb-3 rounded-xl bg-surface px-4 py-3 shadow-border;
+}
+.jobs-note-head {
+  @apply flex items-baseline gap-2;
+}
+.jobs-note-head .note {
+  @apply text-[12.5px];
+}
+.jobs-note-nav {
+  @apply ml-auto flex gap-3;
+}
+.jobs-heading {
+  @apply text-[14px] font-medium text-ink;
+}
+.jobs-note-lead {
+  @apply mt-2 text-[14.5px] leading-[1.6] text-ink text-pretty;
+}
+.jobs-note-lead p + p,
+.jobs-note-story p + p {
+  @apply mt-2;
+}
+.jobs-note-story {
+  @apply mt-3 border-t border-line pt-3 text-[13.5px] leading-[1.55] text-soft text-pretty;
+}
+.jobs-note-story h3 {
+  @apply mb-0.5 font-medium text-ink;
+}
+.jobs-note-story h3 a {
+  @apply hover:underline;
+}
+.jobs-note :is(.jobs-note-lead, .jobs-note-story) a {
+  @apply text-ink underline decoration-black/20 underline-offset-[3px] hover:decoration-black/60;
+}
+.jobs-picks {
+  @apply mb-4;
+}
+.jobs-picks > .jobs-heading {
+  @apply mb-2 px-1;
+}
+.jobs-picks .jobs-heading .note {
+  @apply text-[12.5px] font-normal;
+}
 .jobs-facts {
   @apply mb-3 rounded-xl bg-surface px-4 py-1 shadow-border;
 }
