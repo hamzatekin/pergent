@@ -1,4 +1,4 @@
-// Writes market.md for the job market paper (tasks/jobs-weekly, every morning): the facts of the week, counted by
+// Writes market.md for the morning note on the Jobs page (tasks/jobs-weekly): the facts of the week, counted by
 // code from the jobs table (../../pergent.db, opened read-only) that jobs-collect fills and jobs-read
 // reads, so the model only writes them up. This week is the last 7 days by first_seen, the week before
 // the 7 days before that; an advert is open when the newest collection or one within 36 hours of it saw
@@ -11,12 +11,11 @@ import { writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { JOB_COLUMNS, toJobRow, type JobDbRow, type JobRow } from "../src/db.ts";
-import { FAMILIES, FAMILY_LABEL, FRONT_SIDE, familyOf, median, notDeveloper, sponsorNote, sponsorOf, sponsorWords, yearlyGbp } from "../src/jobs.ts";
+import { FAMILIES, FAMILY_LABEL, FRONT_SIDE, familyOf, median, notDeveloper, shortlist, sponsorNote, sponsorOf, sponsorWords, stackMatches, yearlyGbp } from "../src/jobs.ts";
 import { HOME, RENTS_MONTH, worthAtHome } from "../src/pay.ts";
 
 const config = JSON.parse(await readFile(join(process.env.TASK_DIR!, "task.json"), "utf8"));
 const market = (config.market ?? {}) as { stack?: string[]; shortlist?: number; skills?: number };
-const stack = (market.stack ?? []).map((s) => s.toLowerCase());
 
 const db = new DatabaseSync(join("..", "..", "pergent.db"), { readOnly: true });
 const all = (db.prepare(`SELECT ${JOB_COLUMNS} FROM jobs`).all() as unknown as JobDbRow[]).map(toJobRow).filter((j) => !notDeveloper(j));
@@ -136,15 +135,11 @@ const years = front.flatMap((j) => (j.read?.minYears ? [j.read.minYears] : [])).
 if (years.length) out(`- Frontend side adverts naming the years of experience: ${years.length}, median ${years[Math.floor(years.length / 2)]}+ years`);
 out("");
 
-// The shortlist: open, sponsors, a fit of 3 or more; the best fit first, then stack matches, then
-// frontend before full stack before mobile before the rest, then newest.
-const fit = (j: JobRow) => [...(j.read?.skills ?? []), ...(j.read?.niceSkills ?? [])].filter((s) => stack.includes(s.toLowerCase()));
-const side = (j: JobRow) => (FRONT_SIDE.includes(familyOf(j)) ? FRONT_SIDE.indexOf(familyOf(j)) : FRONT_SIDE.length);
-const picks = open
-  .filter((j) => sponsorOf(j) === "yes" && (j.read?.fit ?? 0) >= 3)
-  .sort((a, b) => b.read!.fit! - a.read!.fit! || fit(b).length - fit(a).length || side(a) - side(b) || b.firstSeen.localeCompare(a.firstSeen))
-  .slice(0, market.shortlist ?? 25);
-const fits = open.filter((j) => sponsorOf(j) === "yes" && (j.read?.fit ?? 0) >= 3).length;
+// The shortlist, as the Jobs page shows it on top (src/jobs.ts).
+const allPicks = shortlist(open, market.stack ?? []);
+const picks = allPicks.slice(0, market.shortlist ?? 25);
+const fits = allPicks.length;
+const fit = (j: JobRow) => stackMatches(j, market.stack ?? []);
 out(`## Shortlist: open adverts at employers that sponsor, judged a fit for the reader (${picks.length}${fits > picks.length ? ` of ${fits}` : ""})`, "");
 out(`The fit (1 to 5) was judged by a model against the reader's profile. Ordered by fit, then by how much of the reader's stack (${(market.stack ?? []).join(", ")}) they ask for.`, "");
 for (const j of picks) {

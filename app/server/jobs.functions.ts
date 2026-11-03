@@ -1,8 +1,9 @@
 import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
-import { firstJobSeen, jobsSince, openJobs, type JobRow } from "#src/db.ts";
-import { FAMILIES, FAMILY_LABEL, FRONT_SIDE, familyOf, hasSkill, median, notDeveloper, sponsorNote, sponsorOf, sponsorWords as words, yearlyGbp, type Family, type Sponsor } from "#src/jobs.ts";
+import { firstJobSeen, getRun, jobsSince, openJobs, type JobRow } from "#src/db.ts";
+import { FAMILIES, FAMILY_LABEL, FRONT_SIDE, familyOf, hasSkill, median, notDeveloper, shortlist, sponsorNote, sponsorOf, sponsorWords as words, yearlyGbp, type Family, type Sponsor } from "#src/jobs.ts";
+import { renderMarkdown } from "#src/paper.ts";
 import { HOME, RENTS_MONTH, worthAtHome } from "#src/pay.ts";
 import { listRuns } from "#src/runner.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
@@ -11,6 +12,11 @@ import { nav, type Nav } from "./nav.ts";
 
 // The task whose runs collect the adverts (tasks/jobs-collect).
 const TASK = "jobs-collect";
+// The task that writes the morning note on top of the page (tasks/jobs-weekly, tab: false); its
+// "market.stack" orders Worth applying.
+const NOTE = "jobs-weekly";
+// How many of Worth applying the top of the page shows; its chip lists them all.
+const PICKS = 8;
 const WEEKS = 8;
 const LIMIT = 150;
 const SKILLS = 20;
@@ -44,6 +50,9 @@ export type JobItem = {
 export type FamilyRow = { family: Family; label: string; open: number; sponsors: number; remote: number; median: string | null; atHome: string | null; good: number };
 export type PlaceRow = { place: string; withPay: number; median: string | null; atHome: string | null; rent: string };
 export type SkillRow = { skill: string; adverts: number; share: number; frontSide: number };
+// The morning note: the first section of a jobs-weekly paper (earlier papers had four more, which
+// the tables below now show), with the runs before and after it to step through.
+export type JobsNote = { runId: string; day: string; lead?: string; stories: { headline: string; html: string; source?: string }[]; older?: string; newer?: string };
 export type WeekRow = { label: string; added: number; sponsors: number; remote: number; frontend: number; first: boolean };
 export type JobsPage = {
   nav: Nav;
@@ -53,7 +62,12 @@ export type JobsPage = {
   skill?: string;
   fit: boolean;
   pay: boolean;
+  worth: boolean;
   all: boolean;
+  note?: JobsNote;
+  picks: JobItem[];
+  /** Every advert of Worth applying, of which `picks` is the first few. */
+  picksTotal: number;
   open: number;
   shown: number;
   jobs: JobItem[];
@@ -141,10 +155,10 @@ function weekStart(t: number) {
 // The open adverts, frontend first, filtered by the chips; the families and the last 8 weeks counted
 // over all of them, so the chips and the table do not change with the filters.
 export const getJobsPage = createServerFn({ method: "GET" })
-  .validator((data: { family?: string; sponsor?: string; mode?: string; skill?: string; fit?: boolean; pay?: boolean; all?: boolean }) => data)
+  .validator((data: { family?: string; sponsor?: string; mode?: string; skill?: string; fit?: boolean; pay?: boolean; worth?: boolean; note?: string; all?: boolean }) => data)
   .handler(async ({ data }): Promise<JobsPage> => {
     gate("/jobs");
-    const { configs: _, ...sidebar } = await nav();
+    const { configs, ...sidebar } = await nav();
     const family = data.family && FAMILIES.includes(data.family as Family) ? (data.family as Family) : undefined;
     const sponsor = data.sponsor === "yes" || data.sponsor === "no" ? (data.sponsor as Sponsor) : undefined;
     const mode = data.mode === "remote" || data.mode === "hybrid" || data.mode === "office" ? (data.mode as Mode) : undefined;
@@ -158,9 +172,13 @@ export const getJobsPage = createServerFn({ method: "GET" })
     const sponsorRank = (j: JobRow) => ({ yes: 0, null: 1, no: 2 })[String(sponsorOf(j)) as "yes" | "null" | "no"];
     // The best fit for the reader first (tasks/jobs-read/profile.md), the adverts not read yet last.
     const fitRank = (j: JobRow) => -(j.read?.fit ?? 0);
+    const stack = ((configs.get(NOTE) as { market?: { stack?: string[] } } | undefined)?.market?.stack ?? []) as string[];
+    const worthApplying = shortlist(open, stack);
+    const onShortlist = new Set(worthApplying);
     const matching = open
       .filter(
         (j) =>
+          (!data.worth || onShortlist.has(j)) &&
           (!family || familyOf(j) === family) &&
           (!sponsor || sponsorOf(j) === sponsor) &&
           (!mode || modeOf(j) === mode) &&
@@ -242,6 +260,26 @@ export const getJobsPage = createServerFn({ method: "GET" })
       };
     });
 
+    const item = (j: JobRow): JobItem => ({
+      id: j.id,
+      title: j.title,
+      company: j.company,
+      url: j.url,
+      location: j.location.length > 80 ? `${j.location.slice(0, 80)}…` : j.location,
+      family: FAMILY_LABEL[familyOf(j)],
+      sponsor: sponsorOf(j),
+      sponsorNote: sponsorNote(j),
+      work: work(j),
+      pay: pay(j),
+      skills: j.read?.skills.slice(0, 6) ?? [],
+      years: j.read?.minYears ? `${j.read.minYears}+ years` : null,
+      ...worthText(j),
+      fit: j.read?.fit ?? null,
+      fitWhy: j.read?.fitWhy ?? "",
+      source: SOURCE[j.source] ?? j.source,
+      seen: formatDay(j.firstSeen, "Europe/London"),
+      isNew: now - Date.parse(j.firstSeen) < 3 * 86_400_000 && (!started || Date.parse(j.firstSeen) - Date.parse(started) > 86_400_000),
+    });
     const lastRun = listRuns(TASK).find((r) => r.status === "ok");
     const bySource = new Map<string, number>();
     for (const j of open) bySource.set(j.source, (bySource.get(j.source) ?? 0) + 1);
@@ -253,29 +291,14 @@ export const getJobsPage = createServerFn({ method: "GET" })
       skill: data.skill,
       fit: !!data.fit,
       pay: !!data.pay,
+      worth: !!data.worth,
       all: !!data.all,
+      note: jobsNote(data.note),
+      picks: worthApplying.slice(0, PICKS).map(item),
+      picksTotal: worthApplying.length,
       open: open.length,
       shown: matching.length,
-      jobs: shown.map((j) => ({
-        id: j.id,
-        title: j.title,
-        company: j.company,
-        url: j.url,
-        location: j.location.length > 80 ? `${j.location.slice(0, 80)}…` : j.location,
-        family: FAMILY_LABEL[familyOf(j)],
-        sponsor: sponsorOf(j),
-        sponsorNote: sponsorNote(j),
-        work: work(j),
-        pay: pay(j),
-        skills: j.read?.skills.slice(0, 6) ?? [],
-        years: j.read?.minYears ? `${j.read.minYears}+ years` : null,
-        ...worthText(j),
-        fit: j.read?.fit ?? null,
-        fitWhy: j.read?.fitWhy ?? "",
-        source: SOURCE[j.source] ?? j.source,
-        seen: formatDay(j.firstSeen, "Europe/London"),
-        isNew: now - Date.parse(j.firstSeen) < 3 * 86_400_000 && (!started || Date.parse(j.firstSeen) - Date.parse(started) > 86_400_000),
-      })),
+      jobs: shown.map(item),
       families,
       skills,
       places,
@@ -300,3 +323,21 @@ export const getJobsPage = createServerFn({ method: "GET" })
       lastRun: lastRun && ago(lastRun.finishedAt ?? lastRun.startedAt),
     };
   });
+
+// The note of the run asked for (?note=<runId>), else the newest; an unknown run is a 404.
+function jobsNote(runId?: string): JobsNote | undefined {
+  const runs = listRuns(NOTE).filter((r) => r.status === "ok");
+  const i = runId ? runs.findIndex((r) => r.runId === runId) : 0;
+  if (runId && i < 0) throw notFound();
+  const run = runs[i];
+  const section = run && getRun(NOTE, run.runId)?.paper?.sections[0];
+  if (!run || !section) return undefined;
+  return {
+    runId: run.runId,
+    day: formatDay(run.startedAt, "Europe/London"),
+    lead: section.lead?.trim() ? renderMarkdown(section.lead) : undefined,
+    stories: (section.stories ?? []).map((s) => ({ headline: s.headline, html: renderMarkdown(s.body), source: s.source })),
+    older: runs[i + 1]?.runId,
+    newer: i > 0 ? runs[i - 1].runId : undefined,
+  };
+}

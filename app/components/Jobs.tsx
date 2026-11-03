@@ -1,17 +1,27 @@
 import { Link } from "@tanstack/react-router";
-import type { Family, JobsPage, Mode, Sponsor } from "../server/jobs.functions.ts";
+import type { Family, JobItem, JobsNote, JobsPage, Mode, Sponsor } from "../server/jobs.functions.ts";
 import { Shell } from "./Shell.tsx";
 
-type Search = { family?: Family; sponsor?: Sponsor; mode?: Mode; skill?: string; fit?: true; pay?: true; all?: true };
+type Search = { family?: Family; sponsor?: Sponsor; mode?: Mode; skill?: string; fit?: true; pay?: true; worth?: true; note?: string; all?: true };
 
 const SPONSOR: Record<Sponsor, string> = { yes: "Sponsors", no: "No sponsorship" };
 const MODE: Record<Mode, string> = { remote: "Remote", hybrid: "Hybrid", office: "Office" };
 
-// The job market tracker's adverts (tasks/jobs-collect, read by tasks/jobs-read): what is open now,
-// counted by family, by skill, by week and in total, then the adverts themselves, frontend first, with
-// chips for the family, sponsorship, the work mode, a skill and whether a salary is given.
+// The job market tracker (tasks/jobs-collect, read by tasks/jobs-read): the morning note
+// (tasks/jobs-weekly), Worth applying, then what is open now, counted by family, by skill, by week and
+// in total, then the adverts themselves, best fit first, with chips for the family, sponsorship, the
+// work mode, a skill, Worth applying and whether a salary is given.
 export function JobsBoard({ data }: { data: JobsPage }) {
-  const search: Search = { family: data.family, sponsor: data.sponsor, mode: data.mode, skill: data.skill, fit: data.fit || undefined, pay: data.pay || undefined };
+  const search: Search = {
+    family: data.family,
+    sponsor: data.sponsor,
+    mode: data.mode,
+    skill: data.skill,
+    fit: data.fit || undefined,
+    pay: data.pay || undefined,
+    worth: data.worth || undefined,
+    note: data.note && data.note.newer ? data.note.runId : undefined,
+  };
   const t = data.totals;
   const header = (
     <>
@@ -33,6 +43,30 @@ export function JobsBoard({ data }: { data: JobsPage }) {
         <p className="callout">Nothing collected yet. The collector runs every morning at 06:30.</p>
       ) : (
         <>
+          {data.note && <Note note={data.note} search={search} />}
+          {data.picks.length > 0 && (
+            <section className="jobs-picks">
+              <h2 className="jobs-heading">
+                Worth applying
+                <span className="note">
+                  {" "}
+                  · at sponsors, a fit of 3 or more, open now
+                </span>
+              </h2>
+              <ol className="jobs">
+                {data.picks.map((j) => (
+                  <JobLine key={j.id} j={j} />
+                ))}
+              </ol>
+              {data.picksTotal > data.picks.length && (
+                <p className="note more">
+                  <Link to="/jobs" search={{ ...search, worth: true }} hash="adverts">
+                    All {data.picksTotal} worth applying
+                  </Link>
+                </p>
+              )}
+            </section>
+          )}
           <div className="jobs-facts">
             <dl className="stats">
               <div>
@@ -212,7 +246,7 @@ export function JobsBoard({ data }: { data: JobsPage }) {
               </table>
             )}
           </div>
-          <nav className="feed-chips">
+          <nav className="feed-chips" id="adverts">
             <Link to="/jobs" search={{ ...search, family: undefined }} className="chip" data-active={!data.family}>
               All roles
             </Link>
@@ -244,6 +278,10 @@ export function JobsBoard({ data }: { data: JobsPage }) {
               </Link>
             ))}
             <span className="chips-gap" />
+            <Link to="/jobs" search={{ ...search, worth: data.worth ? undefined : true }} className="chip" data-active={data.worth}>
+              Worth applying
+              <span className="chip-count">{data.picksTotal}</span>
+            </Link>
             <Link to="/jobs" search={{ ...search, fit: data.fit ? undefined : true }} className="chip" data-active={data.fit}>
               Good fit
             </Link>
@@ -259,62 +297,7 @@ export function JobsBoard({ data }: { data: JobsPage }) {
           {data.jobs.length > 0 ? (
             <ol className="jobs">
               {data.jobs.map((j) => (
-                <li key={j.id}>
-                  <a href={j.url} target="_blank" rel="noopener noreferrer" className="job-row">
-                    <span className="job-main">
-                      <span className="job-title">
-                        {j.title}
-                        {j.isNew && (
-                          <span className="trend" data-trend="new">
-                            New
-                          </span>
-                        )}
-                      </span>
-                      <span className="job-meta">
-                        <span className="job-company">{j.company}</span>
-                        {j.location && <span>{j.location}</span>}
-                        {j.work && !(j.work === "Remote" && j.location.startsWith("Remote")) && <span>{j.work}</span>}
-                      </span>
-                      <span className="job-meta">
-                        <span>{j.family}</span>
-                        {j.years && <span>{j.years}</span>}
-                        <span>{j.source}</span>
-                        <span>seen {j.seen}</span>
-                      </span>
-                      {j.fitWhy && <span className="job-why">{j.fitWhy}</span>}
-                      {j.skills.length > 0 && (
-                        <span className="job-skills">
-                          {j.skills.map((k) => (
-                            <span key={k}>{k}</span>
-                          ))}
-                        </span>
-                      )}
-                    </span>
-                    <span className="job-side">
-                      {j.fit !== null && (
-                        <span className="fit" data-fit={j.fit} title={j.fitWhy}>
-                          Fit {j.fit}/5
-                        </span>
-                      )}
-                      {j.pay && (
-                        <span className="job-pay" title={j.worthNote || undefined}>
-                          {j.pay}
-                        </span>
-                      )}
-                      {j.worth && (
-                        <span className="job-worth" title={j.worthNote}>
-                          {j.worth}
-                        </span>
-                      )}
-                      {j.sponsor && (
-                        <span className="sponsor" data-sponsor={j.sponsor} title={j.sponsorNote}>
-                          {SPONSOR[j.sponsor]}
-                        </span>
-                      )}
-                      {j.sponsorNote && <span className="job-note">{j.sponsorNote}</span>}
-                    </span>
-                  </a>
-                </li>
+                <JobLine key={j.id} j={j} />
               ))}
             </ol>
           ) : (
@@ -330,5 +313,108 @@ export function JobsBoard({ data }: { data: JobsPage }) {
         </>
       )}
     </Shell>
+  );
+}
+
+// One advert: title, company, place, work mode, why it fits and its skills, with its fit, pay, what the
+// pay is worth at home and its sponsorship on the right.
+function JobLine({ j }: { j: JobItem }) {
+  return (
+    <li>
+      <a href={j.url} target="_blank" rel="noopener noreferrer" className="job-row">
+        <span className="job-main">
+          <span className="job-title">
+            {j.title}
+            {j.isNew && (
+              <span className="trend" data-trend="new">
+                New
+              </span>
+            )}
+          </span>
+          <span className="job-meta">
+            <span className="job-company">{j.company}</span>
+            {j.location && <span>{j.location}</span>}
+            {j.work && !(j.work === "Remote" && j.location.startsWith("Remote")) && <span>{j.work}</span>}
+          </span>
+          <span className="job-meta">
+            <span>{j.family}</span>
+            {j.years && <span>{j.years}</span>}
+            <span>{j.source}</span>
+            <span>seen {j.seen}</span>
+          </span>
+          {j.fitWhy && <span className="job-why">{j.fitWhy}</span>}
+          {j.skills.length > 0 && (
+            <span className="job-skills">
+              {j.skills.map((k) => (
+                <span key={k}>{k}</span>
+              ))}
+            </span>
+          )}
+        </span>
+        <span className="job-side">
+          {j.fit !== null && (
+            <span className="fit" data-fit={j.fit} title={j.fitWhy}>
+              Fit {j.fit}/5
+            </span>
+          )}
+          {j.pay && (
+            <span className="job-pay" title={j.worthNote || undefined}>
+              {j.pay}
+            </span>
+          )}
+          {j.worth && (
+            <span className="job-worth" title={j.worthNote}>
+              {j.worth}
+            </span>
+          )}
+          {j.sponsor && (
+            <span className="sponsor" data-sponsor={j.sponsor} title={j.sponsorNote}>
+              {SPONSOR[j.sponsor]}
+            </span>
+          )}
+          {j.sponsorNote && <span className="job-note">{j.sponsorNote}</span>}
+        </span>
+      </a>
+    </li>
+  );
+}
+
+// The morning note on top (tasks/jobs-weekly): what moved in the last seven days, with ← and → to the
+// days before and after.
+function Note({ note, search }: { note: JobsNote; search: Search }) {
+  return (
+    <section className="jobs-note">
+      <header className="jobs-note-head">
+        <h2 className="jobs-heading">Last seven days</h2>
+        <span className="note">{note.day}</span>
+        <nav className="jobs-note-nav">
+          {note.older && (
+            <Link to="/jobs" search={{ ...search, note: note.older }} className="linkbtn" title="The note the day before">
+              ← Earlier
+            </Link>
+          )}
+          {note.newer && (
+            <Link to="/jobs" search={{ ...search, note: note.newer }} className="linkbtn" title="The note the day after">
+              Later →
+            </Link>
+          )}
+        </nav>
+      </header>
+      {note.lead && <div className="jobs-note-lead" dangerouslySetInnerHTML={{ __html: note.lead }} />}
+      {note.stories.map((s) => (
+        <div key={s.headline} className="jobs-note-story">
+          <h3>
+            {s.source ? (
+              <a href={s.source} target="_blank" rel="noopener noreferrer">
+                {s.headline} ↗
+              </a>
+            ) : (
+              s.headline
+            )}
+          </h3>
+          <div dangerouslySetInnerHTML={{ __html: s.html }} />
+        </div>
+      ))}
+    </section>
   );
 }
