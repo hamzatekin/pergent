@@ -6,8 +6,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { placesOf, timeHomes, type Place } from "./commute.ts";
-import { saveHomeReads, unreadHomes, type Commute, type HomeRead, type HomeRow, type UnreadHome } from "./db.ts";
+import { getState, listHomes, markNotified, saveHomeReads, setState, unreadHomes, type Commute, type HomeRead, type HomeRow, type UnreadHome } from "./db.ts";
 import type { Part, TaskConfig } from "./runner.ts";
+import { escapeHtml, sendTelegram, telegramOn } from "./telegram.ts";
 
 const BANDS = ["A", "B", "C", "D", "E", "F", "G"] as const;
 const EPC_FROM = ["chart", "text", "unknown"] as const;
@@ -40,6 +41,13 @@ export function matches(h: HomeRow, m: Match, places: Place[]): boolean {
   const band = h.read?.epcBand;
   const near = places.every((p) => p.max === undefined || !h.commute[p.name] || (h.commute[p.name].min ?? Infinity) <= p.max);
   return h.pricePcm <= rent && beds >= m.minBeds && beds <= m.maxBeds && !!band && band <= m.epc && near;
+}
+
+// "2 bed flat"; no bedrooms is a studio, and Rightmove's "Not Specified" type says nothing.
+export function titleOf(h: { beds: number | null; type: string }): string {
+  const kind = !h.type || h.type === "Not Specified" ? "home" : h.type.toLowerCase();
+  if (h.beds) return `${h.beds} bed ${kind}`;
+  return kind === "home" || kind === "studio" ? "Studio" : `Studio ${kind}`;
 }
 
 // "Work 38 min (bus 68 + tram)" for each place the listing has been timed to, and whether it is over
@@ -229,7 +237,7 @@ export async function prepareHomesRead(
   }
   const heading = `# Listings to read (${blocks.length})`;
   await writeFile(join(dir, "listings.md"), `${heading}\n\n${blocks.join("\n\n")}\n`);
-  await writeFile(join(dir, "read.json"), JSON.stringify({ refs }));
+  await writeFile(join(dir, "read.json"), JSON.stringify({ task, refs }));
   return { listings: blocks.length, waiting: unread.length - blocks.length, timed, parts: [{ text: heading }, ...parts] };
 }
 
@@ -257,10 +265,10 @@ const oneOf = <T extends string>(values: readonly T[], value: unknown, otherwise
 // Stores the reads by ref. A listing the answer left out stays unread and comes back next run. A score
 // decides the band (the chart's number is read more reliably than its letter). Returns the run's summary
 // in markdown, or null when the answer is not a read at all.
-export async function saveHomesRead(runId: string, output: unknown, dir: string): Promise<string | null> {
+export async function saveHomesRead(runId: string, output: unknown, dir: string, config: TaskConfig): Promise<string | null> {
   const out = output as ReadOutput | undefined;
   if (!out || !Array.isArray(out.homes)) return null;
-  const { refs } = JSON.parse(await readFile(join(dir, "read.json"), "utf8")) as { refs: Record<string, string> };
+  const { task, refs } = JSON.parse(await readFile(join(dir, "read.json"), "utf8")) as { task: string; refs: Record<string, string> };
   const reads = new Map<string, HomeRead>();
   for (const h of out.homes) {
     const id = refs[h?.ref];
@@ -301,5 +309,94 @@ export async function saveHomesRead(runId: string, output: unknown, dir: string)
     `- Bills: ${count((r) => r.bills)}`,
     `- Heating: ${count((r) => r.heating)}`,
     `- Fit: ${count((r) => (r.fit ? `${r.fit}/5` : "none"))}`,
+    // A message that fails does not fail the run: the reads are saved, and it goes with the next read.
+    ...(telegramOn() ? ["", `Messages: ${await notifyHomes(task, config).catch((err: Error) => `failed, ${err.message}`)}`] : []),
   ].join("\n") + "\n";
+}
+
+const pounds = (n: number) => `£${n.toLocaleString("en-GB")}`;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// task.json's "notify": who gets a message (a match with `minBeds` bedrooms or more, or a fit of
+// `minFit` or more), at most `maxMessages` a run, and `link`, the page the message's button opens.
+const notifyConfig = (config: TaskConfig) => ({ minBeds: 2, minFit: 4, maxMessages: 10, link: "", ...((config.notify ?? {}) as Partial<{ minBeds: number; minFit: number; maxMessages: number; link: string }>) });
+
+// The rent before the last change, when the last change was a drop made at or after `since`.
+function droppedFrom(h: HomeRow, since: string): number | null {
+  const [before, last] = h.prices.slice(-2);
+  return before && last && last.at >= since && last.pcm < before.pcm ? before.pcm : null;
+}
+
+function message(h: HomeRow, was: number | null, places: Place[]): string {
+  const r = h.read!;
+  const d = h.details;
+  const facts = [
+    r.bills === "all" ? "Bills included" : r.bills === "none" ? "Bills extra" : "",
+    d?.furnish ?? "",
+    d?.availableFrom ? `Available ${d.availableFrom === "Now" ? "now" : d.availableFrom}` : "",
+    d?.deposit ? `Deposit ${pounds(d.deposit)}` : "",
+  ].filter(Boolean);
+  return [
+    `<b>${pounds(h.pricePcm)} pcm · ${escapeHtml(titleOf(h))}</b>${was ? ` · was ${pounds(was)}` : ""}`,
+    `EPC ${r.epcBand}${r.epcScore ? ` ${r.epcScore}` : ""} · Fit ${r.fit ?? "?"}/5`,
+    escapeHtml(h.address),
+    commuteTimes(h.commute, places).map((t) => t.text).join(" · "),
+    r.fitWhy ? `<i>${escapeHtml(r.fitWhy)}</i>` : "",
+    facts.join(" · "),
+    [h.agent, h.details?.phone ?? h.phone].filter(Boolean).map((x) => escapeHtml(x!)).join(" · "),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// Messages the reader on Telegram about each match worth one (`notifyConfig`) that came up since messages
+// were turned on (new to the table and to Rightmove: a widened search brings old listings in as new), or
+// got cheaper since, once per rent: again only when the rent goes down. A listing whose read is about to
+// be redone (another rent, new commute times) or that is not timed to every place with a limit yet waits
+// a run, since a message cannot be taken back. The first run
+// with a bot only records when messages started and says so with how many match now, since the listings
+// already up are on the page. A failed send stops the round; the rest go next run. Returns a line for
+// the run's summary.
+export async function notifyHomes(task: string, config: TaskConfig): Promise<string> {
+  if (!telegramOn()) return "off";
+  const n = notifyConfig(config);
+  const m = matchOf(config);
+  const places = placesOf(config);
+  const matching = listHomes(task).filter((h) => h.up && matches(h, m, places));
+  const buttons = (url?: string) => [...(url ? [{ text: "Rightmove", url }] : []), ...(n.link ? [{ text: "All matches", url: n.link }] : [])];
+  const since = getState(`notify-since:${task}`);
+  if (!since) {
+    await sendTelegram({
+      html: `Homes messages are on. ${matching.length} listing${matching.length === 1 ? "" : "s"} match now. From here on you get a message for each new match worth a look, and for each one that gets cheaper.`,
+      buttons: buttons(),
+    });
+    setState(`notify-since:${task}`, new Date().toISOString());
+    return "turned on";
+  }
+  const timing = !!process.env.TRAVELTIME_APP_ID && !!process.env.TRAVELTIME_API_KEY;
+  const settled = (h: HomeRow) => !h.stale && (!timing || places.every((p) => p.max === undefined || h.commute[p.name]));
+  // Up on Rightmove at most three days before it was first collected: new there too.
+  const fresh = (h: HomeRow) => h.firstSeen >= since && (!h.listedAt || Date.parse(h.firstSeen) - Date.parse(h.listedAt) <= 3 * 86_400_000);
+  const due = matching
+    .filter((h) => settled(h) && ((h.beds ?? 0) >= n.minBeds || (h.read?.fit ?? 0) >= n.minFit))
+    .filter((h) => (h.notifiedPcm === null ? fresh(h) || droppedFrom(h, since) !== null : h.pricePcm < h.notifiedPcm))
+    .sort((a, b) => (b.read?.fit ?? 0) - (a.read?.fit ?? 0) || a.pricePcm - b.pricePcm);
+  let sent = 0;
+  try {
+    for (const h of due.slice(0, n.maxMessages)) {
+      if (sent) await sleep(1100);
+      await sendTelegram({ html: message(h, h.notifiedPcm ?? droppedFrom(h, since), places), photo: h.image, buttons: buttons(h.url) });
+      markNotified(h.id, h.pricePcm);
+      sent++;
+    }
+    const more = due.length - sent;
+    if (more > 0) {
+      await sleep(1100);
+      await sendTelegram({ html: `And ${more} more new match${more === 1 ? "" : "es"} on the page.`, buttons: buttons() });
+      for (const h of due.slice(sent)) markNotified(h.id, h.pricePcm);
+    }
+  } catch (err) {
+    return `${sent} sent, then ${(err as Error).message}`;
+  }
+  return `${due.length ? `${sent} sent${due.length > sent ? `, ${due.length - sent} summed up` : ""}` : "nothing new"}`;
 }

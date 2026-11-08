@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
 import { placesOf, type Place } from "#src/commute.ts";
 import { getState, listHomes, type HomeRow } from "#src/db.ts";
-import { commuteTimes, matches, matchOf, type Match } from "#src/homes.ts";
+import { commuteTimes, matches, matchOf, titleOf, type Match } from "#src/homes.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
 import { ago, formatDay } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
@@ -91,13 +91,6 @@ const SAID: Record<string, Record<string, string>> = {
   garden: { private: "Private garden", shared: "Shared garden" },
   heating: { gas: "Gas heating", electric: "Electric heating", "storage heaters": "Storage heaters", "heat pump": "Heat pump", communal: "Communal heating" },
 };
-
-// "2 bed flat"; no bedrooms is a studio, and Rightmove's "Not Specified" type says nothing.
-function titleOf(h: HomeRow): string {
-  const kind = !h.type || h.type === "Not Specified" ? "home" : h.type.toLowerCase();
-  if (h.beds) return `${h.beds} bed ${kind}`;
-  return kind === "home" || kind === "studio" ? "Studio" : `Studio ${kind}`;
-}
 
 function item(h: HomeRow, places: Place[]): HomeItem {
   const d = h.details;
