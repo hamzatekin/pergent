@@ -6,6 +6,8 @@ export type Nav = {
   tabs: { name: string; label: string; icon?: string }[];
   scheduler: "off" | "on" | "paused";
   admin: boolean;
+  /** The visitor has the admin cookie: the reader, whose visit to any page counts as a read. */
+  reader: boolean;
   /** The Newsletters page, the issues as published: there for a visitor with the admin cookie. */
   newsletters: boolean;
   /** The Ideas page, the radar's problems (tasks/ideas): likewise. */
@@ -31,6 +33,7 @@ export async function nav(): Promise<Nav & { configs: Map<string, TaskConfig> }>
       }),
     scheduler: schedulerStatus().scheduler,
     admin: !!PASSWORD,
+    reader: loggedIn(),
     newsletters: loggedIn(),
     ideas: loggedIn() && all.includes("ideas"),
     jobs: loggedIn() && all.includes("jobs-collect"),

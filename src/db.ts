@@ -1177,13 +1177,21 @@ export function issueFeeds(): { feed: string; count: number; last: string }[] {
 // meta.json; rows already present are left alone, so this is cheap to run at every start.
 // Tasks that were renamed: their run directories and rows move to the new name on start, so the tab
 // keeps its history and previous.ts its memory. The directory is the name that counts (importRuns
-// reads it, not the task in meta.json).
+// reads it, not the task in meta.json). When both folders exist (a checkout that had runs under both
+// names), each run moves on its own, a run already under the new name keeps that one, and importRuns
+// never reads the old folder: it used to import the old folder's runs again on every start, and the
+// rename after that hit runs' key on the rows already moved and stopped the server starting.
 const RENAMED: Record<string, string> = { haberler: "news" };
 
 function renameTasks(runsDir: string) {
   for (const [from, to] of Object.entries(RENAMED)) {
-    if (existsSync(join(runsDir, from)) && !existsSync(join(runsDir, to))) renameSync(join(runsDir, from), join(runsDir, to));
-    use().prepare("UPDATE runs SET task = ? WHERE task = ?").run(to, from);
+    const old = join(runsDir, from);
+    const now = join(runsDir, to);
+    if (existsSync(old) && !existsSync(now)) renameSync(old, now);
+    else if (existsSync(old)) for (const run of readdirSync(old)) if (!existsSync(join(now, run))) renameSync(join(old, run), join(now, run));
+    use().prepare("UPDATE OR IGNORE runs SET task = ? WHERE task = ?").run(to, from);
+    // What is left under the old name is a run the new name has too.
+    use().prepare("DELETE FROM runs WHERE task = ?").run(from);
   }
 }
 
@@ -1204,7 +1212,7 @@ function importRuns(runsDir: string) {
   const has = use().prepare("SELECT 1 FROM runs WHERE task = ? AND run_id = ?");
   const read = (path: string) => { try { return readFileSync(path, "utf8"); } catch { return ""; } };
   for (const task of readdirSync(runsDir, { withFileTypes: true })) {
-    if (!task.isDirectory()) continue;
+    if (!task.isDirectory() || Object.hasOwn(RENAMED, task.name)) continue;
     for (const runId of readdirSync(join(runsDir, task.name))) {
       if (has.get(task.name, runId)) continue;
       const dir = join(runsDir, task.name, runId);
