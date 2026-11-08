@@ -16,6 +16,14 @@
   "systemPrompt": "You read rental listings and say for each what it offers and how well it fits one reader. The user message holds the reader's wants and the listings, each listing's EPC chart images right after its text. You deliver the reading by calling the StructuredOutput tool once, with the object as the tool's arguments: a `homes` array, never a JSON string. Do not write the reading, or any JSON, as a text reply: a reading written as text is thrown away.",
   "read": { "maxListings": 40, "descriptionChars": 2500 },
   "match": { "rent": 850, "rentWithBills": 1000, "minBeds": 1, "maxBeds": 3, "epc": "C" },
+  "commute": {
+    "places": [
+      { "name": "Work", "where": "NG8 6AT, by Phoenix Park tram stop", "lat": 52.987327, "lng": -1.204338, "arrive": "Mon 08:45", "max": 40 },
+      { "name": "Centre", "where": "Old Market Square, NG1 2BS", "lat": 52.953486, "lng": -1.149067, "arrive": "Sat 12:00", "window": 60, "max": 25 },
+      { "name": "City Ground", "where": "NG2 5FJ, for a 15:00 kick-off", "lat": 52.939464, "lng": -1.133196, "arrive": "Sat 14:45", "window": 60 },
+      { "name": "Motorpoint Arena", "where": "NG1 1LA, for an evening game", "lat": 52.952483, "lng": -1.139649, "arrive": "Sat 18:45", "window": 60 }
+    ]
+  },
   "collect": {
     "area": "5 miles around NG1 (Rightmove's OUTCODE^1752)",
     "search": {

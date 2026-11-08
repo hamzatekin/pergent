@@ -1081,6 +1081,16 @@ a.chip:active {
 .home-flags {
   @apply text-[12px] text-failed text-pretty;
 }
+/* Minutes to work, the centre and the grounds; one over its limit in the warning colour. */
+.home-commute {
+  @apply text-[12px] tabular-nums text-muted text-pretty;
+}
+.home-commute > span > span {
+  @apply whitespace-nowrap;
+}
+.home-commute [data-over] {
+  @apply text-failed;
+}
 .home-side {
   @apply col-start-2 flex flex-wrap items-center gap-1 sm:col-start-3 sm:row-start-1 sm:flex-col sm:items-end;
 }

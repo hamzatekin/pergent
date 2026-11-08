@@ -5,7 +5,8 @@
 // cannot filter on, and its fit for the reader (tasks/homes/wants.md).
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { saveHomeReads, unreadHomes, type HomeRead, type UnreadHome } from "./db.ts";
+import { placesOf, timeHomes, type Place } from "./commute.ts";
+import { saveHomeReads, unreadHomes, type Commute, type HomeRead, type HomeRow, type UnreadHome } from "./db.ts";
 import type { Part, TaskConfig } from "./runner.ts";
 
 const BANDS = ["A", "B", "C", "D", "E", "F", "G"] as const;
@@ -19,6 +20,41 @@ const HEATING = ["gas", "electric", "storage heaters", "heat pump", "communal", 
 // The band an EPC score falls in, as the chart draws them.
 export function bandOf(score: number): string {
   return score >= 92 ? "A" : score >= 81 ? "B" : score >= 69 ? "C" : score >= 55 ? "D" : score >= 39 ? "E" : score >= 21 ? "F" : "G";
+}
+
+// What the reader is after, from task.json's "match": the rent (higher when every bill is included),
+// the bedrooms and the worst EPC band; the commute limits are the `max` of task.json's commute places.
+export type Match = { rent: number; rentWithBills: number; minBeds: number; maxBeds: number; epc: string };
+
+export function matchOf(config: TaskConfig | undefined): Match {
+  const m: Match = { rent: 850, rentWithBills: 1000, minBeds: 1, maxBeds: 3, epc: "C", ...((config?.match ?? {}) as Partial<Match>) };
+  if (!(BANDS as readonly string[]).includes(m.epc)) m.epc = "C";
+  return m;
+}
+
+// Within the rent (the higher one when every bill is included), the bedrooms, the EPC band, and every
+// commute limit the listing has been timed to (one not timed yet does not count against it).
+export function matches(h: HomeRow, m: Match, places: Place[]): boolean {
+  const rent = h.read?.bills === "all" ? m.rentWithBills : m.rent;
+  const beds = h.beds ?? 0;
+  const band = h.read?.epcBand;
+  const near = places.every((p) => p.max === undefined || !h.commute[p.name] || (h.commute[p.name].min ?? Infinity) <= p.max);
+  return h.pricePcm <= rent && beds >= m.minBeds && beds <= m.maxBeds && !!band && band <= m.epc && near;
+}
+
+// "Work 38 min (bus 68 + tram)" for each place the listing has been timed to, and whether it is over
+// the place's limit.
+export function commuteTimes(c: Commute, places: Place[]): { name: string; text: string; over: boolean }[] {
+  return places
+    .filter((p) => c[p.name])
+    .map((p) => {
+      const { min, via } = c[p.name];
+      return {
+        name: p.name,
+        text: `${p.name} ${min === null ? "over 90 min" : `${min} min`}${via ? ` (${via})` : ""}`,
+        over: p.max !== undefined && (min ?? Infinity) > p.max,
+      };
+    });
 }
 
 const readConfig = (config: TaskConfig) => (config.read ?? {}) as { maxListings?: number; descriptionChars?: number };
@@ -122,7 +158,7 @@ async function charts(dir: string, id: string, urls: string[]): Promise<Found> {
   return found;
 }
 
-function block(ref: string, h: UnreadHome, found: Found, descriptionChars: number): string {
+function block(ref: string, h: UnreadHome, found: Found, places: Place[], descriptionChars: number): string {
   const d = h.details;
   const said = (label: string, value: unknown) => (value === null || value === undefined || value === "" ? [] : [`${label}: ${value}`]);
   const features = Object.entries(d.features).map(([k, v]) => `${k} ${v.join(", ")}`).join("; ");
@@ -139,6 +175,7 @@ function block(ref: string, h: UnreadHome, found: Found, descriptionChars: numbe
     ...said("Floor area", d.sqm === null ? null : `${d.sqm} m²`),
     ...said("Ticked by the agent", features),
     ...said("Key features", d.keyFeatures.join("; ")),
+    ...said("By bus, tram and walking, door to door", commuteTimes(h.commute, places).map((t) => t.text).join(", ")),
     "",
     clip(d.description || h.summary, descriptionChars),
     ...found.register.map((r) => `${ref}'s EPC certificate on the GOV.UK register: ${r}.`),
@@ -147,13 +184,20 @@ function block(ref: string, h: UnreadHome, found: Found, descriptionChars: numbe
   ].join("\n");
 }
 
-// Writes wants.md (the reader, whom each listing's fit is judged against: the task directory's own
-// wants.md), the EPC charts, listings.md (up to `read.maxListings` listings no read has seen or whose
+// Times the listings to the commute places (src/commute.ts), then writes wants.md (the reader, whom each
+// listing's fit is judged against: the task directory's own wants.md), the EPC charts, listings.md (up to `read.maxListings` listings no read has seen or whose
 // rent changed since, kept to see what the model was given) and read.json, the refs saveHomesRead checks
 // the answer against. A listing whose chart failed for a passing reason, and those past the 20th image,
-// wait for the next run. Returns how many went in, how many wait, and the parts claude is sent: each
-// listing's text with its charts right under it.
-export async function prepareHomesRead(task: string, dir: string, taskDir: string, config: TaskConfig): Promise<{ listings: number; waiting: number; parts: Part[] }> {
+// wait for the next run. Returns how many went in, how many wait, what the timing did, and the parts
+// claude is sent: each listing's text with its charts right under it.
+export async function prepareHomesRead(
+  task: string,
+  dir: string,
+  taskDir: string,
+  config: TaskConfig,
+): Promise<{ listings: number; waiting: number; timed: string; parts: Part[] }> {
+  const timed = await timeHomes(task, config);
+  const places = placesOf(config);
   await writeFile(join(dir, "wants.md"), await readFile(join(taskDir, "wants.md"), "utf8"));
   const { maxListings = 40, descriptionChars = 2500 } = readConfig(config);
   // The likely matches are read first: within the higher rent of task.json's "match".
@@ -178,7 +222,7 @@ export async function prepareHomesRead(task: string, dir: string, taskDir: strin
       images += pictures;
       const ref = `h${blocks.length + 1}`;
       refs[ref] = h.id;
-      const text = block(ref, h, found[j], descriptionChars);
+      const text = block(ref, h, found[j], places, descriptionChars);
       blocks.push(`${text}${found[j].charts.map((c) => `\n(${c.file})`).join("")}`);
       parts.push({ text }, ...found[j].charts);
     }
@@ -186,7 +230,7 @@ export async function prepareHomesRead(task: string, dir: string, taskDir: strin
   const heading = `# Listings to read (${blocks.length})`;
   await writeFile(join(dir, "listings.md"), `${heading}\n\n${blocks.join("\n\n")}\n`);
   await writeFile(join(dir, "read.json"), JSON.stringify({ refs }));
-  return { listings: blocks.length, waiting: unread.length - blocks.length, parts: [{ text: heading }, ...parts] };
+  return { listings: blocks.length, waiting: unread.length - blocks.length, timed, parts: [{ text: heading }, ...parts] };
 }
 
 type ReadOutput = {
