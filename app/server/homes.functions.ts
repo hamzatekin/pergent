@@ -7,6 +7,8 @@ import { crimeText } from "#src/crime.ts";
 import { allIn, certText, costsOf, type Costs } from "#src/epc.ts";
 import { getState, listHomes, type HomeRow } from "#src/db.ts";
 import { commuteTimes, matches, matchOf, titleOf, type Match } from "#src/homes.ts";
+import { redFlagsOf, scoreConfig, scoreLabel, scoreOf, scoreParts, type Score, type ScoreConfig } from "#src/score.ts";
+import { nearestShop, shopsOf, shopText, type Shop } from "#src/shops.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
 import { ago, formatDay } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
@@ -31,7 +33,8 @@ export type HomeItem = {
   address: string;
   area: string | null;
   epc: { band: string; score: number | null; from: string } | null;
-  fit: number | null;
+  /** Its score out of 10 (src/score.ts): "6.5/10", each part with its points, and whether it is a good score. */
+  score: { label: string; parts: string; good: boolean } | null;
   fitWhy: string;
   /** "Work 38 min (bus 68 + tram)" per commute place, and whether it is over the place's limit. */
   commute: { name: string; text: string; over: boolean }[];
@@ -70,7 +73,9 @@ export type HomesPage = {
   /** Listings up now, and those that match. */
   up: number;
   matching: number;
-  /** Up and with a page fetched but not read by the model yet: no EPC or fit for them. */
+  /** A good score (task.json's score.good), for the chip. */
+  good: number;
+  /** Up and with a page fetched but not read by the model yet: no EPC or score for them. */
   unread: number;
   /** Up but no page fetched yet. */
   noPage: number;
@@ -142,15 +147,16 @@ function nowLine(now: Now, places: Place[]): string {
 }
 
 // What a row compares its listing with (src/compare.ts).
-type Context = { places: Place[]; costs: Costs | null; medians: Medians; now: Now | null; dupes: Map<string, Copy[]> };
+type Context = { places: Place[]; costs: Costs | null; medians: Medians; now: Now | null; dupes: Map<string, Copy[]>; scores: ScoreConfig; near: { shops: Shop[]; metres: number } | null };
 
-function item(h: HomeRow, x: Context, also: HomeRow[]): HomeItem {
+function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeItem {
   const { places, costs } = x;
   const d = h.details;
   const r = h.read;
   const said = (key: keyof typeof SAID, value?: string) => (value && SAID[key][value] ? [SAID[key][value]] : []);
   const was = reducedFrom(h);
   const sqm = d?.sqm ?? r?.sqm ?? null;
+  const shop = x.near ? nearestShop(h.lat, h.lng, x.near.shops) : null;
   return {
     id: h.id,
     url: h.url,
@@ -161,7 +167,7 @@ function item(h: HomeRow, x: Context, also: HomeRow[]): HomeItem {
     address: h.address,
     area: areaOf(h),
     epc: r?.epcBand ? { band: r.epcBand, score: r.epcScore, from: r.epcFrom } : null,
-    fit: r?.fit ?? null,
+    score: sc ? { label: scoreLabel(sc), parts: scoreParts(sc), good: sc.score >= x.scores.good } : null,
     fitWhy: r?.fitWhy ?? "",
     commute: commuteTimes(h.commute, places),
     crime: h.crime ? { text: `Crime ${crimeText(h.crime)}`, high: h.crime.level === "high" || h.crime.level === "very high" } : null,
@@ -184,8 +190,9 @@ function item(h: HomeRow, x: Context, also: HomeRow[]): HomeItem {
       ...said("garden", r?.garden),
       ...said("pets", r?.pets),
       ...(d?.councilTaxBand ? [`Council tax ${d.councilTaxBand}`] : []),
+      ...(shop ? [shopText(shop)] : []),
     ],
-    flags: [...(depositOver(h) ? [depositOver(h)!] : []), ...(r?.redFlags ?? [])],
+    flags: [...(depositOver(h) ? [depositOver(h)!] : []), ...redFlagsOf(r?.redFlags ?? [], !!depositOver(h))],
     agent: h.agent,
     phone: d?.phone ?? h.phone,
     listed: formatDay(h.listedAt ?? h.firstSeen, "Europe/London"),
@@ -194,7 +201,7 @@ function item(h: HomeRow, x: Context, also: HomeRow[]): HomeItem {
 }
 
 // The listings up now, the matches by default (?view=all for every one), filtered by the chips and
-// sorted by fit (unread last), rent or newest. The chips' counts are over the view, before the chips.
+// sorted by score (unread last), rent or newest. The chips' counts are over the view, before the chips.
 export const getHomesPage = createServerFn({ method: "GET" })
   .validator((data: HomesSearch) => data)
   .handler(async ({ data }): Promise<HomesPage> => {
@@ -206,7 +213,10 @@ export const getHomesPage = createServerFn({ method: "GET" })
     const now = nowOf(TASK, configs.get(TASK));
     const all = listHomes(TASK);
     const up = all.filter((h) => h.up);
-    const context: Context = { places, costs, medians: rentMedians(up, ceilingOf(configs.get(TASK))), now, dupes: duplicates(up) };
+    const scores = scoreConfig(configs.get(TASK));
+    const context: Context = { places, costs, medians: rentMedians(up, ceilingOf(configs.get(TASK))), now, dupes: duplicates(up), scores, near: shopsOf(TASK, configs.get(TASK)) };
+    const scored = new Map(up.map((h) => [h.id, scoreOf(h, scores, context.near)]));
+    const score = (h: HomeRow) => scored.get(h.id)?.score ?? -1;
     const inView = data.view === "all" ? up : up.filter((h) => matches(h, m, places));
     const area = data.area?.toUpperCase();
     const chosen = inView.filter(
@@ -215,7 +225,7 @@ export const getHomesPage = createServerFn({ method: "GET" })
         (!data.epc || data.epc === "any" || epcOf(h) === data.epc) &&
         (!area || areaOf(h) === area) &&
         (!data.bills || billsIncluded(h)) &&
-        (!data.fit || (h.read?.fit ?? 0) >= 4) &&
+        (!data.fit || score(h) >= scores.good) &&
         (!data.fresh || fresh(h)) &&
         (!data.reduced || reducedFrom(h) !== null) &&
         (!data.safer || (!!h.crime && h.crime.level !== "high" && h.crime.level !== "very high")),
@@ -239,7 +249,7 @@ export const getHomesPage = createServerFn({ method: "GET" })
           ? newest(a, b)
           : sort === "near"
             ? minutes(a) - minutes(b) || a.pricePcm - b.pricePcm
-            : (b.read?.fit ?? 0) - (a.read?.fit ?? 0) || a.pricePcm - b.pricePcm || newest(a, b),
+            : score(b) - score(a) || a.pricePcm - b.pricePcm || newest(a, b),
     );
     // The same home from several agents (only when sure) shows once, in the row of the first of them in this order.
     const shown: HomeRow[] = [];
@@ -262,6 +272,7 @@ export const getHomesPage = createServerFn({ method: "GET" })
       nav: sidebar,
       search: data,
       match: m,
+      good: scores.good,
       limits: places.filter((p) => p.max !== undefined).map((p) => `${p.max} minutes to ${p.name}`),
       up: up.length,
       matching: up.filter((h) => matches(h, m, places)).length,
@@ -270,7 +281,7 @@ export const getHomesPage = createServerFn({ method: "GET" })
       shown: shown.length,
       folded: chosen.length - shown.length,
       now: now ? nowLine(now, places) : null,
-      homes: (data.more ? shown : shown.slice(0, LIMIT)).map((h) => item(h, context, alsoOf.get(h.id) ?? [])),
+      homes: (data.more ? shown : shown.slice(0, LIMIT)).map((h) => item(h, context, alsoOf.get(h.id) ?? [], scored.get(h.id) ?? null)),
       areas: [...byArea].map(([a, n]) => ({ area: a, count: n })).sort((a, b) => Number(a.area.slice(2)) - Number(b.area.slice(2))),
       counts: { beds: count(["0", "1", "2", "3"], bedsOf), epc: count(["good", "unknown", "poor"], epcOf) },
       lastRun: lastSeen && ago(lastSeen),

@@ -14,7 +14,7 @@ const EPC: [Exclude<Epc, "any">, string][] = [
   ["poor", "EPC D–G"],
 ];
 const SORT: [Sort, string][] = [
-  ["fit", "Best fit"],
+  ["fit", "Best score"],
   ["rent", "Cheapest"],
   ["allin", "Cheapest all in"],
   ["near", "Shortest commute"],
@@ -46,7 +46,7 @@ export function HomesBoard({ data }: { data: HomesPage }) {
         {data.lastRun ? `, last ${data.lastRun}` : ""}. A match is at most £{m.rent.toLocaleString("en-GB")} a month (£
         {m.rentWithBills.toLocaleString("en-GB")} with every bill included), {m.minBeds} to {m.maxBeds} bedrooms, EPC {m.epc} or better
         {data.limits.length ? `, and at most ${data.limits.join(" and ")} by bus or tram` : ""}.
-        {data.unread + data.noPage > 0 && ` ${data.unread + data.noPage} listings are not read yet, so they have no EPC or fit and cannot match.`}
+        {data.unread + data.noPage > 0 && ` ${data.unread + data.noPage} listings are not read yet, so they have no EPC or score and cannot match.`}
         {data.folded > 0 && ` ${data.folded} listed by a second agent ${data.folded === 1 ? "shows" : "show"} in the first one's row.`}
         {data.now && ` Compared with ${data.now}.`}
       </p>
@@ -92,7 +92,7 @@ export function HomesBoard({ data }: { data: HomesPage }) {
           Bills included
         </Link>
         <Link to="/homes" search={toggle("fit")} className="chip" data-active={!!s.fit}>
-          Good fit
+          Score {data.good}+
         </Link>
         <Link to="/homes" search={toggle("fresh")} className="chip" data-active={!!s.fresh}>
           New this week
@@ -177,6 +177,7 @@ function HomeLine({ h }: { h: HomeItem }) {
           )}
           {h.vsNow && <span className="home-compare">{h.vsNow}</span>}
           {h.fitWhy && <span className="job-why">{h.fitWhy}</span>}
+          {h.score && <span className="home-score">{h.score.parts}</span>}
           {h.facts.length > 0 && (
             <span className="job-skills">
               {h.facts.map((f) => (
@@ -197,9 +198,9 @@ function HomeLine({ h }: { h: HomeItem }) {
           <span className="epc" data-band={h.epc?.band ?? "none"} title={h.epc ? `From the ${h.epc.from === "chart" ? "EPC chart" : "listing's text"}` : "Not read yet, or the listing gives no EPC"}>
             {h.epc ? `EPC ${h.epc.band}${h.epc.score ? ` ${h.epc.score}` : ""}` : "EPC ?"}
           </span>
-          {h.fit && (
-            <span className="fit" data-fit={h.fit} title={h.fitWhy}>
-              Fit {h.fit}/5
+          {h.score && (
+            <span className="fit" data-good={h.score.good || undefined} title={h.score.parts}>
+              {h.score.label}
             </span>
           )}
         </span>
