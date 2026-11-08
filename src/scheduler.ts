@@ -1,5 +1,6 @@
 import { getState, runsSince, setState } from "./db.ts";
 import { listTasks, loadTask, runTask } from "./runner.ts";
+import { sendTelegram, telegramOn } from "./telegram.ts";
 
 // Only the container sets SCHEDULER=1; a local server never starts runs by itself.
 export const SCHEDULER = process.env.SCHEDULER === "1";
@@ -40,11 +41,12 @@ export const isRunning = (name: string) => running.has(name);
 // Started but not yet going: waiting for one of the MAX_RUNS places.
 export const isWaiting = (name: string) => waiting.includes(name);
 
-// Dead man's switch: scheduled runs only happen while someone is reading the paper. The server
-// records every run the UI fetches as a read; after PAUSE_AFTER_DAYS without one the scheduler
-// stops starting tasks, and the next read turns it back on. A fresh database has no read yet,
-// so a new deployment stays quiet until the paper is opened once.
+// Dead man's switch: scheduled runs only happen while someone is reading. The server records every
+// run the UI fetches as a read, and every page opened with the admin cookie; after PAUSE_AFTER_DAYS
+// without one the scheduler stops starting tasks, and the next read turns it back on. A fresh
+// database has no read yet, so a new deployment stays quiet until the paper is opened once.
 export const PAUSE_AFTER_DAYS = Number(process.env.SCHEDULER_PAUSE_DAYS ?? 7);
+const DAY = 86_400_000;
 
 export function lastReadAt(): string | null {
   return getState("last_read");
@@ -56,7 +58,26 @@ export function markRead() {
 
 export function paused(now = Date.now()): boolean {
   const read = lastReadAt();
-  return !read || now - Date.parse(read) > PAUSE_AFTER_DAYS * 86_400_000;
+  return !read || now - Date.parse(read) > PAUSE_AFTER_DAYS * DAY;
+}
+
+// With Telegram set up (src/telegram.ts), the reader hears a day before the scheduler pauses and when
+// it does, once each per read (state `pause-warned` and `pause-paused` hold the read they were sent
+// for): a deployment followed only through its messages must not go quiet without a word. A note is
+// marked sent before it goes, so one that reached the chat and then timed out is not sent again every
+// minute; one that fails is only logged. Never for a database that has had no read.
+export async function pauseNotes(now = Date.now()): Promise<void> {
+  const read = lastReadAt();
+  if (!read || !telegramOn()) return;
+  const days = (now - Date.parse(read)) / DAY;
+  const which = days > PAUSE_AFTER_DAYS ? "paused" : PAUSE_AFTER_DAYS > 1 && days > PAUSE_AFTER_DAYS - 1 ? "warned" : null;
+  if (!which || getState(`pause-${which}`) === read) return;
+  setState(`pause-${which}`, read);
+  const html =
+    which === "paused"
+      ? `pergent has paused its scheduled runs, as nothing was opened for ${PAUSE_AFTER_DAYS} days. Open any pergent page to start them again.`
+      : `pergent will pause its scheduled runs in a day, as nothing has been opened for ${PAUSE_AFTER_DAYS - 1} days. Open any pergent page to keep them going.`;
+  await sendTelegram({ html }).catch((err: Error) => console.error(`pause note: ${err.message}`));
 }
 
 export function schedulerStatus() {
@@ -135,6 +156,7 @@ export function lastSlot(expr: string, now: Date, timeZone?: string, windowMinut
 export function startScheduler() {
   const tick = async () => {
     const now = new Date();
+    pauseNotes(now.getTime()).catch(console.error);
     if (paused(now.getTime())) return;
     for (const name of await listTasks()) {
       try {

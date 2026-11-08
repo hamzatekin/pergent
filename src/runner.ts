@@ -330,8 +330,11 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   }
 
   // strict-mcp-config: ignore the user-level MCP servers; a task gets only what its own config names.
+  // setting-sources, empty: no user, project or local settings, and so no CLAUDE.md, which a run on a
+  // laptop otherwise picked up from the repo above its run directory (about 33k tokens on every
+  // request; it pushed a homes read past Haiku's 100k price step); the Docker image has none of them.
   // json-schema: the paper comes back as structured output, held to the schema on the model's side.
-  const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--json-schema", JSON.stringify(custom ? custom.schema(config) : PAPER_SCHEMA)];
+  const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--setting-sources=", "--json-schema", JSON.stringify(custom ? custom.schema(config) : PAPER_SCHEMA)];
   if (config.model) args.push("--model", config.model);
   if (config.effort) args.push("--effort", config.effort);
   if (parts) args.push("--input-format", "stream-json");

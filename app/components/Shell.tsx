@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import type { Nav } from "../server/nav.ts";
 import { Icon } from "./Icon.tsx";
 import { Topbar } from "./Topbar.tsx";
@@ -10,6 +10,12 @@ const SCHEDULER: Record<Nav["scheduler"], string> = { on: "Scheduler on", paused
 // on a phone the same links as a row in the top bar instead. `header` is the bar's own row: the page's
 // title on the left, its actions on the right. `active` is a task name, "ideas", "jobs", "homes", "newsletters" or "admin".
 export function Shell({ nav, active, header, children }: { nav: Nav; active: string; header: ReactNode; children: ReactNode }) {
+  // A logged-in visit to any page counts as a read for the scheduler's dead man's switch
+  // (src/scheduler.ts), so a reader who follows homes through Telegram and /homes keeps it going: once
+  // per page opened, from the script, never on the reloads a page makes while a run is going.
+  useEffect(() => {
+    if (nav.reader) fetch("/api/read", { method: "POST" }).catch(() => {});
+  }, [nav.reader, active]);
   return (
     <div className="shell">
       <aside className="sidebar">

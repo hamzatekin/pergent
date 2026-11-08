@@ -1,9 +1,11 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import { adminPath, guardPost, passwordMatches, seeOther, sessionCookie } from "../../server/admin.ts";
+import { adminPath } from "../../next-path.ts";
+import { guardPost, passwordMatches, seeOther, sessionCookie } from "../../server/admin.ts";
 import { getAdminSession } from "../../server/admin.functions.ts";
 
 // The login form posts here; a wrong password waits a second (slows down guessing) and comes back with
-// a note. Logging in returns to the /admin or newsletters page that sent you here (`next`).
+// a note. Logging in returns to the page that sent you here (`next`): the dashboard's, or the
+// newsletters, ideas, jobs or homes (`adminPath`).
 export const Route = createFileRoute("/admin/login")({
   validateSearch: (search: Record<string, unknown>) => ({
     next: typeof search.next === "string" ? search.next : undefined,
@@ -39,7 +41,7 @@ function Login() {
         <img src="/icon.svg" alt="" className="login-mark" />
         <h1 className="admin-title">Log in to pergent</h1>
         {failed && <p className="note failed">Wrong password.</p>}
-        <input type="hidden" name="next" value={next && /^\/(admin|newsletters)(\/|$)/.test(next) ? next : "/admin"} />
+        <input type="hidden" name="next" value={adminPath(next)} />
         <input type="password" name="password" autoComplete="current-password" placeholder="Password" autoFocus required />
         <button type="submit" className="btn primary">
           Log in

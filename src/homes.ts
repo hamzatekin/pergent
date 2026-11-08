@@ -121,6 +121,12 @@ const clip = (text: string, chars: number) => (text.length > chars ? `${text.sli
 const MAX_BYTES = 3_700_000;
 // Past 20 images in one request the API refuses any image over 2000 px; a run stops at 20.
 const MAX_IMAGES = 20;
+// Haiku charges five times as much for a prompt over 100k tokens, and an agent's EPC certificate sent
+// as a PDF is 4 to 9 pages, so a batch also closes before MAX_TOKENS by this estimate (`tokensOf`):
+// text at half a token a character (0.4 to 0.5 measured on the listings), an image as the API counts
+// it, a PDF at 2,000 tokens a page (1,400 to 1,900 measured: its text and a picture of each page). On
+// the runs of 2026-11-08 it came out 5 to 15% over the real count.
+const MAX_TOKENS = 90_000;
 // The GOV.UK register's certificate page, which some agents link instead of a chart.
 const REGISTER = "find-energy-certificate.service.gov.uk";
 
@@ -137,7 +143,37 @@ function sniff(b: Buffer): { mediaType: string; ext: string } | null {
   return null;
 }
 
-type Chart = { file: string; mediaType: string };
+// An image's tokens as the API counts them: width × height / 750, after shrinking it to 1568 px on the
+// long side and 1.15 megapixels; the size from a PNG's, GIF's or JPEG's header, else the most an image
+// can cost. A PDF's pages are its page objects (else its page tree's count, else 10).
+export function tokensOf(b: Buffer, mediaType: string): number {
+  if (mediaType === "application/pdf") {
+    const text = b.toString("latin1");
+    const pages = text.match(/\/Type\s*\/Page(?![a-zA-Z])/g)?.length || Math.max(0, ...[...text.matchAll(/\/Count\s+(\d+)/g)].map((m) => Number(m[1]))) || 10;
+    return pages * 2000;
+  }
+  let size: [number, number] | null = null;
+  if (mediaType === "image/png" && b.length >= 24) size = [b.readUInt32BE(16), b.readUInt32BE(20)];
+  else if (mediaType === "image/gif" && b.length >= 10) size = [b.readUInt16LE(6), b.readUInt16LE(8)];
+  else if (mediaType === "image/jpeg") {
+    // The first start-of-frame marker (C0 to CF, less C4, C8 and CC) holds the height, then the width.
+    for (let i = 2; i + 9 < b.length; ) {
+      if (b[i] !== 0xff) break;
+      const m = b[i + 1];
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+        size = [b.readUInt16BE(i + 7), b.readUInt16BE(i + 5)];
+        break;
+      }
+      i += 2 + b.readUInt16BE(i + 2);
+    }
+  }
+  if (!size || !size[0] || !size[1]) return 1600;
+  const [w, h] = size;
+  const s = Math.min(1, 1568 / Math.max(w, h), Math.sqrt(1_150_000 / (w * h)));
+  return Math.ceil((w * s * (h * s)) / 750);
+}
+
+type Chart = { file: string; mediaType: string; tokens: number };
 type Found = { charts: Chart[]; register: string[]; retry: boolean };
 
 // The listing's EPC charts (two at most: the energy one, and the CO2 one some agents add), saved into the
@@ -163,7 +199,7 @@ async function charts(dir: string, id: string, urls: string[]): Promise<Found> {
       if (!type || bytes.length > MAX_BYTES) continue;
       const file = join(dir, "epc", `${id}-${i + 1}.${type.ext}`);
       await writeFile(file, bytes);
-      found.charts.push({ file, mediaType: type.mediaType });
+      found.charts.push({ file, mediaType: type.mediaType, tokens: tokensOf(bytes, type.mediaType) });
     } catch {
       failed = true;
     }
@@ -227,7 +263,8 @@ export async function prepareHomesRead(
   const costs = costsOf(config);
   const medians = rentMedians(listHomes(task).filter((h) => h.up), ceilingOf(config));
   const places = placesOf(config);
-  await writeFile(join(dir, "wants.md"), await readFile(join(taskDir, "wants.md"), "utf8"));
+  const wants = await readFile(join(taskDir, "wants.md"), "utf8");
+  await writeFile(join(dir, "wants.md"), wants);
   const { maxListings = 40, descriptionChars = 2500 } = readConfig(config);
   // The likely matches are read first: within the higher rent of task.json's "match".
   const unread = unreadHomes(task, (config.match as { rentWithBills?: number } | undefined)?.rentWithBills ?? 1000);
@@ -236,6 +273,7 @@ export async function prepareHomesRead(
   const blocks: string[] = [];
   const parts: Part[] = [];
   let images = 0;
+  let tokens = wants.length / 2;
   let full = false;
   // Four downloads at a time, from Rightmove's image server, until the batch is full.
   for (let i = 0; i < unread.length && !full; i += 4) {
@@ -244,14 +282,16 @@ export async function prepareHomesRead(
     for (const [j, h] of group.entries()) {
       if (found[j].retry) continue;
       const pictures = found[j].charts.filter((c) => c.mediaType.startsWith("image/")).length;
-      if (blocks.length >= maxListings || images + pictures > MAX_IMAGES) {
+      const ref = `h${blocks.length + 1}`;
+      const text = block(ref, h, found[j], places, descriptionChars, costs, medians, shops);
+      const cost = text.length / 2 + found[j].charts.reduce((n, c) => n + c.tokens, 0);
+      if (blocks.length >= maxListings || images + pictures > MAX_IMAGES || (blocks.length > 0 && tokens + cost > MAX_TOKENS)) {
         full = true;
         break;
       }
       images += pictures;
-      const ref = `h${blocks.length + 1}`;
+      tokens += cost;
       refs[ref] = h.id;
-      const text = block(ref, h, found[j], places, descriptionChars, costs, medians, shops);
       blocks.push(`${text}${found[j].charts.map((c) => `\n(${c.file})`).join("")}`);
       parts.push({ text }, ...found[j].charts);
     }
@@ -259,7 +299,13 @@ export async function prepareHomesRead(
   const heading = `# Listings to read (${blocks.length})`;
   await writeFile(join(dir, "listings.md"), `${heading}\n\n${blocks.join("\n\n")}\n`);
   await writeFile(join(dir, "read.json"), JSON.stringify({ task, refs }));
-  const notes = [timed && `commute: ${timed}`, crime && `crime: ${crime}`, certs && `EPC register: ${certs}`, fetched && `supermarkets: ${fetched}`].filter(Boolean);
+  const notes = [
+    blocks.length && `about ${Math.round(tokens / 1000)}k tokens`,
+    timed && `commute: ${timed}`,
+    crime && `crime: ${crime}`,
+    certs && `EPC register: ${certs}`,
+    fetched && `supermarkets: ${fetched}`,
+  ].filter(Boolean) as string[];
   return { listings: blocks.length, waiting: unread.length - blocks.length, notes, parts: [{ text: heading }, ...parts] };
 }
 
