@@ -1095,6 +1095,17 @@ a.chip:active {
 .home-allin {
   @apply text-[12px] tabular-nums text-ink text-pretty;
 }
+/* The rent against listings like it, and the listing against the reader's home now. */
+.home-compare {
+  @apply text-[12px] tabular-nums text-muted text-pretty;
+}
+/* The same home from other agents, under the row (outside its link). */
+.home-also {
+  @apply -mt-1.5 pr-3.5 pb-3 pl-[114px] text-[12px] text-muted text-pretty sm:pl-[186px];
+}
+.home-also a {
+  @apply text-accent hover:underline;
+}
 /* The crime around it; high or very high in the warning colour. */
 .home-crime {
   @apply text-[12px] tabular-nums text-muted text-pretty;

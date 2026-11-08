@@ -4,7 +4,8 @@
 // time is for the next ordinary `arrive` ("Mon 08:45", London time; never a bank holiday or Christmas
 // week, whose timetables are thin) and is kept on the listing: timetables change little. Without
 // TRAVELTIME_APP_ID and TRAVELTIME_API_KEY nothing is timed.
-import { homesToTime, saveCommutes, type Commute } from "./db.ts";
+import { nowConfig, nowKey } from "./compare.ts";
+import { getState, homesToTime, saveCommutes, setState, type Commute } from "./db.ts";
 import type { TaskConfig } from "./runner.ts";
 
 /**
@@ -116,8 +117,24 @@ export async function timeHomes(task: string, config: TaskConfig): Promise<strin
   if (!places.length) return "";
   if (!process.env.TRAVELTIME_APP_ID || !process.env.TRAVELTIME_API_KEY) return "commute off (no TravelTime key)";
   const homes = homesToTime(task, places.map((p) => p.name));
-  if (!homes.length) return "";
+  const now = nowConfig(config);
+  // Timed again from scratch when the home now moves (its lat and lng are kept with the times).
+  const kept = JSON.parse(getState(nowKey(task)) ?? "{}") as { commute?: Commute; commuteFrom?: string };
+  const from = now ? `${now.lat},${now.lng}` : "";
+  if (kept.commuteFrom !== from) kept.commute = {};
+  const nowMissing = now ? places.filter((p) => !kept.commute?.[p.name]) : [];
+  if (!homes.length && !nowMissing.length) return "";
   const holidays = await bankHolidays();
+  // The reader's home now (src/compare.ts), timed the same way once, to compare listings with.
+  if (now && nowMissing.length) {
+    const commute = { ...kept.commute };
+    for (const place of nowMissing) {
+      const time = (await search(place, [{ id: "now", lat: now.lat, lng: now.lng }], place.max !== undefined, holidays).catch(() => null))?.get("now");
+      if (time) commute[place.name] = time;
+    }
+    setState(nowKey(task), JSON.stringify({ ...JSON.parse(getState(nowKey(task)) ?? "{}"), commute, commuteFrom: from }));
+  }
+  if (!homes.length) return "";
   const before = new Map(homes.map((h) => [h.id, h.commute]));
   const timed = new Map<string, Commute>();
   const failed: string[] = [];

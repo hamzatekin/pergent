@@ -47,6 +47,8 @@ export function HomesBoard({ data }: { data: HomesPage }) {
         {m.rentWithBills.toLocaleString("en-GB")} with every bill included), {m.minBeds} to {m.maxBeds} bedrooms, EPC {m.epc} or better
         {data.limits.length ? `, and at most ${data.limits.join(" and ")} by bus or tram` : ""}.
         {data.unread + data.noPage > 0 && ` ${data.unread + data.noPage} listings are not read yet, so they have no EPC or fit and cannot match.`}
+        {data.folded > 0 && ` ${data.folded} listed by a second agent ${data.folded === 1 ? "shows" : "show"} in the first one's row.`}
+        {data.now && ` Compared with ${data.now}.`}
       </p>
       <nav className="feed-chips">
         <Link to="/homes" search={{ ...s, view: undefined, epc: undefined, more: undefined }} className="chip" data-active={!all}>
@@ -167,11 +169,13 @@ function HomeLine({ h }: { h: HomeItem }) {
               {h.allIn.text}
             </span>
           )}
+          {h.vsArea && <span className="home-compare">{h.vsArea}</span>}
           {h.crime && (
             <span className="home-crime" data-high={h.crime.high || undefined}>
               {h.crime.text}
             </span>
           )}
+          {h.vsNow && <span className="home-compare">{h.vsNow}</span>}
           {h.fitWhy && <span className="job-why">{h.fitWhy}</span>}
           {h.facts.length > 0 && (
             <span className="job-skills">
@@ -184,7 +188,9 @@ function HomeLine({ h }: { h: HomeItem }) {
           <span className="job-meta">
             <span>{h.agent}</span>
             {h.phone && <span>{h.phone}</span>}
-            <span>Listed {h.listed}</span>
+            <span>
+              {h.market}, listed {h.listed}
+            </span>
           </span>
         </span>
         <span className="home-side">
@@ -198,6 +204,27 @@ function HomeLine({ h }: { h: HomeItem }) {
           )}
         </span>
       </a>
+      <Also label="Also listed by" copies={h.also.filter((o) => o.sure)} />
+      <Also label="Maybe also listed by" copies={h.also.filter((o) => !o.sure)} />
     </li>
+  );
+}
+
+// The same home from other agents, under the row and outside its link: "Also listed by" when sure,
+// "Maybe also listed by" when only its EPC score or size agrees (src/compare.ts duplicates).
+function Also({ label, copies }: { label: string; copies: HomeItem["also"] }) {
+  if (!copies.length) return null;
+  return (
+    <p className="home-also">
+      {label}{" "}
+      {copies.map((o, i) => (
+        <span key={o.url}>
+          {i > 0 && ", "}
+          <a href={o.url} target="_blank" rel="noopener noreferrer">
+            {o.agent} at {o.rent}
+          </a>
+        </span>
+      ))}
+    </p>
   );
 }
