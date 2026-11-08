@@ -305,9 +305,10 @@ export function openDb(runsDir: string): DatabaseSync {
   }
   // The fit came a day after the first reads; the adverts read without it are read again, once.
   if (jobColumns.some((c) => c.name === "read_at") && !jobColumns.some((c) => c.name === "fit")) db.exec("UPDATE jobs SET read_at = NULL");
-  // What the model read from a listing (src/homes.ts), on the listing's row; read_at is empty until then.
+  // What the model read from a listing (src/homes.ts) and its commute (src/commute.ts), on the listing's
+  // row; read_at is empty until then.
   const homeColumns = db.prepare("PRAGMA table_info(homes)").all() as { name: string }[];
-  for (const [name, type] of Object.entries(HOME_READ_COLUMNS)) {
+  for (const [name, type] of Object.entries(HOME_COLUMNS)) {
     if (!homeColumns.some((c) => c.name === name)) db.exec(`ALTER TABLE homes ADD COLUMN ${name} ${type}`);
   }
   // The rent a read was made at came after the first reads, which were all made at the rent they show.
@@ -494,10 +495,13 @@ export function saveHomes(task: string, runId: string, file: HomesFile) {
   }
 }
 
-// What the model read from a listing (src/homes.ts): the EPC rating off its chart or out of its text,
-// what the listing says on the things Rightmove cannot filter on, and its fit for the reader. The rating
-// and the fit are columns, so they can be queried; the rest is `read` as JSON.
-const HOME_READ_COLUMNS = {
+// Columns added to homes after it was made. The commute (src/commute.ts): minutes to each of task.json's
+// commute places, as JSON. What the model read from a listing (src/homes.ts): the EPC rating off its
+// chart or out of its text, what the listing says on the things Rightmove cannot filter on, and its fit
+// for the reader; the rating and the fit are columns, so they can be queried, the rest is `read` as JSON.
+const HOME_COLUMNS = {
+  commute: "TEXT",
+  commute_at: "TEXT",
   epc_band: "TEXT",
   epc_score: "INTEGER",
   epc_from: "TEXT",
@@ -535,23 +539,50 @@ export type HomeRead = {
   fitWhy: string;
 };
 
-// A listing waiting for the model: the search's fields and its page.
-export type UnreadHome = HomeListing & { postcode: string | null; details: HomeDetails };
+// Minutes from a listing to each commute place by name (src/commute.ts): null when over 90, `via` the
+// rides ("bus 68 + tram") for a place with a limit. A place not in it has not been timed.
+export type Commute = Record<string, { min: number | null; via?: string }>;
 
-// The listings whose page has been fetched and that no read has seen, or whose rent changed since the
-// read, still up (seen in the last complete sweep or since), the likely ones first (1 to 3 bedrooms
-// within `maxRent`), newest first. A re-read listing keeps its old read until the new one replaces it.
+// A listing waiting for the model: the search's fields, its page and its commute.
+export type UnreadHome = HomeListing & { postcode: string | null; details: HomeDetails; commute: Commute };
+
+// The listings whose page has been fetched and that no read has seen, or whose rent or commute times
+// changed since the read (both go into the fit), still up (seen in the last complete sweep or since), the
+// likely ones first (1 to 3 bedrooms within `maxRent`), newest first. A re-read listing keeps its old
+// read until the new one replaces it.
 export function unreadHomes(task: string, maxRent: number): UnreadHome[] {
   const swept = getState(`swept:${task}`) ?? "";
   const rows = use()
     .prepare(`
       SELECT id, url, address, postcode, lat, lng, price_pcm AS pricePcm, beds, baths, type, agent, phone, image, summary,
-        listed_at AS listedAt, available_from AS availableFrom, details
-      FROM homes WHERE details IS NOT NULL AND (read_at IS NULL OR read_pcm IS NOT price_pcm) AND last_seen >= ?
+        listed_at AS listedAt, available_from AS availableFrom, details, commute
+      FROM homes WHERE task = ? AND details IS NOT NULL AND (read_at IS NULL OR read_pcm IS NOT price_pcm OR commute_at > read_at) AND last_seen >= ?
       ORDER BY (price_pcm <= ? AND beds BETWEEN 1 AND 3) DESC, listed_at DESC, id
     `)
-    .all(swept, maxRent) as unknown as (Omit<UnreadHome, "details"> & { details: string })[];
-  return rows.map((r) => ({ ...r, details: JSON.parse(r.details) }));
+    .all(task, swept, maxRent) as unknown as (Omit<UnreadHome, "details" | "commute"> & { details: string; commute: string | null })[];
+  return rows.map((r) => ({ ...r, details: JSON.parse(r.details), commute: JSON.parse(r.commute ?? "{}") }));
+}
+
+// The listings still up, with a location, that have not been timed to every one of `places` (names).
+export function homesToTime(task: string, places: string[]): { id: string; lat: number; lng: number; commute: Commute }[] {
+  const swept = getState(`swept:${task}`) ?? "";
+  const rows = use()
+    .prepare("SELECT id, lat, lng, commute FROM homes WHERE task = ? AND lat IS NOT NULL AND lng IS NOT NULL AND last_seen >= ?")
+    .all(task, swept) as { id: string; lat: number; lng: number; commute: string | null }[];
+  return rows.map((r) => ({ ...r, commute: JSON.parse(r.commute ?? "{}") as Commute })).filter((r) => places.some((p) => !(p in r.commute)));
+}
+
+export function saveCommutes(commutes: Map<string, Commute>) {
+  const now = new Date().toISOString();
+  const update = use().prepare("UPDATE homes SET commute = ?, commute_at = ? WHERE id = ?");
+  use().exec("BEGIN");
+  try {
+    for (const [id, commute] of commutes) update.run(JSON.stringify(commute), now, id);
+    use().exec("COMMIT");
+  } catch (err) {
+    use().exec("ROLLBACK");
+    throw err;
+  }
 }
 
 // A listing as the Homes page reads it. `up`: seen in the last complete sweep or since.
@@ -563,6 +594,7 @@ export type HomeRow = HomeListing & {
   lastSeen: string;
   up: boolean;
   read: HomeRead | null;
+  commute: Commute;
 };
 
 export function listHomes(task: string): HomeRow[] {
@@ -571,10 +603,11 @@ export function listHomes(task: string): HomeRow[] {
     .prepare(`
       SELECT id, url, address, postcode, lat, lng, price_pcm AS pricePcm, prices, beds, baths, type, agent, phone, image, summary,
         listed_at AS listedAt, available_from AS availableFrom, details, first_seen AS firstSeen, last_seen AS lastSeen,
-        epc_band, epc_score, epc_from, fit, fit_why, read, read_at
+        epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute
       FROM homes WHERE task = ?
     `)
-    .all(task) as unknown as (Omit<HomeRow, "details" | "prices" | "up" | "read"> & {
+    .all(task) as unknown as (Omit<HomeRow, "details" | "prices" | "up" | "read" | "commute"> & {
+    commute: string | null;
     details: string | null;
     prices: string;
     epc_band: string | null;
@@ -585,8 +618,9 @@ export function listHomes(task: string): HomeRow[] {
     read: string | null;
     read_at: string | null;
   })[];
-  return rows.map(({ details, prices, epc_band, epc_score, epc_from, fit, fit_why, read, read_at, ...r }) => ({
+  return rows.map(({ details, prices, epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, ...r }) => ({
     ...r,
+    commute: JSON.parse(commute ?? "{}"),
     details: details ? JSON.parse(details) : null,
     prices: JSON.parse(prices),
     up: r.lastSeen >= swept,

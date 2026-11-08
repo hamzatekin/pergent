@@ -19,6 +19,10 @@ has a separate living room big enough for a sofa bed. Studios are out.
 - I like walking: today I live at NG5 2DU in Sherwood and walk 25 minutes to The Forest tram stop.
   That will not work in a cold, wet winter, so a short bus or tram ride to work and to the centre
   matters most. Places far out on a tram line (Hucknall, an hour from the centre) are a poor fit.
+- Each listing comes with its times by bus, tram and walking, door to door: to work for 08:45 on a
+  Monday, to the centre, to the City Ground and to the Motorpoint Arena. Today work takes 38 minutes
+  (bus 68, then the tram). At most 40 minutes to work and 25 to the centre; shorter is better, and
+  a quick trip to the grounds is a plus.
 
 ## Not said yet
 

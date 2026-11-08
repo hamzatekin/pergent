@@ -1,7 +1,9 @@
 import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
+import { placesOf, type Place } from "#src/commute.ts";
 import { getState, listHomes, type HomeRow } from "#src/db.ts";
+import { commuteTimes, matches, matchOf, type Match } from "#src/homes.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
 import { ago, formatDay } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
@@ -9,16 +11,11 @@ import { nav, type Nav } from "./nav.ts";
 // The task whose runs collect and read the listings (tasks/homes).
 const TASK = "homes";
 const LIMIT = 100;
-const BANDS = ["A", "B", "C", "D", "E", "F", "G"];
 
 export type Beds = "0" | "1" | "2" | "3";
 export type Epc = "any" | "good" | "unknown" | "poor";
-export type Sort = "fit" | "rent" | "new";
+export type Sort = "fit" | "rent" | "near" | "new";
 export type HomesSearch = { view?: "all"; beds?: Beds; epc?: Epc; area?: string; bills?: true; fit?: true; fresh?: true; reduced?: true; sort?: Sort; more?: true };
-
-// What the reader is after, from task.json's "match": the rent (higher when every bill is included),
-// the bedrooms and the worst EPC band.
-type Match = { rent: number; rentWithBills: number; minBeds: number; maxBeds: number; epc: string };
 
 export type HomeItem = {
   id: string;
@@ -33,6 +30,8 @@ export type HomeItem = {
   epc: { band: string; score: number | null; from: string } | null;
   fit: number | null;
   fitWhy: string;
+  /** "Work 38 min (bus 68 + tram)" per commute place, and whether it is over the place's limit. */
+  commute: { name: string; text: string; over: boolean }[];
   facts: string[];
   flags: string[];
   agent: string;
@@ -45,6 +44,8 @@ export type HomesPage = {
   nav: Nav;
   search: HomesSearch;
   match: Match;
+  /** The commute limits, "40 minutes to Work". */
+  limits: string[];
   /** Listings up now, and those that match. */
   up: number;
   matching: number;
@@ -83,14 +84,6 @@ const reducedFrom = (h: HomeRow) => {
   return before && before > h.pricePcm ? before : null;
 };
 
-// Within the rent (the higher one when every bill is included), the bedrooms and the EPC band.
-function matches(h: HomeRow, m: Match): boolean {
-  const rent = billsIncluded(h) ? m.rentWithBills : m.rent;
-  const beds = h.beds ?? 0;
-  const band = h.read?.epcBand;
-  return h.pricePcm <= rent && beds >= m.minBeds && beds <= m.maxBeds && !!band && band <= m.epc;
-}
-
 const SAID: Record<string, Record<string, string>> = {
   bills: { all: "Bills included", some: "Some bills included", none: "Bills extra" },
   pets: { yes: "Pets allowed", ask: "Pets considered", no: "No pets" },
@@ -106,7 +99,7 @@ function titleOf(h: HomeRow): string {
   return kind === "home" || kind === "studio" ? "Studio" : `Studio ${kind}`;
 }
 
-function item(h: HomeRow): HomeItem {
+function item(h: HomeRow, places: Place[]): HomeItem {
   const d = h.details;
   const r = h.read;
   const said = (key: keyof typeof SAID, value?: string) => (value && SAID[key][value] ? [SAID[key][value]] : []);
@@ -124,6 +117,7 @@ function item(h: HomeRow): HomeItem {
     epc: r?.epcBand ? { band: r.epcBand, score: r.epcScore, from: r.epcFrom } : null,
     fit: r?.fit ?? null,
     fitWhy: r?.fitWhy ?? "",
+    commute: commuteTimes(h.commute, places),
     facts: [
       ...(r?.bills === "some" && r.billsWhat ? [`Includes ${r.billsWhat}`] : said("bills", r?.bills)),
       ...(d?.furnish ? [d.furnish] : []),
@@ -151,11 +145,11 @@ export const getHomesPage = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<HomesPage> => {
     gate("/homes");
     const { configs, ...sidebar } = await nav();
-    const m: Match = { rent: 850, rentWithBills: 1000, minBeds: 1, maxBeds: 3, epc: "C", ...((configs.get(TASK)?.match ?? {}) as Partial<Match>) };
-    if (!BANDS.includes(m.epc)) m.epc = "C";
+    const m = matchOf(configs.get(TASK));
+    const places = placesOf(configs.get(TASK));
     const all = listHomes(TASK);
     const up = all.filter((h) => h.up);
-    const inView = data.view === "all" ? up : up.filter((h) => matches(h, m));
+    const inView = data.view === "all" ? up : up.filter((h) => matches(h, m, places));
     const area = data.area?.toUpperCase();
     const chosen = inView.filter(
       (h) =>
@@ -169,8 +163,17 @@ export const getHomesPage = createServerFn({ method: "GET" })
     );
     const sort = data.sort ?? "fit";
     const newest = (a: HomeRow, b: HomeRow) => (b.listedAt ?? b.firstSeen).localeCompare(a.listedAt ?? a.firstSeen);
+    // Nearest to the first place with a limit (work); not timed, or over 90 minutes, last.
+    const first = places.find((p) => p.max !== undefined)?.name ?? "";
+    const minutes = (h: HomeRow) => h.commute[first]?.min ?? Infinity;
     chosen.sort((a, b) =>
-      sort === "rent" ? a.pricePcm - b.pricePcm : sort === "new" ? newest(a, b) : (b.read?.fit ?? 0) - (a.read?.fit ?? 0) || a.pricePcm - b.pricePcm || newest(a, b),
+      sort === "rent"
+        ? a.pricePcm - b.pricePcm
+        : sort === "new"
+          ? newest(a, b)
+          : sort === "near"
+            ? minutes(a) - minutes(b) || a.pricePcm - b.pricePcm
+            : (b.read?.fit ?? 0) - (a.read?.fit ?? 0) || a.pricePcm - b.pricePcm || newest(a, b),
     );
     const count = <K extends string>(keys: K[], of: (h: HomeRow) => K) => Object.fromEntries(keys.map((k) => [k, inView.filter((h) => of(h) === k).length])) as Record<K, number>;
     const byArea = new Map<string, number>();
@@ -185,12 +188,13 @@ export const getHomesPage = createServerFn({ method: "GET" })
       nav: sidebar,
       search: data,
       match: m,
+      limits: places.filter((p) => p.max !== undefined).map((p) => `${p.max} minutes to ${p.name}`),
       up: up.length,
-      matching: up.filter((h) => matches(h, m)).length,
+      matching: up.filter((h) => matches(h, m, places)).length,
       unread: up.filter((h) => h.details && !h.read).length,
       noPage: up.filter((h) => !h.details).length,
       shown: chosen.length,
-      homes: (data.more ? chosen : chosen.slice(0, LIMIT)).map(item),
+      homes: (data.more ? chosen : chosen.slice(0, LIMIT)).map((h) => item(h, places)),
       areas: [...byArea].map(([a, n]) => ({ area: a, count: n })).sort((a, b) => Number(a.area.slice(2)) - Number(b.area.slice(2))),
       counts: { beds: count(["0", "1", "2", "3"], bedsOf), epc: count(["good", "unknown", "poor"], epcOf) },
       lastRun: lastSeen && ago(lastSeen),

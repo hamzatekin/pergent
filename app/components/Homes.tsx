@@ -16,6 +16,7 @@ const EPC: [Exclude<Epc, "any">, string][] = [
 const SORT: [Sort, string][] = [
   ["fit", "Best fit"],
   ["rent", "Cheapest"],
+  ["near", "Shortest commute"],
   ["new", "Newest"],
 ];
 
@@ -42,7 +43,8 @@ export function HomesBoard({ data }: { data: HomesPage }) {
       <p className="note feed-note">
         Rightmove rentals within 5 miles of NG1 up to £1,100, collected every hour
         {data.lastRun ? `, last ${data.lastRun}` : ""}. A match is at most £{m.rent.toLocaleString("en-GB")} a month (£
-        {m.rentWithBills.toLocaleString("en-GB")} with every bill included), {m.minBeds} to {m.maxBeds} bedrooms and EPC {m.epc} or better.
+        {m.rentWithBills.toLocaleString("en-GB")} with every bill included), {m.minBeds} to {m.maxBeds} bedrooms, EPC {m.epc} or better
+        {data.limits.length ? `, and at most ${data.limits.join(" and ")} by bus or tram` : ""}.
         {data.unread + data.noPage > 0 && ` ${data.unread + data.noPage} listings are not read yet, so they have no EPC or fit and cannot match.`}
       </p>
       <nav className="feed-chips">
@@ -146,6 +148,16 @@ function HomeLine({ h }: { h: HomeItem }) {
             )}
           </span>
           <span className="home-address">{h.address}</span>
+          {h.commute.length > 0 && (
+            <span className="home-commute">
+              {h.commute.map((c, i) => (
+                <span key={c.name}>
+                  {i > 0 && " · "}
+                  <span data-over={c.over || undefined}>{c.text}</span>
+                </span>
+              ))}
+            </span>
+          )}
           {h.fitWhy && <span className="job-why">{h.fitWhy}</span>}
           {h.facts.length > 0 && (
             <span className="job-skills">

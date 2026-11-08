@@ -21,6 +21,9 @@ services:
       ADZUNA_APP_ID: ${ADZUNA_APP_ID:-}
       ADZUNA_APP_KEY: ${ADZUNA_APP_KEY:-}
       REED_API_KEY: ${REED_API_KEY:-}
+      # A TravelTime app (account.traveltime.com). Set, the homes task times every listing to work and the centre.
+      TRAVELTIME_APP_ID: ${TRAVELTIME_APP_ID:-}
+      TRAVELTIME_API_KEY: ${TRAVELTIME_API_KEY:-}
     volumes:
       - runs:/app/runs
       - claude-home:/root/.claude
