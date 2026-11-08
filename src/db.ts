@@ -302,6 +302,17 @@ export function openDb(runsDir: string): DatabaseSync {
       street   TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS crimes_by_month ON crimes (month);
+    -- The EPC register (src/epc.ts): what a postcode search answered, kept 30 days, and each certificate
+    -- fetched, kept for good (a certificate never changes; a new one gets a new number).
+    CREATE TABLE IF NOT EXISTS epc_postcodes (
+      postcode   TEXT PRIMARY KEY,
+      fetched_at TEXT NOT NULL,
+      entries    TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS epc_certs (
+      number TEXT PRIMARY KEY,
+      cert   TEXT NOT NULL
+    );
   `);
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
@@ -515,6 +526,9 @@ const HOME_COLUMNS = {
   // The crime around it (src/crime.ts), as JSON (CrimeNear); crime_at moves only when its level does.
   crime: "TEXT",
   crime_at: "TEXT",
+  // Its certificate on the EPC register (src/epc.ts), as JSON (HomeCert), and when it was last looked for.
+  cert: "TEXT",
+  cert_at: "TEXT",
   epc_band: "TEXT",
   epc_score: "INTEGER",
   epc_from: "TEXT",
@@ -627,7 +641,8 @@ export function saveCrimes(changes: Map<string, { crime: CrimeNear | null; stamp
 }
 
 // A listing waiting for the model: the search's fields, its page and its commute.
-export type UnreadHome = HomeListing & { postcode: string | null; details: HomeDetails; commute: Commute; crime: CrimeNear | null };
+// `bills`: what an earlier read said about the bills, for a listing read again.
+export type UnreadHome = HomeListing & { postcode: string | null; details: HomeDetails; commute: Commute; crime: CrimeNear | null; cert: HomeCert | null; bills: string | null };
 
 // A read made at another rent, or before the listing's commute times or crime level: both go into the
 // fit, so it is read again (the old read shows until then).
@@ -642,12 +657,18 @@ export function unreadHomes(task: string, maxRent: number): UnreadHome[] {
   const rows = use()
     .prepare(`
       SELECT id, url, address, postcode, lat, lng, price_pcm AS pricePcm, beds, baths, type, agent, phone, image, summary,
-        listed_at AS listedAt, available_from AS availableFrom, details, commute, crime
+        listed_at AS listedAt, available_from AS availableFrom, details, commute, crime, cert, json_extract(read, '$.bills') AS bills
       FROM homes WHERE task = ? AND details IS NOT NULL AND (read_at IS NULL OR ${STALE}) AND last_seen >= ?
       ORDER BY (price_pcm <= ? AND beds BETWEEN 1 AND 3) DESC, listed_at DESC, id
     `)
-    .all(task, swept, maxRent) as unknown as (Omit<UnreadHome, "details" | "commute" | "crime"> & { details: string; commute: string | null; crime: string | null })[];
-  return rows.map((r) => ({ ...r, details: JSON.parse(r.details), commute: JSON.parse(r.commute ?? "{}"), crime: r.crime ? JSON.parse(r.crime) : null }));
+    .all(task, swept, maxRent) as unknown as (Omit<UnreadHome, "details" | "commute" | "crime" | "cert"> & { details: string; commute: string | null; crime: string | null; cert: string | null })[];
+  return rows.map((r) => ({
+    ...r,
+    details: JSON.parse(r.details),
+    commute: JSON.parse(r.commute ?? "{}"),
+    crime: r.crime ? JSON.parse(r.crime) : null,
+    cert: r.cert ? JSON.parse(r.cert) : null,
+  }));
 }
 
 // The listings still up, with a location, that have not been timed to every one of `places` (names).
@@ -676,6 +697,79 @@ export function saveCommutes(commutes: Map<string, Commute>) {
   }
 }
 
+// The EPC register (src/epc.ts). An entry is a certificate as a postcode search lists it; a certificate
+// is what src/epc.ts keeps of one; a listing's HomeCert is the council its postcode is in and the
+// certificate it was matched to, how (its house or flat number, its chart's band and score, or the only
+// one at the postcode), and among how many alike (the one with the middle energy cost is kept).
+export type EpcEntry = { number: string; address: string; uprn: string; band: string; registered: string; council: string };
+// What src/epc.ts keeps of a certificate changed shape: a kept one older than this is fetched again, and a
+// listing matched to one is looked up again.
+export const CERT_VERSION = 2;
+export type Certificate = {
+  v?: number;
+  number: string;
+  address: string;
+  registered: string;
+  band: string;
+  score: number | null;
+  sqm: number | null;
+  heating: string;
+  hotWater: string;
+  /** Heat a year for the rooms and for hot water, kWh, as the certificate models it. */
+  spaceKwh: number | null;
+  waterKwh: number | null;
+};
+export type HomeCert = { council: string | null; cert: Certificate | null; how: "address" | "score" | "only" | null; of: number };
+
+export function epcPostcode(postcode: string): { fetchedAt: string; entries: EpcEntry[] } | null {
+  const row = use().prepare("SELECT fetched_at AS fetchedAt, entries FROM epc_postcodes WHERE postcode = ?").get(postcode) as { fetchedAt: string; entries: string } | undefined;
+  return row ? { fetchedAt: row.fetchedAt, entries: JSON.parse(row.entries) } : null;
+}
+
+export function saveEpcPostcode(postcode: string, entries: EpcEntry[]) {
+  use()
+    .prepare("INSERT INTO epc_postcodes (postcode, fetched_at, entries) VALUES (?, ?, ?) ON CONFLICT (postcode) DO UPDATE SET fetched_at = excluded.fetched_at, entries = excluded.entries")
+    .run(postcode, new Date().toISOString(), JSON.stringify(entries));
+}
+
+export function epcCert(number: string): Certificate | null {
+  const row = use().prepare("SELECT cert FROM epc_certs WHERE number = ?").get(number) as { cert: string } | undefined;
+  return row ? JSON.parse(row.cert) : null;
+}
+
+export function saveEpcCert(cert: Certificate) {
+  use().prepare("INSERT OR REPLACE INTO epc_certs (number, cert) VALUES (?, ?)").run(cert.number, JSON.stringify(cert));
+}
+
+// The listings still up with a postcode that have not been looked up on the register, were read since
+// (the read's EPC score is what matches most of them), found nothing when last looked before
+// `lookedBefore` (a certificate may have been made since), or were matched to an older kind of record.
+// `sqm`: the floor area the agent gave or the read found.
+export function homesToCertify(
+  task: string,
+  lookedBefore: string,
+): { id: string; address: string; postcode: string; epcBand: string | null; epcScore: number | null; sqm: number | null; cert: HomeCert | null }[] {
+  const swept = getState(`swept:${task}`) ?? "";
+  const rows = use()
+    .prepare(`
+      SELECT id, address, postcode, epc_band AS epcBand, epc_score AS epcScore, cert,
+        COALESCE(json_extract(details, '$.sqm'), NULLIF(json_extract(read, '$.sqm'), 0)) AS sqm
+      FROM homes
+      WHERE task = ? AND postcode IS NOT NULL AND last_seen >= ? AND (
+        cert_at IS NULL OR read_at > cert_at
+        OR (json_extract(cert, '$.cert') IS NULL AND cert_at < ?)
+        OR (json_extract(cert, '$.cert') IS NOT NULL AND IFNULL(json_extract(cert, '$.cert.v'), 0) < ?)
+      )
+      ORDER BY listed_at DESC
+    `)
+    .all(task, swept, lookedBefore, CERT_VERSION) as { id: string; address: string; postcode: string; epcBand: string | null; epcScore: number | null; sqm: number | null; cert: string | null }[];
+  return rows.map((r) => ({ ...r, cert: r.cert ? (JSON.parse(r.cert) as HomeCert) : null }));
+}
+
+export function saveHomeCert(id: string, cert: HomeCert) {
+  use().prepare("UPDATE homes SET cert = ?, cert_at = ? WHERE id = ?").run(JSON.stringify(cert), new Date().toISOString(), id);
+}
+
 // A listing as the Homes page reads it. `up`: seen in the last complete sweep or since.
 export type HomeRow = HomeListing & {
   postcode: string | null;
@@ -691,6 +785,7 @@ export type HomeRow = HomeListing & {
   /** Read, but at another rent, or before its commute times or crime level: waiting to be read again. */
   stale: boolean;
   crime: CrimeNear | null;
+  cert: HomeCert | null;
 };
 
 export function listHomes(task: string): HomeRow[] {
@@ -700,12 +795,13 @@ export function listHomes(task: string): HomeRow[] {
       SELECT id, url, address, postcode, lat, lng, price_pcm AS pricePcm, prices, beds, baths, type, agent, phone, image, summary,
         listed_at AS listedAt, available_from AS availableFrom, details, first_seen AS firstSeen, last_seen AS lastSeen,
         epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, notified_pcm AS notifiedPcm,
-        (read_at IS NOT NULL AND ${STALE}) AS stale, crime
+        (read_at IS NOT NULL AND ${STALE}) AS stale, crime, cert
       FROM homes WHERE task = ?
     `)
-    .all(task) as unknown as (Omit<HomeRow, "details" | "prices" | "up" | "read" | "commute" | "crime"> & {
+    .all(task) as unknown as (Omit<HomeRow, "details" | "prices" | "up" | "read" | "commute" | "crime" | "cert"> & {
     commute: string | null;
     crime: string | null;
+    cert: string | null;
     details: string | null;
     prices: string;
     epc_band: string | null;
@@ -716,10 +812,11 @@ export function listHomes(task: string): HomeRow[] {
     read: string | null;
     read_at: string | null;
   })[];
-  return rows.map(({ details, prices, epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, crime, ...r }) => ({
+  return rows.map(({ details, prices, epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, crime, cert, ...r }) => ({
     ...r,
     commute: JSON.parse(commute ?? "{}"),
     crime: crime ? JSON.parse(crime) : null,
+    cert: cert ? JSON.parse(cert) : null,
     stale: !!r.stale,
     details: details ? JSON.parse(details) : null,
     prices: JSON.parse(prices),

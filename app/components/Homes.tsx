@@ -16,6 +16,7 @@ const EPC: [Exclude<Epc, "any">, string][] = [
 const SORT: [Sort, string][] = [
   ["fit", "Best fit"],
   ["rent", "Cheapest"],
+  ["allin", "Cheapest all in"],
   ["near", "Shortest commute"],
   ["new", "Newest"],
 ];
@@ -159,6 +160,11 @@ function HomeLine({ h }: { h: HomeItem }) {
                   <span data-over={c.over || undefined}>{c.text}</span>
                 </span>
               ))}
+            </span>
+          )}
+          {h.allIn && (
+            <span className="home-allin" title={h.allIn.title}>
+              {h.allIn.text}
             </span>
           )}
           {h.crime && (

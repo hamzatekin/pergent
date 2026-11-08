@@ -7,6 +7,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { placesOf, timeHomes, type Place } from "./commute.ts";
 import { crimeHomes, crimeText } from "./crime.ts";
+import { allIn, allInText, certHomes, certText, costsOf, type Costs } from "./epc.ts";
 import { getState, listHomes, markNotified, saveHomeReads, setState, unreadHomes, type Commute, type HomeRead, type HomeRow, type UnreadHome } from "./db.ts";
 import type { Part, TaskConfig } from "./runner.ts";
 import { escapeHtml, sendTelegram, telegramOn } from "./telegram.ts";
@@ -167,7 +168,7 @@ async function charts(dir: string, id: string, urls: string[]): Promise<Found> {
   return found;
 }
 
-function block(ref: string, h: UnreadHome, found: Found, places: Place[], descriptionChars: number): string {
+function block(ref: string, h: UnreadHome, found: Found, places: Place[], descriptionChars: number, costs: Costs | null): string {
   const d = h.details;
   const said = (label: string, value: unknown) => (value === null || value === undefined || value === "" ? [] : [`${label}: ${value}`]);
   const features = Object.entries(d.features).map(([k, v]) => `${k} ${v.join(", ")}`).join("; ");
@@ -186,6 +187,11 @@ function block(ref: string, h: UnreadHome, found: Found, places: Place[], descri
     ...said("Key features", d.keyFeatures.join("; ")),
     ...said("By bus, tram and walking, door to door", commuteTimes(h.commute, places).map((t) => t.text).join(", ")),
     ...said("Crime around it (police records, against the other listings in this search)", h.crime ? crimeText(h.crime) : null),
+    ...said("Its certificate on the EPC register", h.cert?.cert ? certText(h.cert) : null),
+    ...said(
+      "A month, estimated (energy for this home at today's prices and water, both unless the bills are in the rent; council tax for one person)",
+      costs ? allInText(allIn({ ...h, read: h.bills ? { bills: h.bills } : null }, costs)) : null,
+    ),
     "",
     clip(d.description || h.summary, descriptionChars),
     ...found.register.map((r) => `${ref}'s EPC certificate on the GOV.UK register: ${r}.`),
@@ -208,6 +214,8 @@ export async function prepareHomesRead(
 ): Promise<{ listings: number; waiting: number; notes: string[]; parts: Part[] }> {
   const timed = await timeHomes(task, config);
   const crime = await crimeHomes(task, config).catch((err: Error) => `failed, ${err.message}`);
+  const certs = await certHomes(task, config).catch((err: Error) => `failed, ${err.message}`);
+  const costs = costsOf(config);
   const places = placesOf(config);
   await writeFile(join(dir, "wants.md"), await readFile(join(taskDir, "wants.md"), "utf8"));
   const { maxListings = 40, descriptionChars = 2500 } = readConfig(config);
@@ -233,7 +241,7 @@ export async function prepareHomesRead(
       images += pictures;
       const ref = `h${blocks.length + 1}`;
       refs[ref] = h.id;
-      const text = block(ref, h, found[j], places, descriptionChars);
+      const text = block(ref, h, found[j], places, descriptionChars, costs);
       blocks.push(`${text}${found[j].charts.map((c) => `\n(${c.file})`).join("")}`);
       parts.push({ text }, ...found[j].charts);
     }
@@ -241,7 +249,7 @@ export async function prepareHomesRead(
   const heading = `# Listings to read (${blocks.length})`;
   await writeFile(join(dir, "listings.md"), `${heading}\n\n${blocks.join("\n\n")}\n`);
   await writeFile(join(dir, "read.json"), JSON.stringify({ task, refs }));
-  const notes = [timed && `commute: ${timed}`, crime && `crime: ${crime}`].filter(Boolean);
+  const notes = [timed && `commute: ${timed}`, crime && `crime: ${crime}`, certs && `EPC register: ${certs}`].filter(Boolean);
   return { listings: blocks.length, waiting: unread.length - blocks.length, notes, parts: [{ text: heading }, ...parts] };
 }
 
@@ -296,6 +304,9 @@ export async function saveHomesRead(runId: string, output: unknown, dir: string,
     });
   }
   saveHomeReads(runId, reads);
+  // The listings just read are matched to the register now, by the score the read took off their chart,
+  // so the message about one has its energy.
+  const certs = await certHomes(task, config, new Set(reads.keys())).catch((err: Error) => `failed, ${err.message}`);
   const all = [...reads.values()];
   const count = (pick: (r: HomeRead) => string) => {
     const c = new Map<string, number>();
@@ -313,6 +324,7 @@ export async function saveHomesRead(runId: string, output: unknown, dir: string,
     `- Bills: ${count((r) => r.bills)}`,
     `- Heating: ${count((r) => r.heating)}`,
     `- Fit: ${count((r) => (r.fit ? `${r.fit}/5` : "none"))}`,
+    ...(certs ? ["", `EPC register: ${certs}`] : []),
     // A message that fails does not fail the run: the reads are saved, and it goes with the next read.
     ...(telegramOn() ? ["", `Messages: ${await notifyHomes(task, config).catch((err: Error) => `failed, ${err.message}`)}`] : []),
   ].join("\n") + "\n";
@@ -331,7 +343,7 @@ function droppedFrom(h: HomeRow, since: string): number | null {
   return before && last && last.at >= since && last.pcm < before.pcm ? before.pcm : null;
 }
 
-function message(h: HomeRow, was: number | null, places: Place[]): string {
+function message(h: HomeRow, was: number | null, places: Place[], costs: Costs | null): string {
   const r = h.read!;
   const d = h.details;
   const facts = [
@@ -343,6 +355,7 @@ function message(h: HomeRow, was: number | null, places: Place[]): string {
   return [
     `<b>${pounds(h.pricePcm)} pcm · ${escapeHtml(titleOf(h))}</b>${was ? ` · was ${pounds(was)}` : ""}`,
     `EPC ${r.epcBand}${r.epcScore ? ` ${r.epcScore}` : ""} · Fit ${r.fit ?? "?"}/5`,
+    costs ? escapeHtml(allInText(allIn(h, costs))) : "",
     escapeHtml(h.address),
     commuteTimes(h.commute, places).map((t) => t.text).join(" · "),
     h.crime ? `Crime ${escapeHtml(crimeText(h.crime))}` : "",
@@ -390,7 +403,7 @@ export async function notifyHomes(task: string, config: TaskConfig): Promise<str
   try {
     for (const h of due.slice(0, n.maxMessages)) {
       if (sent) await sleep(1100);
-      await sendTelegram({ html: message(h, h.notifiedPcm ?? droppedFrom(h, since), places), photo: h.image, buttons: buttons(h.url) });
+      await sendTelegram({ html: message(h, h.notifiedPcm ?? droppedFrom(h, since), places, costsOf(config)), photo: h.image, buttons: buttons(h.url) });
       markNotified(h.id, h.pricePcm);
       sent++;
     }
