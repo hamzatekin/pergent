@@ -512,6 +512,9 @@ const HOME_COLUMNS = {
   read_run: "TEXT",
   // The rent when it was read: a new rent changes the fit, so the listing is read again.
   read_pcm: "INTEGER",
+  // The rent at which a Telegram message went out for the listing (src/homes.ts notifyHomes), and when.
+  notified_pcm: "INTEGER",
+  notified_at: "TEXT",
 };
 export type HomeRead = {
   /** A to G, or null when neither the chart nor the text gives it. */
@@ -572,6 +575,10 @@ export function homesToTime(task: string, places: string[]): { id: string; lat: 
   return rows.map((r) => ({ ...r, commute: JSON.parse(r.commute ?? "{}") as Commute })).filter((r) => places.some((p) => !(p in r.commute)));
 }
 
+export function markNotified(id: string, pcm: number) {
+  use().prepare("UPDATE homes SET notified_pcm = ?, notified_at = ? WHERE id = ?").run(pcm, new Date().toISOString(), id);
+}
+
 export function saveCommutes(commutes: Map<string, Commute>) {
   const now = new Date().toISOString();
   const update = use().prepare("UPDATE homes SET commute = ?, commute_at = ? WHERE id = ?");
@@ -595,6 +602,10 @@ export type HomeRow = HomeListing & {
   up: boolean;
   read: HomeRead | null;
   commute: Commute;
+  /** The rent a message went out at, null when none has. */
+  notifiedPcm: number | null;
+  /** Read, but at another rent or before its commute times: unreadHomes has it waiting to be read again. */
+  stale: boolean;
 };
 
 export function listHomes(task: string): HomeRow[] {
@@ -603,7 +614,8 @@ export function listHomes(task: string): HomeRow[] {
     .prepare(`
       SELECT id, url, address, postcode, lat, lng, price_pcm AS pricePcm, prices, beds, baths, type, agent, phone, image, summary,
         listed_at AS listedAt, available_from AS availableFrom, details, first_seen AS firstSeen, last_seen AS lastSeen,
-        epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute
+        epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, notified_pcm AS notifiedPcm,
+        (read_at IS NOT NULL AND (read_pcm IS NOT price_pcm OR commute_at > read_at)) AS stale
       FROM homes WHERE task = ?
     `)
     .all(task) as unknown as (Omit<HomeRow, "details" | "prices" | "up" | "read" | "commute"> & {
@@ -621,6 +633,7 @@ export function listHomes(task: string): HomeRow[] {
   return rows.map(({ details, prices, epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, ...r }) => ({
     ...r,
     commute: JSON.parse(commute ?? "{}"),
+    stale: !!r.stale,
     details: details ? JSON.parse(details) : null,
     prices: JSON.parse(prices),
     up: r.lastSeen >= swept,

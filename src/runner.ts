@@ -164,7 +164,7 @@ const OUTPUTS: Record<string, Output> = {
       return { go: listings > 0, note: timed ? `${read}; commute: ${timed}` : read, parts };
     },
     schema: homesReadSchema,
-    save: (runId, output, dir) => saveHomesRead(runId, output, dir),
+    save: (runId, output, dir, config) => saveHomesRead(runId, output, dir, config),
   },
 };
 
