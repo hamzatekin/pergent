@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HomesRouteImport } from './routes/homes'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as LayoutRouteImport } from './routes/layout'
 import { Route as AdminAuthedRouteImport } from './routes/admin/_authed'
@@ -42,6 +43,11 @@ import { Route as AdminAuthedRunsTaskRunIdFilesFileRouteImport } from './routes/
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomesRoute = HomesRouteImport.update({
+  id: '/homes',
+  path: '/homes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JobsRoute = JobsRouteImport.update({
@@ -192,6 +198,7 @@ const AdminAuthedRunsTaskRunIdFilesFileRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/homes': typeof HomesRoute
   '/jobs': typeof JobsRoute
   '/layout': typeof LayoutRoute
   '/admin': typeof AdminAuthedRouteWithChildren
@@ -223,6 +230,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/homes': typeof HomesRoute
   '/jobs': typeof JobsRoute
   '/layout': typeof LayoutRoute
   '/admin/login': typeof AdminLoginRoute
@@ -254,6 +262,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/homes': typeof HomesRoute
   '/jobs': typeof JobsRoute
   '/layout': typeof LayoutRoute
   '/admin/_authed': typeof AdminAuthedRouteWithChildren
@@ -287,6 +296,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/homes'
     | '/jobs'
     | '/layout'
     | '/admin'
@@ -318,6 +328,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/homes'
     | '/jobs'
     | '/layout'
     | '/admin/login'
@@ -348,6 +359,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/homes'
     | '/jobs'
     | '/layout'
     | '/admin/_authed'
@@ -380,6 +392,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HomesRoute: typeof HomesRoute
   JobsRoute: typeof JobsRoute
   LayoutRoute: typeof LayoutRoute
   AdminAuthedRoute: typeof AdminAuthedRouteWithChildren
@@ -409,6 +422,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/homes': {
+      id: '/homes'
+      path: '/homes'
+      fullPath: '/homes'
+      preLoaderRoute: typeof HomesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/jobs': {
@@ -681,6 +701,7 @@ const ApiTasksRouteWithChildren = ApiTasksRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HomesRoute: HomesRoute,
   JobsRoute: JobsRoute,
   LayoutRoute: LayoutRoute,
   AdminAuthedRoute: AdminAuthedRouteWithChildren,

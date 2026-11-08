@@ -1040,6 +1040,74 @@ a.chip:active {
 .job-note {
   @apply text-[11.5px] text-faint md:text-right;
 }
+/* The Homes page (components/Homes.tsx): the listings as one list, each row its photo, rent, size and
+   address, what the model read from it and the agent, with the EPC band and the fit on the right. The
+   EPC badge takes the band's colour from the certificate's own chart. */
+.homes {
+  @apply overflow-hidden rounded-xl bg-surface shadow-border;
+}
+.homes li {
+  @apply border-b border-line last:border-0;
+}
+/* On a phone the badges go under the text, so the text keeps the width beside the photo. */
+.home-row {
+  @apply grid grid-cols-[88px_minmax(0,1fr)] items-start gap-x-3 gap-y-1.5 px-3.5 py-3 hover:bg-bg sm:grid-cols-[160px_minmax(0,1fr)_auto];
+}
+.home-img {
+  @apply h-[66px] w-[88px] rounded-md bg-inset object-cover outline-1 -outline-offset-1 outline-black/10 sm:h-[107px] sm:w-[160px];
+}
+.home-main {
+  @apply flex min-w-0 flex-col gap-0.5;
+}
+/* The postcode districts scroll sideways on a phone instead of taking five lines. */
+.feed-chips.scroll {
+  @apply -mx-4 flex-nowrap overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0;
+}
+.feed-chips.scroll .chip {
+  @apply shrink-0;
+}
+.home-title {
+  @apply flex flex-wrap items-baseline gap-x-2 text-[13.5px] font-medium text-ink;
+}
+.home-rent {
+  @apply tabular-nums;
+}
+.home-was {
+  @apply text-[12px] font-normal tabular-nums text-good;
+}
+.home-address {
+  @apply text-[12.5px] text-soft text-pretty;
+}
+.home-flags {
+  @apply text-[12px] text-failed text-pretty;
+}
+.home-side {
+  @apply col-start-2 flex flex-wrap items-center gap-1 sm:col-start-3 sm:row-start-1 sm:flex-col sm:items-end;
+}
+.epc {
+  @apply rounded-full bg-inset px-2 text-[11.5px] font-semibold leading-[19px] whitespace-nowrap tabular-nums text-muted;
+}
+.epc[data-band="A"] {
+  @apply bg-[#008054] text-white;
+}
+.epc[data-band="B"] {
+  @apply bg-[#19b459] text-white;
+}
+.epc[data-band="C"] {
+  @apply bg-[#8dce46] text-ink;
+}
+.epc[data-band="D"] {
+  @apply bg-[#ffd500] text-ink;
+}
+.epc[data-band="E"] {
+  @apply bg-[#fcaa65] text-ink;
+}
+.epc[data-band="F"] {
+  @apply bg-[#ef8023] text-white;
+}
+.epc[data-band="G"] {
+  @apply bg-[#e9153b] text-white;
+}
 /* The Ideas pages (components/Ideas.tsx): the radar's problems as one list, each row its name, summary
    and counts with its trend and 8 weeks of mentions on the right; a problem's page with its counts and
    every post that raised it. */

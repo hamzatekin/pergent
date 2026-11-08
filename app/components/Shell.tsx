@@ -8,7 +8,7 @@ const SCHEDULER: Record<Nav["scheduler"], string> = { on: "Scheduler on", paused
 
 // Every page's frame: a sidebar from md up (the briefings, the dashboard, the scheduler's state), and
 // on a phone the same links as a row in the top bar instead. `header` is the bar's own row: the page's
-// title on the left, its actions on the right. `active` is a task name, "ideas", "jobs", "newsletters" or "admin".
+// title on the left, its actions on the right. `active` is a task name, "ideas", "jobs", "homes", "newsletters" or "admin".
 export function Shell({ nav, active, header, children }: { nav: Nav; active: string; header: ReactNode; children: ReactNode }) {
   return (
     <div className="shell">
@@ -35,6 +35,12 @@ export function Shell({ nav, active, header, children }: { nav: Nav; active: str
             <Link to="/jobs" className="nav-item" data-active={active === "jobs"}>
               <Icon name="briefcase" />
               Jobs
+            </Link>
+          )}
+          {nav.homes && (
+            <Link to="/homes" className="nav-item" data-active={active === "homes"}>
+              <Icon name="home" />
+              Homes
             </Link>
           )}
           {nav.newsletters && (
@@ -76,6 +82,11 @@ export function Shell({ nav, active, header, children }: { nav: Nav; active: str
             {nav.jobs && (
               <Link to="/jobs" className="mtab" data-active={active === "jobs"}>
                 Jobs
+              </Link>
+            )}
+            {nav.homes && (
+              <Link to="/homes" className="mtab" data-active={active === "homes"}>
+                Homes
               </Link>
             )}
             {nav.newsletters && (
