@@ -1091,6 +1091,10 @@ a.chip:active {
 .home-commute [data-over] {
   @apply text-failed;
 }
+/* What it comes to a month all in (src/epc.ts), with the sums in its tooltip. */
+.home-allin {
+  @apply text-[12px] tabular-nums text-ink text-pretty;
+}
 /* The crime around it; high or very high in the warning colour. */
 .home-crime {
   @apply text-[12px] tabular-nums text-muted text-pretty;

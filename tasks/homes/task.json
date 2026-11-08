@@ -17,6 +17,18 @@
   "read": { "maxListings": 40, "descriptionChars": 2500 },
   "match": { "rent": 850, "rentWithBills": 1000, "minBeds": 1, "maxBeds": 3, "epc": "C" },
   "notify": { "minBeds": 2, "minFit": 4, "maxMessages": 10, "link": "https://pergent.hamzatekin.dev/homes" },
+  "register": { "maxRequests": 1500, "maxAlike": 5 },
+  "costs": {
+    "prices": "Ofgem price cap, Oct to Dec 2026, Direct Debit",
+    "gas": { "pence": 7.97, "standingPence": 29.68 },
+    "electricity": { "pence": 26.32, "standingPence": 54.83 },
+    "appliancesKwh": 1800,
+    "boiler": 0.85,
+    "heatPump": 2.5,
+    "waterMonthly": 49,
+    "singlePerson": true,
+    "councilTaxBandD": { "Nottingham": 2755.39, "Rushcliffe": 2643.27, "Gedling": 2609.55, "Broxtowe": 2618.21, "Ashfield": 2608.76, "Erewash": 2360.64 }
+  },
   "crime": { "centre": { "lat": 52.9548, "lng": -1.1505 }, "radiusKm": 9.5, "metres": 300, "months": 12, "levels": [90, 160, 230, 415] },
   "commute": {
     "places": [

@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
 import { placesOf, type Place } from "#src/commute.ts";
 import { crimeText } from "#src/crime.ts";
+import { allIn, certText, costsOf, type Costs } from "#src/epc.ts";
 import { getState, listHomes, type HomeRow } from "#src/db.ts";
 import { commuteTimes, matches, matchOf, titleOf, type Match } from "#src/homes.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
@@ -15,7 +16,7 @@ const LIMIT = 100;
 
 export type Beds = "0" | "1" | "2" | "3";
 export type Epc = "any" | "good" | "unknown" | "poor";
-export type Sort = "fit" | "rent" | "near" | "new";
+export type Sort = "fit" | "rent" | "allin" | "near" | "new";
 export type HomesSearch = { view?: "all"; beds?: Beds; epc?: Epc; area?: string; bills?: true; fit?: true; fresh?: true; reduced?: true; safer?: true; sort?: Sort; more?: true };
 
 export type HomeItem = {
@@ -35,6 +36,9 @@ export type HomeItem = {
   commute: { name: string; text: string; over: boolean }[];
   /** "high: 412 a year within 300 m (violence 150, …)", and whether it is high or very high. */
   crime: { text: string; high: boolean } | null;
+  /** "All in about £1,098 a month: energy £145, council tax £109, water £49", with the sums and the
+   * certificate behind it as its tooltip. */
+  allIn: { text: string; title: string } | null;
   facts: string[];
   flags: string[];
   agent: string;
@@ -95,7 +99,25 @@ const SAID: Record<string, Record<string, string>> = {
   heating: { gas: "Gas heating", electric: "Electric heating", "storage heaters": "Storage heaters", "heat pump": "Heat pump", communal: "Communal heating" },
 };
 
-function item(h: HomeRow, places: Place[]): HomeItem {
+// The month's cost (src/epc.ts) as the page says it: what it comes to, then each part, naming what is
+// in the rent and what could not be priced.
+function allInLine(h: HomeRow, costs: Costs): HomeItem["allIn"] {
+  const a = allIn(h, costs);
+  const parts = [
+    a.billsIn ? "bills in the rent" : a.energy ? `energy ${pounds(a.energy)}` : "",
+    a.taxIn ? "council tax in the rent" : a.councilTax ? `council tax ${pounds(a.councilTax)}` : "",
+    a.water ? `water ${pounds(a.water)}` : "",
+  ].filter(Boolean);
+  const head = a.missing.length ? `About ${pounds(a.total)} a month before ${a.missing.join(" and ")}` : `All in about ${pounds(a.total)} a month`;
+  const how = [
+    h.cert?.cert ? `EPC register: ${certText(h.cert)}` : "No EPC certificate matched, so no energy figure",
+    `Energy: the certificate's heating and hot water at ${costs.prices} prices, plus ${costs.appliancesKwh.toLocaleString("en-GB")} kWh of electricity`,
+    `Council tax: ${h.cert?.council ?? "council unknown"}, band ${h.details?.councilTaxBand ?? "not given"}${costs.singlePerson ? ", 25% off for one person" : ""}`,
+  ];
+  return { text: parts.length ? `${head}: ${parts.join(", ")}` : head, title: how.join("\n") };
+}
+
+function item(h: HomeRow, places: Place[], costs: Costs | null): HomeItem {
   const d = h.details;
   const r = h.read;
   const said = (key: keyof typeof SAID, value?: string) => (value && SAID[key][value] ? [SAID[key][value]] : []);
@@ -115,6 +137,7 @@ function item(h: HomeRow, places: Place[]): HomeItem {
     fitWhy: r?.fitWhy ?? "",
     commute: commuteTimes(h.commute, places),
     crime: h.crime ? { text: `Crime ${crimeText(h.crime)}`, high: h.crime.level === "high" || h.crime.level === "very high" } : null,
+    allIn: costs ? allInLine(h, costs) : null,
     facts: [
       ...(r?.bills === "some" && r.billsWhat ? [`Includes ${r.billsWhat}`] : said("bills", r?.bills)),
       ...(d?.furnish ? [d.furnish] : []),
@@ -144,6 +167,7 @@ export const getHomesPage = createServerFn({ method: "GET" })
     const { configs, ...sidebar } = await nav();
     const m = matchOf(configs.get(TASK));
     const places = placesOf(configs.get(TASK));
+    const costs = costsOf(configs.get(TASK));
     const all = listHomes(TASK);
     const up = all.filter((h) => h.up);
     const inView = data.view === "all" ? up : up.filter((h) => matches(h, m, places));
@@ -164,9 +188,16 @@ export const getHomesPage = createServerFn({ method: "GET" })
     // Nearest to the first place with a limit (work); not timed, or over 90 minutes, last.
     const first = places.find((p) => p.max !== undefined)?.name ?? "";
     const minutes = (h: HomeRow) => h.commute[first]?.min ?? Infinity;
+    // Cheapest all in: those priced in full first, since a missing part makes a listing look cheaper.
+    const cost = (h: HomeRow) => {
+      const a = costs ? allIn(h, costs) : null;
+      return a ? (a.missing.length ? 100_000 : 0) + a.total : h.pricePcm;
+    };
     chosen.sort((a, b) =>
       sort === "rent"
         ? a.pricePcm - b.pricePcm
+        : sort === "allin"
+          ? cost(a) - cost(b)
         : sort === "new"
           ? newest(a, b)
           : sort === "near"
@@ -192,7 +223,7 @@ export const getHomesPage = createServerFn({ method: "GET" })
       unread: up.filter((h) => h.details && !h.read).length,
       noPage: up.filter((h) => !h.details).length,
       shown: chosen.length,
-      homes: (data.more ? chosen : chosen.slice(0, LIMIT)).map((h) => item(h, places)),
+      homes: (data.more ? chosen : chosen.slice(0, LIMIT)).map((h) => item(h, places, costs)),
       areas: [...byArea].map(([a, n]) => ({ area: a, count: n })).sort((a, b) => Number(a.area.slice(2)) - Number(b.area.slice(2))),
       counts: { beds: count(["0", "1", "2", "3"], bedsOf), epc: count(["good", "unknown", "poor"], epcOf) },
       lastRun: lastSeen && ago(lastSeen),
