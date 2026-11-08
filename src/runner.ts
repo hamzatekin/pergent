@@ -9,6 +9,7 @@ import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
 import { prepareRead, readSchema, saveReadOutput } from "./jobs.ts";
+import { homesReadSchema, prepareHomesRead, saveHomesRead } from "./homes.ts";
 import { RADAR, briefSchema, judgeSchema, prepareBrief, prepareJudge, prepareSort, saveBriefOutput, saveJudgeOutput, saveSortOutput, sortSchema } from "./ideas.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -54,7 +55,7 @@ export type TaskConfig = {
   layout?: string;
   /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar). */
   tab?: boolean;
-  /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort", "judge" and "brief", the job tracker's "read"). */
+  /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort", "judge" and "brief", the job tracker's "read", the homes task's "homes"). */
   output?: string;
   [extra: string]: unknown;
 };
@@ -109,12 +110,17 @@ export function readRun(name: string, runId: string): { meta: RunMeta; output: s
   return row && { ...row, paper: row.paper ?? fromMarkdown(row.output) };
 }
 
+// What a prepare can hand claude besides the input files: text and images (or PDFs) in order, sent as
+// one message, so an image sits right under the text it belongs to (the homes task's EPC charts). Read
+// would cost a turn per image and leave the model to match each one to its listing.
+export type Part = { text: string } | { file: string; mediaType: string };
+
 // Runs that hand back something other than a paper. `prepare` writes the run's input files after
-// `before` (false: nothing to do, and the run ends ok without claude), `schema` is what claude's
-// structured output is held to, and `save` stores it, returning output.md, or null when the output is
-// unusable and the run failed.
+// `before` (false: nothing to do, and the run ends ok without claude) and may return `parts`, `schema`
+// is what claude's structured output is held to, and `save` stores it, returning output.md, or null
+// when the output is unusable and the run failed.
 type Output = {
-  prepare: (task: string, runId: string, dir: string, config: TaskConfig) => Promise<{ go: boolean; note: string }>;
+  prepare: (task: string, runId: string, dir: string, config: TaskConfig) => Promise<{ go: boolean; note: string; parts?: Part[] }>;
   schema: (config: TaskConfig) => object;
   save: (runId: string, output: unknown, dir: string, config: TaskConfig) => Promise<string | null>;
 };
@@ -150,6 +156,14 @@ const OUTPUTS: Record<string, Output> = {
     },
     schema: readSchema,
     save: (runId, output, dir) => saveReadOutput(runId, output, dir),
+  },
+  homes: {
+    prepare: async (task, _runId, dir, config) => {
+      const { listings, waiting, parts } = await prepareHomesRead(task, dir, join(TASKS_DIR, task), config);
+      return { go: listings > 0, note: listings ? `${listings} listings to read${waiting ? `, ${waiting} more waiting for the next runs` : ""}` : "No listing to read", parts };
+    },
+    schema: homesReadSchema,
+    save: (runId, output, dir) => saveHomesRead(runId, output, dir),
   },
 };
 
@@ -235,6 +249,22 @@ async function withInputs(dir: string, inputs: string[], prompt: string): Promis
   return `${files.join("\n\n")}\n\n${prompt}`;
 }
 
+// The same as one stream-json user message, with a prepare's parts between the input files and the
+// brief: what claude reads on stdin with --input-format stream-json.
+type Block = { type: "text"; text: string } | { type: "image" | "document"; source: { type: "base64"; media_type: string; data: string } };
+async function withParts(dir: string, inputs: string[], parts: Part[], prompt: string): Promise<string> {
+  const content: Block[] = [{ type: "text", text: await withInputs(dir, inputs, "") }];
+  for (const p of parts) {
+    if ("text" in p) content.push({ type: "text", text: p.text });
+    else {
+      const source = { type: "base64" as const, media_type: p.mediaType, data: (await readFile(p.file)).toString("base64") };
+      content.push({ type: p.mediaType === "application/pdf" ? "document" : "image", source });
+    }
+  }
+  content.push({ type: "text", text: prompt });
+  return JSON.stringify({ type: "user", message: { role: "user", content: content.filter((c) => c.type !== "text" || c.text.trim()) } }) + "\n";
+}
+
 export async function runTask(name: string): Promise<{ meta: RunMeta; dir: string }> {
   const { config, prompt } = await loadTask(name);
   const custom = config.output ? OUTPUTS[config.output] : undefined;
@@ -284,6 +314,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
     });
     if (!ok || !prompt) return end(ok, "");
   }
+  let parts: Part[] | undefined;
   if (custom) {
     // A prepare that throws fails the run, rather than leaving its row `running` until the next restart.
     const prepared = await custom.prepare(name, runId, dir, config).catch(async (err) => {
@@ -292,6 +323,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
     });
     if (!prepared) return end(false, "");
     const { go, note } = prepared;
+    parts = prepared.parts;
     await writeFile(join(dir, "prepare.log"), note + "\n");
     if (!go) return end(true, `${note}.\n`);
   }
@@ -301,6 +333,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--json-schema", JSON.stringify(custom ? custom.schema(config) : PAPER_SCHEMA)];
   if (config.model) args.push("--model", config.model);
   if (config.effort) args.push("--effort", config.effort);
+  if (parts) args.push("--input-format", "stream-json");
   // --tools is what the model gets to see; --allowedTools only pre-approves, and on its own leaves the
   // rest of the built-in set (Bash, Edit, ...) available wherever settings let them through.
   // An empty list is `--tools ""`: no built-in tools at all, only the StructuredOutput that
@@ -319,7 +352,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   if (config.maxOutputTokens) env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(config.maxOutputTokens);
 
   const child = track(spawn("claude", args, { cwd: dir, env, stdio: ["pipe", "pipe", "pipe"], detached: true }));
-  child.stdin.end(await withInputs(dir, config.inputs ?? [], prompt));
+  child.stdin.end(parts ? await withParts(dir, config.inputs ?? [], parts, prompt) : await withInputs(dir, config.inputs ?? [], prompt));
   child.stderr.pipe(createWriteStream(join(dir, "stderr.log")));
 
   let timedOut = false;
