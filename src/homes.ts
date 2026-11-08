@@ -6,6 +6,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { placesOf, timeHomes, type Place } from "./commute.ts";
+import { ceilingOf, dedupe, depositOver, duplicates, nowOf, onMarket, rentMedians, vsArea, vsNow, type Copy, type Medians, type Now } from "./compare.ts";
 import { crimeHomes, crimeText } from "./crime.ts";
 import { allIn, allInText, certHomes, certText, costsOf, type Costs } from "./epc.ts";
 import { getState, listHomes, markNotified, saveHomeReads, setState, unreadHomes, type Commute, type HomeRead, type HomeRow, type UnreadHome } from "./db.ts";
@@ -168,7 +169,7 @@ async function charts(dir: string, id: string, urls: string[]): Promise<Found> {
   return found;
 }
 
-function block(ref: string, h: UnreadHome, found: Found, places: Place[], descriptionChars: number, costs: Costs | null): string {
+function block(ref: string, h: UnreadHome, found: Found, places: Place[], descriptionChars: number, costs: Costs | null, medians: Medians): string {
   const d = h.details;
   const said = (label: string, value: unknown) => (value === null || value === undefined || value === "" ? [] : [`${label}: ${value}`]);
   const features = Object.entries(d.features).map(([k, v]) => `${k} ${v.join(", ")}`).join("; ");
@@ -178,6 +179,8 @@ function block(ref: string, h: UnreadHome, found: Found, places: Place[], descri
     ...said("Available", d.availableFrom),
     ...said("Furnishing", d.furnish),
     ...said("Deposit", d.deposit === null ? null : `£${d.deposit}`),
+    ...said("Deposit check", depositOver(h)),
+    ...said("Rent against listings like it up now", vsArea(h, medians)),
     ...said("Minimum term", d.minTermMonths === null ? null : `${d.minTermMonths} months`),
     ...said("Let type", d.letType),
     ...said("Council tax band", d.councilTaxBand),
@@ -216,6 +219,7 @@ export async function prepareHomesRead(
   const crime = await crimeHomes(task, config).catch((err: Error) => `failed, ${err.message}`);
   const certs = await certHomes(task, config).catch((err: Error) => `failed, ${err.message}`);
   const costs = costsOf(config);
+  const medians = rentMedians(listHomes(task).filter((h) => h.up), ceilingOf(config));
   const places = placesOf(config);
   await writeFile(join(dir, "wants.md"), await readFile(join(taskDir, "wants.md"), "utf8"));
   const { maxListings = 40, descriptionChars = 2500 } = readConfig(config);
@@ -241,7 +245,7 @@ export async function prepareHomesRead(
       images += pictures;
       const ref = `h${blocks.length + 1}`;
       refs[ref] = h.id;
-      const text = block(ref, h, found[j], places, descriptionChars, costs);
+      const text = block(ref, h, found[j], places, descriptionChars, costs, medians);
       blocks.push(`${text}${found[j].charts.map((c) => `\n(${c.file})`).join("")}`);
       parts.push({ text }, ...found[j].charts);
     }
@@ -343,7 +347,11 @@ function droppedFrom(h: HomeRow, since: string): number | null {
   return before && last && last.at >= since && last.pcm < before.pcm ? before.pcm : null;
 }
 
-function message(h: HomeRow, was: number | null, places: Place[], costs: Costs | null): string {
+// What a message compares a listing with (src/compare.ts).
+export type Context = { places: Place[]; costs: Costs | null; medians: Medians; now: Now | null; dupes: Map<string, Copy[]> };
+
+export function message(h: HomeRow, was: number | null, x: Context): string {
+  const { places, costs } = x;
   const r = h.read!;
   const d = h.details;
   const facts = [
@@ -356,11 +364,16 @@ function message(h: HomeRow, was: number | null, places: Place[], costs: Costs |
     `<b>${pounds(h.pricePcm)} pcm · ${escapeHtml(titleOf(h))}</b>${was ? ` · was ${pounds(was)}` : ""}`,
     `EPC ${r.epcBand}${r.epcScore ? ` ${r.epcScore}` : ""} · Fit ${r.fit ?? "?"}/5`,
     costs ? escapeHtml(allInText(allIn(h, costs))) : "",
+    escapeHtml(vsArea(h, x.medians) ?? ""),
+    escapeHtml(depositOver(h) ?? ""),
     escapeHtml(h.address),
     commuteTimes(h.commute, places).map((t) => t.text).join(" · "),
     h.crime ? `Crime ${escapeHtml(crimeText(h.crime))}` : "",
     r.fitWhy ? `<i>${escapeHtml(r.fitWhy)}</i>` : "",
+    x.now ? escapeHtml(vsNow(h, x.now, places) ?? "") : "",
     facts.join(" · "),
+    escapeHtml(onMarket(h)),
+    ...(x.dupes.get(h.id) ?? []).map((c) => `${c.sure ? "Also" : "Maybe also"} listed by ${escapeHtml(c.home.agent)} at ${pounds(c.home.pricePcm)}`),
     [h.agent, h.details?.phone ?? h.phone].filter(Boolean).map((x) => escapeHtml(x!)).join(" · "),
   ]
     .filter(Boolean)
@@ -380,7 +393,10 @@ export async function notifyHomes(task: string, config: TaskConfig): Promise<str
   const n = notifyConfig(config);
   const m = matchOf(config);
   const places = placesOf(config);
-  const matching = listHomes(task).filter((h) => h.up && matches(h, m, places));
+  const up = listHomes(task).filter((h) => h.up);
+  const matching = up.filter((h) => matches(h, m, places));
+  const dupes = duplicates(up);
+  const context: Context = { places, costs: costsOf(config), medians: rentMedians(up, ceilingOf(config)), now: nowOf(task, config), dupes };
   const buttons = (url?: string) => [...(url ? [{ text: "Rightmove", url }] : []), ...(n.link ? [{ text: "All matches", url: n.link }] : [])];
   const since = getState(`notify-since:${task}`);
   if (!since) {
@@ -395,23 +411,32 @@ export async function notifyHomes(task: string, config: TaskConfig): Promise<str
   const settled = (h: HomeRow) => !h.stale && (!timing || places.every((p) => p.max === undefined || h.commute[p.name]));
   // Up on Rightmove at most three days before it was first collected: new there too.
   const fresh = (h: HomeRow) => h.firstSeen >= since && (!h.listedAt || Date.parse(h.firstSeen) - Date.parse(h.listedAt) <= 3 * 86_400_000);
-  const due = matching
+  const candidates = matching
     .filter((h) => settled(h) && ((h.beds ?? 0) >= n.minBeds || (h.read?.fit ?? 0) >= n.minFit))
     .filter((h) => (h.notifiedPcm === null ? fresh(h) || droppedFrom(h, since) !== null : h.pricePcm < h.notifiedPcm))
     .sort((a, b) => (b.read?.fit ?? 0) - (a.read?.fit ?? 0) || a.pricePcm - b.pricePcm);
+  // The same home from another agent goes once (src/compare.ts dedupe); a copy held back is marked as
+  // messaged with the one sent for it, whose message names it.
+  const { send, held } = dedupe(candidates, dupes);
+  for (const h of held.get("") ?? []) markNotified(h.id, h.pricePcm);
+  const due = send;
+  const notified = (h: HomeRow) => {
+    markNotified(h.id, h.pricePcm);
+    for (const k of held.get(h.id) ?? []) markNotified(k.id, k.pricePcm);
+  };
   let sent = 0;
   try {
     for (const h of due.slice(0, n.maxMessages)) {
       if (sent) await sleep(1100);
-      await sendTelegram({ html: message(h, h.notifiedPcm ?? droppedFrom(h, since), places, costsOf(config)), photo: h.image, buttons: buttons(h.url) });
-      markNotified(h.id, h.pricePcm);
+      await sendTelegram({ html: message(h, h.notifiedPcm ?? droppedFrom(h, since), context), photo: h.image, buttons: buttons(h.url) });
+      notified(h);
       sent++;
     }
     const more = due.length - sent;
     if (more > 0) {
       await sleep(1100);
       await sendTelegram({ html: `And ${more} more new match${more === 1 ? "" : "es"} on the page.`, buttons: buttons() });
-      for (const h of due.slice(sent)) markNotified(h.id, h.pricePcm);
+      for (const h of due.slice(sent)) notified(h);
     }
   } catch (err) {
     return `${sent} sent, then ${(err as Error).message}`;

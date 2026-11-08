@@ -6,7 +6,8 @@
 // crimes table for the newest `months` months. Each listing then gets the crimes within
 // `metres` of it over those months, shoplifting left out (it counts shops, not streets), as a yearly
 // figure and a level from task.json's `levels`.
-import { crimeMonths, dropCrimeMonths, homesToScore, loadCrimes, saveCrimeMonth, saveCrimes, type Crime, type CrimeNear } from "./db.ts";
+import { nowConfig, nowKey } from "./compare.ts";
+import { crimeMonths, dropCrimeMonths, getState, homesToScore, loadCrimes, saveCrimeMonth, saveCrimes, setState, type Crime, type CrimeNear } from "./db.ts";
 import type { TaskConfig } from "./runner.ts";
 
 const API = "https://data.police.uk/api";
@@ -151,29 +152,35 @@ export async function crimeHomes(task: string, config: TaskConfig): Promise<stri
   }
   const span = `${months[0]} to ${months.at(-1)}`;
   const yearly = (n: number) => Math.round((n * 12) / months.length);
+  // The crimes within `metres` of a point, or null when its circle reaches past the area fetched.
+  const around = (lat: number, lng: number): CrimeNear | null => {
+    const mLat = 110_540;
+    const mLng = 111_320 * Math.cos((lat * Math.PI) / 180);
+    if (lat - c.metres / mLat < area.s || lat + c.metres / mLat > area.n || lng - c.metres / mLng < area.w || lng + c.metres / mLng > area.e) return null;
+    const counts: Record<string, number> = {};
+    const [row, col] = key(lat, lng).split(",").map(Number);
+    for (let r = row - 1; r <= row + 1; r++) {
+      for (let k = col - 1; k <= col + 1; k++) {
+        for (const x of grid.get(`${r},${k}`) ?? []) {
+          if (((x.lat - lat) * mLat) ** 2 + ((x.lng - lng) * mLng) ** 2 <= c.metres ** 2) counts[x.category] = (counts[x.category] ?? 0) + 1;
+        }
+      }
+    }
+    const perYear = yearly(Object.values(counts).reduce((a, b) => a + b, 0));
+    const by = Object.fromEntries(Object.entries(counts).map(([k, n]) => [k, yearly(n)]));
+    return { perYear, level: levelOf(perYear, c.levels), by, span, metres: c.metres };
+  };
   const changed = new Map<string, { crime: CrimeNear | null; stamp: boolean }>();
   let outside = 0;
   for (const h of homesToScore(task)) {
-    const mLat = 110_540;
-    const mLng = 111_320 * Math.cos((h.lat * Math.PI) / 180);
-    let crime: CrimeNear | null = null;
-    if (h.lat - c.metres / mLat >= area.s && h.lat + c.metres / mLat <= area.n && h.lng - c.metres / mLng >= area.w && h.lng + c.metres / mLng <= area.e) {
-      const counts: Record<string, number> = {};
-      const [row, col] = key(h.lat, h.lng).split(",").map(Number);
-      for (let r = row - 1; r <= row + 1; r++) {
-        for (let k = col - 1; k <= col + 1; k++) {
-          for (const x of grid.get(`${r},${k}`) ?? []) {
-            if (((x.lat - h.lat) * mLat) ** 2 + ((x.lng - h.lng) * mLng) ** 2 <= c.metres ** 2) counts[x.category] = (counts[x.category] ?? 0) + 1;
-          }
-        }
-      }
-      const perYear = yearly(Object.values(counts).reduce((a, b) => a + b, 0));
-      const by = Object.fromEntries(Object.entries(counts).map(([k, n]) => [k, yearly(n)]));
-      crime = { perYear, level: levelOf(perYear, c.levels), by, span, metres: c.metres };
-    } else outside++;
+    const crime = around(h.lat, h.lng);
+    if (!crime) outside++;
     if (JSON.stringify(crime) !== JSON.stringify(h.crime)) changed.set(h.id, { crime, stamp: crime?.level !== h.crime?.level });
   }
   saveCrimes(changed);
+  // The reader's home now (src/compare.ts), scored the same way, to compare listings with.
+  const now = nowConfig(config);
+  if (now) setState(nowKey(task), JSON.stringify({ ...JSON.parse(getState(nowKey(task)) ?? "{}"), crime: around(now.lat, now.lng) }));
   const fetchedNote = fetched.added.length ? `fetched ${fetched.added.join(", ")}; ` : "";
   return `${fetchedNote}${changed.size} listings scored${outside ? `, ${outside} outside the area` : ""}${failed}`;
 }

@@ -17,6 +17,7 @@
   "read": { "maxListings": 40, "descriptionChars": 2500 },
   "match": { "rent": 850, "rentWithBills": 1000, "minBeds": 1, "maxBeds": 3, "epc": "C" },
   "notify": { "minBeds": 2, "minFit": 4, "maxMessages": 10, "link": "https://pergent.hamzatekin.dev/homes" },
+  "now": { "label": "your house share", "address": "23 Watcombe Circus, NG5 2DU", "lat": 52.976537, "lng": -1.153216, "epc": { "band": "D", "score": 66 } },
   "register": { "maxRequests": 1500, "maxAlike": 5 },
   "costs": {
     "prices": "Ofgem price cap, Oct to Dec 2026, Direct Debit",
