@@ -12,7 +12,7 @@ has a separate living room big enough for a sofa bed. Studios are out.
 
 ## Getting around
 
-- I have no car, so parking does not matter.
+- I have no car today. Private parking, such as a driveway, is still a plus.
 - I work at NG8 6AT, next to the Phoenix Park tram stop.
 - I go into the city centre often, to the Motorpoint Arena for Nottingham Panthers games and to the
   City Ground for Nottingham Forest games, most weeks.
@@ -37,17 +37,38 @@ has a separate living room big enough for a sofa bed. Studios are out.
   a drawback: they cost more to run and are harder to keep warm. The EPC already counts the price of
   the fuel, so electric heating does not make a lower EPC acceptable.
 
-## Not said yet
+## Other things
 
-- Furnished or unfurnished, pets, a garden, when I want to move in.
+- Furnished or unfurnished are both fine; furnished is a plus.
+- I have no pets and do not plan any, so a no-pets rule does not matter.
+- A garden is not needed; one is a plus.
+- I give one month's notice on my house share, so I can move about a month after agreeing a let. A place
+  available now or in the next two months suits me; one not available for over three months is a
+  drawback.
+
+## Would love
+
+What my ideal home has. None of these is needed, and missing them never lowers the fit:
+
+- An EPC A (a B comes close).
+- A short, direct trip: one bus or tram with no change, 25 minutes or less to work and 15 or less to the
+  centre.
+- Crime low or very low.
+- A supermarket (Tesco, Lidl, Aldi or similar) a short walk away, when the listing says so.
+- A quiet residential street, when the listing says so (not on a main road or above shops or bars).
+- Private parking, such as a driveway.
+- A garden, or furnished.
 
 ## How to judge the fit (1 to 5)
 
 - 5: within the limits, two bedrooms (or a big one-bedroom with a separate lounge), an easy bus or tram
   to both work and the centre, crime average or lower, gas or a heat pump, nothing wrong in the listing.
-- 4: within the limits with one real drawback.
+- 4: within the limits with one real drawback. Three or more of the "Would love" things make it a 5,
+  unless the drawback is high crime.
 - 3: within the limits, but two drawbacks, or the listing leaves out something that matters.
 - 2: outside one limit by a little, a poor location for getting to work and the centre, or very high
   crime around it.
 - 1: a studio, far outside the limits, or a red flag (students only, a room in a shared house, damp,
   short let).
+- "Would love" things never make up for a hard limit or very high crime. Name the ones a listing has in
+  the reason.
