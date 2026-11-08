@@ -87,6 +87,57 @@ export type NewJob = {
   body: string;
 };
 
+// A rental listing the homes task found in a Rightmove search (scripts/collect-homes.ts): what the search
+// results say about it. `pricePcm` is the rent a calendar month, worked out from a weekly price.
+export type HomeListing = {
+  id: string;
+  url: string;
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  pricePcm: number;
+  beds: number | null;
+  baths: number | null;
+  /** Rightmove's property type: Flat, Apartment, Terraced, Semi-Detached, Studio... */
+  type: string;
+  agent: string;
+  phone: string | null;
+  image: string | null;
+  summary: string;
+  /** When Rightmove first showed it. */
+  listedAt: string | null;
+  availableFrom: string | null;
+};
+// What a listing's own page adds, fetched once per listing. `epc` are the EPC chart images, which give
+// the rating only as a picture.
+export type HomeDetails = {
+  postcode: string | null;
+  description: string;
+  keyFeatures: string[];
+  furnish: string | null;
+  deposit: number | null;
+  minTermMonths: number | null;
+  letType: string | null;
+  /** "Now" or a date as the page writes it (dd/mm/yyyy). */
+  availableFrom: string | null;
+  councilTaxBand: string | null;
+  councilTaxIncluded: boolean;
+  sqm: number | null;
+  epc: string[];
+  floorplans: string[];
+  images: string[];
+  /** Parking, garden, heating and the rest, as the agent ticked them. */
+  features: Record<string, string[]>;
+  stations: { name: string; miles: number }[];
+  phone: string | null;
+  /** The page says the listing is taken down. */
+  archived: boolean;
+};
+// What a run of collect-homes.ts hands the runner: the listings its searches found (each marked seen
+// now), the pages it fetched, and, when it searched every price band without a failure, when that sweep
+// started: a listing not seen since then has gone.
+export type HomesFile = { sweptAt: string | null; listings: HomeListing[]; details: Record<string, HomeDetails> };
+
 let db: DatabaseSync | undefined;
 
 export function openDb(runsDir: string): DatabaseSync {
@@ -215,6 +266,32 @@ export function openDb(runsDir: string): DatabaseSync {
       run_id           TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS jobs_by_first_seen ON jobs (first_seen);
+    CREATE TABLE IF NOT EXISTS homes (
+      id             TEXT PRIMARY KEY,
+      url            TEXT NOT NULL,
+      address        TEXT NOT NULL,
+      postcode       TEXT,
+      lat            REAL,
+      lng            REAL,
+      price_pcm      INTEGER NOT NULL,
+      prices         TEXT NOT NULL DEFAULT '[]',
+      beds           INTEGER,
+      baths          INTEGER,
+      type           TEXT NOT NULL DEFAULT '',
+      agent          TEXT NOT NULL DEFAULT '',
+      phone          TEXT,
+      image          TEXT,
+      summary        TEXT NOT NULL DEFAULT '',
+      listed_at      TEXT,
+      available_from TEXT,
+      details        TEXT,
+      details_at     TEXT,
+      first_seen     TEXT NOT NULL,
+      last_seen      TEXT NOT NULL,
+      task           TEXT NOT NULL,
+      run_id         TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS homes_by_first_seen ON homes (first_seen);
   `);
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
@@ -365,6 +442,44 @@ export function saveJobs(task: string, runId: string, jobs: NewJob[]) {
         j.salaryPeriod, Number(j.salaryPredicted), j.sponsorship, j.sponsor, j.url, j.postedAt, j.body, now, now, task, runId,
       );
     }
+    use().exec("COMMIT");
+  } catch (err) {
+    use().exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// A listing is stored once, by Rightmove's id. Seen again, it gets the day and what the search says now;
+// a new rent goes on the end of `prices` ([{ at, pcm }], oldest first), so a reduction shows. A page
+// fetched this run fills `details`, and the postcode from it. A complete sweep is remembered in state
+// (`swept:<task>`): the listings not seen since it have gone.
+export function saveHomes(task: string, runId: string, file: HomesFile) {
+  const now = new Date().toISOString();
+  const before = use().prepare("SELECT price_pcm AS pcm, prices FROM homes WHERE id = ?");
+  const upsert = use().prepare(`
+    INSERT INTO homes (id, url, address, lat, lng, price_pcm, prices, beds, baths, type, agent, phone, image, summary, listed_at,
+      available_from, first_seen, last_seen, task, run_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (id) DO UPDATE SET
+      url = excluded.url, address = excluded.address, lat = excluded.lat, lng = excluded.lng, price_pcm = excluded.price_pcm,
+      prices = excluded.prices, beds = excluded.beds, baths = excluded.baths, type = excluded.type, agent = excluded.agent,
+      phone = COALESCE(excluded.phone, homes.phone), image = COALESCE(excluded.image, homes.image), summary = excluded.summary,
+      listed_at = excluded.listed_at, available_from = excluded.available_from, last_seen = excluded.last_seen
+  `);
+  const detail = use().prepare("UPDATE homes SET details = ?, postcode = ?, details_at = ? WHERE id = ?");
+  use().exec("BEGIN");
+  try {
+    for (const h of file.listings) {
+      const old = before.get(h.id) as { pcm: number; prices: string } | undefined;
+      const prices: { at: string; pcm: number }[] = old ? JSON.parse(old.prices) : [];
+      if (!old || old.pcm !== h.pricePcm) prices.push({ at: now, pcm: h.pricePcm });
+      upsert.run(
+        h.id, h.url, h.address, h.lat, h.lng, h.pricePcm, JSON.stringify(prices), h.beds, h.baths, h.type, h.agent, h.phone, h.image,
+        h.summary, h.listedAt, h.availableFrom, now, now, task, runId,
+      );
+    }
+    for (const [id, d] of Object.entries(file.details)) detail.run(JSON.stringify(d), d.postcode, now, id);
+    if (file.sweptAt) setState(`swept:${task}`, file.sweptAt);
     use().exec("COMMIT");
   } catch (err) {
     use().exec("ROLLBACK");

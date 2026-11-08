@@ -1,0 +1,26 @@
+{
+  "schedule": "20 7-23 * * *",
+  "timezone": "Europe/London",
+  "label": "homes",
+  "tab": false,
+  "order": 10,
+  "lang": "en",
+  "before": "node ../../../scripts/collect-homes.ts",
+  "collect": {
+    "area": "5 miles around NG1 (Rightmove's OUTCODE^1752)",
+    "search": {
+      "locationIdentifier": "OUTCODE^1752",
+      "radius": "5.0",
+      "maxPrice": 1100,
+      "includeLetAgreed": false,
+      "dontShow": "student,houseShare,retirement"
+    },
+    "bands": [600, 700, 800, 900, 1000],
+    "skipTypes": ["Land", "Parking", "Garages", "House of Multiple Occupation"],
+    "sweepHours": 20,
+    "quickPages": 5,
+    "delayMs": 2000,
+    "maxPages": 100,
+    "budgetSeconds": 240
+  }
+}
