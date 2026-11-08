@@ -2,6 +2,7 @@ import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
 import { placesOf, type Place } from "#src/commute.ts";
+import { crimeText } from "#src/crime.ts";
 import { getState, listHomes, type HomeRow } from "#src/db.ts";
 import { commuteTimes, matches, matchOf, titleOf, type Match } from "#src/homes.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
@@ -15,7 +16,7 @@ const LIMIT = 100;
 export type Beds = "0" | "1" | "2" | "3";
 export type Epc = "any" | "good" | "unknown" | "poor";
 export type Sort = "fit" | "rent" | "near" | "new";
-export type HomesSearch = { view?: "all"; beds?: Beds; epc?: Epc; area?: string; bills?: true; fit?: true; fresh?: true; reduced?: true; sort?: Sort; more?: true };
+export type HomesSearch = { view?: "all"; beds?: Beds; epc?: Epc; area?: string; bills?: true; fit?: true; fresh?: true; reduced?: true; safer?: true; sort?: Sort; more?: true };
 
 export type HomeItem = {
   id: string;
@@ -32,6 +33,8 @@ export type HomeItem = {
   fitWhy: string;
   /** "Work 38 min (bus 68 + tram)" per commute place, and whether it is over the place's limit. */
   commute: { name: string; text: string; over: boolean }[];
+  /** "high: 412 a year within 300 m (violence 150, …)", and whether it is high or very high. */
+  crime: { text: string; high: boolean } | null;
   facts: string[];
   flags: string[];
   agent: string;
@@ -111,6 +114,7 @@ function item(h: HomeRow, places: Place[]): HomeItem {
     fit: r?.fit ?? null,
     fitWhy: r?.fitWhy ?? "",
     commute: commuteTimes(h.commute, places),
+    crime: h.crime ? { text: `Crime ${crimeText(h.crime)}`, high: h.crime.level === "high" || h.crime.level === "very high" } : null,
     facts: [
       ...(r?.bills === "some" && r.billsWhat ? [`Includes ${r.billsWhat}`] : said("bills", r?.bills)),
       ...(d?.furnish ? [d.furnish] : []),
@@ -152,7 +156,8 @@ export const getHomesPage = createServerFn({ method: "GET" })
         (!data.bills || billsIncluded(h)) &&
         (!data.fit || (h.read?.fit ?? 0) >= 4) &&
         (!data.fresh || fresh(h)) &&
-        (!data.reduced || reducedFrom(h) !== null),
+        (!data.reduced || reducedFrom(h) !== null) &&
+        (!data.safer || (!!h.crime && h.crime.level !== "high" && h.crime.level !== "very high")),
     );
     const sort = data.sort ?? "fit";
     const newest = (a: HomeRow, b: HomeRow) => (b.listedAt ?? b.firstSeen).localeCompare(a.listedAt ?? a.firstSeen);

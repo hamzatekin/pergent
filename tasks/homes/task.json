@@ -17,6 +17,7 @@
   "read": { "maxListings": 40, "descriptionChars": 2500 },
   "match": { "rent": 850, "rentWithBills": 1000, "minBeds": 1, "maxBeds": 3, "epc": "C" },
   "notify": { "minBeds": 2, "minFit": 4, "maxMessages": 10, "link": "https://pergent.hamzatekin.dev/homes" },
+  "crime": { "centre": { "lat": 52.9548, "lng": -1.1505 }, "radiusKm": 9.5, "metres": 300, "months": 12, "levels": [90, 160, 230, 415] },
   "commute": {
     "places": [
       { "name": "Work", "where": "NG8 6AT, by Phoenix Park tram stop", "lat": 52.987327, "lng": -1.204338, "arrive": "Mon 08:45", "max": 40 },

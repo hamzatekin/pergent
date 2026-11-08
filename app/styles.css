@@ -1091,6 +1091,13 @@ a.chip:active {
 .home-commute [data-over] {
   @apply text-failed;
 }
+/* The crime around it; high or very high in the warning colour. */
+.home-crime {
+  @apply text-[12px] tabular-nums text-muted text-pretty;
+}
+.home-crime[data-high] {
+  @apply text-failed;
+}
 .home-side {
   @apply col-start-2 flex flex-wrap items-center gap-1 sm:col-start-3 sm:row-start-1 sm:flex-col sm:items-end;
 }

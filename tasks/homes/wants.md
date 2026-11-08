@@ -24,6 +24,19 @@ has a separate living room big enough for a sofa bed. Studios are out.
   (bus 68, then the tram). At most 40 minutes to work and 25 to the centre; shorter is better, and
   a quick trip to the grounds is a plus.
 
+## Safety
+
+- Each listing comes with the crime the police recorded within 300 metres over the last year, and its
+  level against the other listings in this search, from very low to very high. I do not want to live
+  somewhere with a lot of crime (the worst parts of St Ann's are the kind of place I mean): high is a
+  real drawback, and very high keeps a place from a 4 or a 5.
+
+## Heating
+
+- Gas central heating is what I want. A heat pump is fine too. Electric heaters or storage heaters are
+  a drawback: they cost more to run and are harder to keep warm. The EPC already counts the price of
+  the fuel, so electric heating does not make a lower EPC acceptable.
+
 ## Not said yet
 
 - Furnished or unfurnished, pets, a garden, when I want to move in.
@@ -31,9 +44,10 @@ has a separate living room big enough for a sofa bed. Studios are out.
 ## How to judge the fit (1 to 5)
 
 - 5: within the limits, two bedrooms (or a big one-bedroom with a separate lounge), an easy bus or tram
-  to both work and the centre, nothing wrong in the listing.
+  to both work and the centre, crime average or lower, gas or a heat pump, nothing wrong in the listing.
 - 4: within the limits with one real drawback.
 - 3: within the limits, but two drawbacks, or the listing leaves out something that matters.
-- 2: outside one limit by a little, or a poor location for getting to work and the centre.
+- 2: outside one limit by a little, a poor location for getting to work and the centre, or very high
+  crime around it.
 - 1: a studio, far outside the limits, or a red flag (students only, a room in a shared house, damp,
   short let).

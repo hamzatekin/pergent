@@ -6,6 +6,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { placesOf, timeHomes, type Place } from "./commute.ts";
+import { crimeHomes, crimeText } from "./crime.ts";
 import { getState, listHomes, markNotified, saveHomeReads, setState, unreadHomes, type Commute, type HomeRead, type HomeRow, type UnreadHome } from "./db.ts";
 import type { Part, TaskConfig } from "./runner.ts";
 import { escapeHtml, sendTelegram, telegramOn } from "./telegram.ts";
@@ -184,6 +185,7 @@ function block(ref: string, h: UnreadHome, found: Found, places: Place[], descri
     ...said("Ticked by the agent", features),
     ...said("Key features", d.keyFeatures.join("; ")),
     ...said("By bus, tram and walking, door to door", commuteTimes(h.commute, places).map((t) => t.text).join(", ")),
+    ...said("Crime around it (police records, against the other listings in this search)", h.crime ? crimeText(h.crime) : null),
     "",
     clip(d.description || h.summary, descriptionChars),
     ...found.register.map((r) => `${ref}'s EPC certificate on the GOV.UK register: ${r}.`),
@@ -203,8 +205,9 @@ export async function prepareHomesRead(
   dir: string,
   taskDir: string,
   config: TaskConfig,
-): Promise<{ listings: number; waiting: number; timed: string; parts: Part[] }> {
+): Promise<{ listings: number; waiting: number; notes: string[]; parts: Part[] }> {
   const timed = await timeHomes(task, config);
+  const crime = await crimeHomes(task, config).catch((err: Error) => `failed, ${err.message}`);
   const places = placesOf(config);
   await writeFile(join(dir, "wants.md"), await readFile(join(taskDir, "wants.md"), "utf8"));
   const { maxListings = 40, descriptionChars = 2500 } = readConfig(config);
@@ -238,7 +241,8 @@ export async function prepareHomesRead(
   const heading = `# Listings to read (${blocks.length})`;
   await writeFile(join(dir, "listings.md"), `${heading}\n\n${blocks.join("\n\n")}\n`);
   await writeFile(join(dir, "read.json"), JSON.stringify({ task, refs }));
-  return { listings: blocks.length, waiting: unread.length - blocks.length, timed, parts: [{ text: heading }, ...parts] };
+  const notes = [timed && `commute: ${timed}`, crime && `crime: ${crime}`].filter(Boolean);
+  return { listings: blocks.length, waiting: unread.length - blocks.length, notes, parts: [{ text: heading }, ...parts] };
 }
 
 type ReadOutput = {
@@ -341,6 +345,7 @@ function message(h: HomeRow, was: number | null, places: Place[]): string {
     `EPC ${r.epcBand}${r.epcScore ? ` ${r.epcScore}` : ""} · Fit ${r.fit ?? "?"}/5`,
     escapeHtml(h.address),
     commuteTimes(h.commute, places).map((t) => t.text).join(" · "),
+    h.crime ? `Crime ${escapeHtml(crimeText(h.crime))}` : "",
     r.fitWhy ? `<i>${escapeHtml(r.fitWhy)}</i>` : "",
     facts.join(" · "),
     [h.agent, h.details?.phone ?? h.phone].filter(Boolean).map((x) => escapeHtml(x!)).join(" · "),
