@@ -561,10 +561,14 @@ export type HomeRead = {
   garden: string;
   /** gas, electric, storage heaters, heat pump, communal or not said. */
   heating: string;
+  /** private (a driveway, garage, allocated or off-street space), on street, none or not said; absent from reads before 2026-11-08. */
+  parking?: string;
+  /** quiet (the listing says so: a quiet or residential street, a cul-de-sac), busy (a main road, above shops or bars) or not said; absent before 2026-11-08. */
+  street?: string;
   /** Floor area in square metres when the listing gives one. */
   sqm: number | null;
   redFlags: string[];
-  /** How well the listing fits the reader (tasks/homes/wants.md), 1 to 5; null when the answer gave none. */
+  /** The model's fit, 1 to 5, from before the score out of 10 (src/score.ts) replaced it; null since. */
   fit: number | null;
   fitWhy: string;
 };

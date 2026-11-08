@@ -36,7 +36,7 @@ export const crimeConfig = (config: TaskConfig | undefined): CrimeConfig | null 
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-type Box = { s: number; w: number; n: number; e: number };
+export type Box = { s: number; w: number; n: number; e: number };
 type PoliceCrime = { id: number; category: string; month: string; location: { latitude: string; longitude: string; street?: { name?: string } } };
 
 // One tile's crimes for a month; a tile over the API's 10,000 (it answers 503) is split in four, twice at
@@ -75,7 +75,7 @@ async function tile(month: string, b: Box, depth = 0): Promise<Crime[]> {
 
 // The area fetched: a square around the search's centre reaching `radiusKm` plus `metres`, so a listing
 // up to `radiusKm` away has its whole circle inside. Its key in state, so a changed config refetches.
-function areaOf(c: CrimeConfig): Box {
+export function areaOf(c: CrimeConfig): Box {
   const dLat = (c.radiusKm + c.metres / 1000) / 110.54;
   const dLng = (c.radiusKm + c.metres / 1000) / (111.32 * Math.cos((c.centre.lat * Math.PI) / 180));
   return { s: c.centre.lat - dLat, w: c.centre.lng - dLng, n: c.centre.lat + dLat, e: c.centre.lng + dLng };
