@@ -159,9 +159,9 @@ const OUTPUTS: Record<string, Output> = {
   },
   homes: {
     prepare: async (task, _runId, dir, config) => {
-      const { listings, waiting, timed, parts } = await prepareHomesRead(task, dir, join(TASKS_DIR, task), config);
+      const { listings, waiting, notes, parts } = await prepareHomesRead(task, dir, join(TASKS_DIR, task), config);
       const read = listings ? `${listings} listings to read${waiting ? `, ${waiting} more waiting for the next runs` : ""}` : "No listing to read";
-      return { go: listings > 0, note: timed ? `${read}; commute: ${timed}` : read, parts };
+      return { go: listings > 0, note: [read, ...notes].join("; "), parts };
     },
     schema: homesReadSchema,
     save: (runId, output, dir, config) => saveHomesRead(runId, output, dir, config),

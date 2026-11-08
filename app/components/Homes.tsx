@@ -27,7 +27,7 @@ export function HomesBoard({ data }: { data: HomesPage }) {
   const s = data.search;
   const all = s.view === "all";
   const m = data.match;
-  const toggle = (key: "bills" | "fit" | "fresh" | "reduced") => ({ ...s, [key]: s[key] ? undefined : true, more: undefined });
+  const toggle = (key: "bills" | "fit" | "fresh" | "reduced" | "safer") => ({ ...s, [key]: s[key] ? undefined : true, more: undefined });
   const header = (
     <>
       <h1 className="crumb">
@@ -97,6 +97,9 @@ export function HomesBoard({ data }: { data: HomesPage }) {
         <Link to="/homes" search={toggle("reduced")} className="chip" data-active={!!s.reduced}>
           Reduced
         </Link>
+        <Link to="/homes" search={toggle("safer")} className="chip" data-active={!!s.safer}>
+          Lower crime
+        </Link>
       </nav>
       {data.areas.length > 1 && (
         <nav className="feed-chips scroll">
@@ -156,6 +159,11 @@ function HomeLine({ h }: { h: HomeItem }) {
                   <span data-over={c.over || undefined}>{c.text}</span>
                 </span>
               ))}
+            </span>
+          )}
+          {h.crime && (
+            <span className="home-crime" data-high={h.crime.high || undefined}>
+              {h.crime.text}
             </span>
           )}
           {h.fitWhy && <span className="job-why">{h.fitWhy}</span>}

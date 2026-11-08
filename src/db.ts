@@ -292,6 +292,16 @@ export function openDb(runsDir: string): DatabaseSync {
       run_id         TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS homes_by_first_seen ON homes (first_seen);
+    -- The police's street-level crimes around the homes search (src/crime.ts), the newest months only.
+    CREATE TABLE IF NOT EXISTS crimes (
+      id       INTEGER PRIMARY KEY,
+      month    TEXT NOT NULL,
+      category TEXT NOT NULL,
+      lat      REAL NOT NULL,
+      lng      REAL NOT NULL,
+      street   TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS crimes_by_month ON crimes (month);
   `);
   // Added after the first deployments; a database from before gets the column on start.
   const columns = db.prepare("PRAGMA table_info(runs)").all() as { name: string }[];
@@ -502,6 +512,9 @@ export function saveHomes(task: string, runId: string, file: HomesFile) {
 const HOME_COLUMNS = {
   commute: "TEXT",
   commute_at: "TEXT",
+  // The crime around it (src/crime.ts), as JSON (CrimeNear); crime_at moves only when its level does.
+  crime: "TEXT",
+  crime_at: "TEXT",
   epc_band: "TEXT",
   epc_score: "INTEGER",
   epc_from: "TEXT",
@@ -546,11 +559,82 @@ export type HomeRead = {
 // rides ("bus 68 + tram") for a place with a limit. A place not in it has not been timed.
 export type Commute = Record<string, { min: number | null; via?: string }>;
 
-// A listing waiting for the model: the search's fields, its page and its commute.
-export type UnreadHome = HomeListing & { postcode: string | null; details: HomeDetails; commute: Commute };
+// A street-level crime as the police publish it (src/crime.ts), and what is near a listing: the crimes
+// within `metres` a year over `span` ("2025-10 to 2026-09"), in all and by police category, and their level.
+export type Crime = { id: number; month: string; category: string; lat: number; lng: number; street: string };
+export type CrimeNear = { perYear: number; level: string; by: Record<string, number>; span: string; metres: number };
 
-// The listings whose page has been fetched and that no read has seen, or whose rent or commute times
-// changed since the read (both go into the fit), still up (seen in the last complete sweep or since), the
+// The months fetched for `area` (src/crime.ts), kept in state rather than read off the rows, so a month
+// with no crimes in it still counts as fetched; a different area has none.
+export function crimeMonths(area: string): string[] {
+  return getState("crime-area") === area ? (JSON.parse(getState("crime-months") ?? "[]") as string[]) : [];
+}
+
+// A month's crimes, whole: what was kept for it is replaced in one go. The first month of a new area
+// clears the old area's crimes.
+export function saveCrimeMonth(area: string, month: string, crimes: Crime[]) {
+  const insert = use().prepare("INSERT OR IGNORE INTO crimes (id, month, category, lat, lng, street) VALUES (?, ?, ?, ?, ?, ?)");
+  use().exec("BEGIN");
+  try {
+    if (getState("crime-area") !== area) {
+      use().exec("DELETE FROM crimes");
+      setState("crime-area", area);
+      setState("crime-months", "[]");
+    }
+    use().prepare("DELETE FROM crimes WHERE month = ?").run(month);
+    for (const c of crimes) insert.run(c.id, c.month, c.category, c.lat, c.lng, c.street);
+    setState("crime-months", JSON.stringify([...new Set([...crimeMonths(area), month])].sort()));
+    use().exec("COMMIT");
+  } catch (err) {
+    use().exec("ROLLBACK");
+    throw err;
+  }
+}
+
+export function dropCrimeMonths(keep: string[]) {
+  if (!keep.length) return;
+  use().prepare(`DELETE FROM crimes WHERE month NOT IN (${keep.map(() => "?").join(",")})`).run(...keep);
+  const months = JSON.parse(getState("crime-months") ?? "[]") as string[];
+  setState("crime-months", JSON.stringify(months.filter((m) => keep.includes(m))));
+}
+
+export function loadCrimes(): { category: string; lat: number; lng: number }[] {
+  return use().prepare("SELECT category, lat, lng FROM crimes").all() as { category: string; lat: number; lng: number }[];
+}
+
+// The listings still up with a location, and the crime they have now.
+export function homesToScore(task: string): { id: string; lat: number; lng: number; crime: CrimeNear | null }[] {
+  const swept = getState(`swept:${task}`) ?? "";
+  const rows = use()
+    .prepare("SELECT id, lat, lng, crime FROM homes WHERE task = ? AND lat IS NOT NULL AND lng IS NOT NULL AND last_seen >= ?")
+    .all(task, swept) as { id: string; lat: number; lng: number; crime: string | null }[];
+  return rows.map((r) => ({ ...r, crime: r.crime ? (JSON.parse(r.crime) as CrimeNear) : null }));
+}
+
+// `stamp`: the level changed (or is new, or gone), which has the listing read again for its fit. A
+// listing outside the area fetched has no crime figure (null).
+export function saveCrimes(changes: Map<string, { crime: CrimeNear | null; stamp: boolean }>) {
+  const now = new Date().toISOString();
+  const update = use().prepare("UPDATE homes SET crime = ?, crime_at = CASE WHEN ? THEN ? ELSE crime_at END WHERE id = ?");
+  use().exec("BEGIN");
+  try {
+    for (const [id, { crime, stamp }] of changes) update.run(crime ? JSON.stringify(crime) : null, stamp ? 1 : 0, now, id);
+    use().exec("COMMIT");
+  } catch (err) {
+    use().exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// A listing waiting for the model: the search's fields, its page and its commute.
+export type UnreadHome = HomeListing & { postcode: string | null; details: HomeDetails; commute: Commute; crime: CrimeNear | null };
+
+// A read made at another rent, or before the listing's commute times or crime level: both go into the
+// fit, so it is read again (the old read shows until then).
+const STALE = "(read_pcm IS NOT price_pcm OR commute_at > read_at OR crime_at > read_at)";
+
+// The listings whose page has been fetched and that no read has seen, or whose rent, commute times or
+// crime level changed since the read (both go into the fit), still up (seen in the last complete sweep or since), the
 // likely ones first (1 to 3 bedrooms within `maxRent`), newest first. A re-read listing keeps its old
 // read until the new one replaces it.
 export function unreadHomes(task: string, maxRent: number): UnreadHome[] {
@@ -558,12 +642,12 @@ export function unreadHomes(task: string, maxRent: number): UnreadHome[] {
   const rows = use()
     .prepare(`
       SELECT id, url, address, postcode, lat, lng, price_pcm AS pricePcm, beds, baths, type, agent, phone, image, summary,
-        listed_at AS listedAt, available_from AS availableFrom, details, commute
-      FROM homes WHERE task = ? AND details IS NOT NULL AND (read_at IS NULL OR read_pcm IS NOT price_pcm OR commute_at > read_at) AND last_seen >= ?
+        listed_at AS listedAt, available_from AS availableFrom, details, commute, crime
+      FROM homes WHERE task = ? AND details IS NOT NULL AND (read_at IS NULL OR ${STALE}) AND last_seen >= ?
       ORDER BY (price_pcm <= ? AND beds BETWEEN 1 AND 3) DESC, listed_at DESC, id
     `)
-    .all(task, swept, maxRent) as unknown as (Omit<UnreadHome, "details" | "commute"> & { details: string; commute: string | null })[];
-  return rows.map((r) => ({ ...r, details: JSON.parse(r.details), commute: JSON.parse(r.commute ?? "{}") }));
+    .all(task, swept, maxRent) as unknown as (Omit<UnreadHome, "details" | "commute" | "crime"> & { details: string; commute: string | null; crime: string | null })[];
+  return rows.map((r) => ({ ...r, details: JSON.parse(r.details), commute: JSON.parse(r.commute ?? "{}"), crime: r.crime ? JSON.parse(r.crime) : null }));
 }
 
 // The listings still up, with a location, that have not been timed to every one of `places` (names).
@@ -604,8 +688,9 @@ export type HomeRow = HomeListing & {
   commute: Commute;
   /** The rent a message went out at, null when none has. */
   notifiedPcm: number | null;
-  /** Read, but at another rent or before its commute times: unreadHomes has it waiting to be read again. */
+  /** Read, but at another rent, or before its commute times or crime level: waiting to be read again. */
   stale: boolean;
+  crime: CrimeNear | null;
 };
 
 export function listHomes(task: string): HomeRow[] {
@@ -615,11 +700,12 @@ export function listHomes(task: string): HomeRow[] {
       SELECT id, url, address, postcode, lat, lng, price_pcm AS pricePcm, prices, beds, baths, type, agent, phone, image, summary,
         listed_at AS listedAt, available_from AS availableFrom, details, first_seen AS firstSeen, last_seen AS lastSeen,
         epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, notified_pcm AS notifiedPcm,
-        (read_at IS NOT NULL AND (read_pcm IS NOT price_pcm OR commute_at > read_at)) AS stale
+        (read_at IS NOT NULL AND ${STALE}) AS stale, crime
       FROM homes WHERE task = ?
     `)
-    .all(task) as unknown as (Omit<HomeRow, "details" | "prices" | "up" | "read" | "commute"> & {
+    .all(task) as unknown as (Omit<HomeRow, "details" | "prices" | "up" | "read" | "commute" | "crime"> & {
     commute: string | null;
+    crime: string | null;
     details: string | null;
     prices: string;
     epc_band: string | null;
@@ -630,9 +716,10 @@ export function listHomes(task: string): HomeRow[] {
     read: string | null;
     read_at: string | null;
   })[];
-  return rows.map(({ details, prices, epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, ...r }) => ({
+  return rows.map(({ details, prices, epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, crime, ...r }) => ({
     ...r,
     commute: JSON.parse(commute ?? "{}"),
+    crime: crime ? JSON.parse(crime) : null,
     stale: !!r.stale,
     details: details ? JSON.parse(details) : null,
     prices: JSON.parse(prices),
