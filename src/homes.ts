@@ -396,11 +396,11 @@ export async function saveHomesRead(runId: string, output: unknown, dir: string,
 const pounds = (n: number) => `£${n.toLocaleString("en-GB")}`;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// task.json's "notify": who gets a message (a match with `minBeds` bedrooms or more, or one scoring
-// the score's `good` or more), how long after it was first collected a listing still counts as new
-// (`newDays`: a changed weight or a new shop can lift a listing's score while it sits on the page, and
-// those are not messaged), at most `maxMessages` a run, and `link`, the page the message's button opens.
-const notifyConfig = (config: TaskConfig) => ({ minBeds: 2, newDays: 7, maxMessages: 10, link: "", ...((config.notify ?? {}) as Partial<{ minBeds: number; newDays: number; maxMessages: number; link: string }>) });
+// task.json's "notify": how long after it was first collected a listing still counts as new (`newDays`:
+// a changed weight or a new shop can lift a listing's score while it sits on the page, and those are not
+// messaged), at most `maxMessages` a run, and `link`, the page the message's button opens. A match gets a
+// message when it scores the score's `good` or more.
+const notifyConfig = (config: TaskConfig) => ({ newDays: 7, maxMessages: 10, link: "", ...((config.notify ?? {}) as Partial<{ newDays: number; maxMessages: number; link: string }>) });
 
 // The rent before the last change, when the last change was a drop made at or after `since`.
 function droppedFrom(h: HomeRow, since: string): number | null {
@@ -482,7 +482,7 @@ export async function notifyHomes(task: string, config: TaskConfig): Promise<str
   const fresh = (h: HomeRow) =>
     h.firstSeen >= since && Date.now() - Date.parse(h.firstSeen) <= n.newDays * 86_400_000 && (!h.listedAt || Date.parse(h.firstSeen) - Date.parse(h.listedAt) <= 3 * 86_400_000);
   const candidates = matching
-    .filter((h) => settled(h) && ((h.beds ?? 0) >= n.minBeds || score(h) >= scores.good))
+    .filter((h) => settled(h) && score(h) >= scores.good)
     .filter((h) => (h.notifiedPcm === null ? fresh(h) || droppedFrom(h, since) !== null : h.pricePcm < h.notifiedPcm))
     .sort((a, b) => score(b) - score(a) || a.pricePcm - b.pricePcm);
   // The same home from another agent goes once (src/compare.ts dedupe); a copy held back is marked as
