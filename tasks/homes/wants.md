@@ -1,8 +1,8 @@
 # What I want from a rented home in Nottingham
 
-I rent on my own. My family (3 or 4 people) come to visit and need somewhere to sleep, so a second
-bedroom matters. A one-bedroom place can still be right if it is clearly better in every other way and
-has a separate living room big enough for a sofa bed. Studios are out.
+I rent on my own, so a one-bedroom place is what I want. A second bedroom is fine within the rent but
+not needed, and a one-bedroom place is never worse for not having one. A separate living room is a plus
+over an open-plan one. Studios are out.
 
 ## Hard limits
 

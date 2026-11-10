@@ -22,12 +22,12 @@ export type ScoreConfig = {
   extras: { two: number; four: number };
   veryHighCrime: number;
   redFlag: number;
-  /** A good score: the page's chip, and what a one-bedroom needs for a message. */
+  /** A good score: the page's chip, and what a match needs for a message. */
   good: number;
 };
 
 const DEFAULTS: ScoreConfig = {
-  beds: { two: 2, oneWithLounge: 1.5, one: 0.5 },
+  beds: { two: 2, oneWithLounge: 2, one: 1.5 },
   epc: { A: 2, B: 1.5, C: 1 },
   commute: {},
   crime: { "very low": 1.5, low: 1, average: 0.5 },
