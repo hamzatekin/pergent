@@ -2,6 +2,7 @@
   "schedule": "0 */3 * * *",
   "timezone": "Europe/London",
   "label": "ideas",
+  "radarLabel": "Small business",
   "tab": false,
   "order": 5,
   "lang": "en",

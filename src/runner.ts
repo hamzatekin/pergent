@@ -10,7 +10,7 @@ import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
 import { prepareRead, readSchema, saveReadOutput } from "./jobs.ts";
 import { homesReadSchema, prepareHomesRead, saveHomesRead } from "./homes.ts";
-import { RADAR, briefSchema, judgeSchema, prepareBrief, prepareJudge, prepareSort, saveBriefOutput, saveJudgeOutput, saveSortOutput, sortSchema } from "./ideas.ts";
+import { briefSchema, judgeSchema, prepareBrief, prepareJudge, prepareSort, radarOf, saveBriefOutput, saveJudgeOutput, saveSortOutput, sortSchema } from "./ideas.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -135,15 +135,15 @@ const OUTPUTS: Record<string, Output> = {
   },
   judge: {
     prepare: async (_task, _runId, dir, config) => {
-      const { problems } = await prepareJudge(dir, config, listMutes(RADAR));
+      const { problems } = await prepareJudge(dir, config, listMutes(radarOf(config)));
       return { go: problems > 0, note: problems ? `${problems} problems to judge` : "Nothing to judge" };
     },
     schema: judgeSchema,
     save: (runId, output, dir) => saveJudgeOutput(runId, output, dir),
   },
   brief: {
-    prepare: async (_task, _runId, dir) => {
-      const { problems } = await prepareBrief(dir, listMutes(RADAR));
+    prepare: async (_task, _runId, dir, config) => {
+      const { problems } = await prepareBrief(radarOf(config), dir, listMutes(radarOf(config)));
       return { go: problems > 0, note: problems ? `${problems} problems on the radar` : "Nothing on the radar yet" };
     },
     schema: briefSchema,

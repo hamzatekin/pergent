@@ -108,7 +108,7 @@ function newsletterGroup(cfg: any): SourceGroup | undefined {
   };
 }
 
-// The ideas radar's sources (scripts/collect-posts.ts).
+// A radar's sources (scripts/collect-posts.ts): the ideas radar's and the gym radar's.
 function collectGroups(cfg: any): SourceGroup[] {
   const groups: SourceGroup[] = [];
   const subs = (cfg?.reddit?.subs ?? []) as string[];
@@ -127,6 +127,30 @@ function collectGroups(cfg: any): SourceGroup[] {
     });
   for (const k of (cfg?.khoros ?? []) as { host: string; name?: string }[])
     groups.push({ title: k.name ?? k.host, note: `Its boards, the last ${cfg.forumDays ?? 14} days.`, links: [{ label: k.host, href: `https://${k.host}` }] });
+  const searches = [...((cfg?.reddit?.search ?? []) as { sub: string; query: string }[]).map((s) => ({ ...s, what: "posts" })), ...((cfg?.reddit?.comments ?? []) as { sub: string; query: string }[]).map((s) => ({ ...s, what: "comments" }))];
+  if (searches.length)
+    groups.push({
+      title: plural(new Set(searches.map((s) => s.sub)).size, "subreddit searched", "subreddits searched"),
+      note: "The new posts and comments that match the words, through Arctic Shift.",
+      links: searches.map((s) => ({ label: `r/${s.sub} ${s.what} "${s.query}"`, href: `https://www.reddit.com/r/${s.sub}/search/?q=${encodeURIComponent(s.query)}` })),
+    });
+  const st = cfg?.stores;
+  const apps = (st?.apps ?? []) as { name: string; apple?: number; play?: string }[];
+  if (apps.length) {
+    const cc = ((st.countries ?? ["gb", "us"]) as string[]).map((c) => c.toUpperCase()).join(" and ");
+    const note = `Reviews rated ${st.maxRating ?? 4} stars or less in the ${cc} stores, the last ${st.days ?? 7} days.`;
+    const apple = apps.filter((a) => a.apple);
+    const play = apps.filter((a) => a.play);
+    if (apple.length) groups.push({ title: `App Store, ${plural(apple.length, "app")}`, note, links: apple.map((a) => ({ label: a.name, href: `https://apps.apple.com/gb/app/id${a.apple}` })) });
+    if (play.length) groups.push({ title: `Google Play, ${plural(play.length, "app")}`, note, links: play.map((a) => ({ label: a.name, href: `https://play.google.com/store/apps/details?id=${a.play}` })) });
+  }
+  const yt = cfg?.youtube;
+  if (yt?.queries?.length)
+    groups.push({
+      title: "YouTube",
+      note: `Comments under the ${yt.videos ?? 5} most viewed videos of the last ${yt.days ?? 60} days for each search${process.env.YOUTUBE_API_KEY ? "" : " (off until YOUTUBE_API_KEY is set)"}:`,
+      links: (yt.queries as string[]).map((q) => ({ label: q, href: `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}` })),
+    });
   return groups;
 }
 

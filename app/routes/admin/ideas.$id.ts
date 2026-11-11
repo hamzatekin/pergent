@@ -24,7 +24,8 @@ export const Route = createFileRoute("/admin/ideas/$id")({
         else if (action === "reopen") setProblemStatus(problem.id, "open");
         else if (action === "judge") {
           askJudge(problem.id);
-          if ((await listTasks()).includes("ideas-judge")) startRun("ideas-judge");
+          const judge = `${problem.task}-judge`;
+          if ((await listTasks()).includes(judge)) startRun(judge);
           await new Promise((done) => setTimeout(done, 300)); // let the run's row land before the redirect
         } else if (action === "merge") {
           const into = getProblem(Number(form.get("into")));

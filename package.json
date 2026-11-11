@@ -30,6 +30,7 @@
     "@hono/node-server": "^2.1.1",
     "@tanstack/react-router": "^1.170.44",
     "@tanstack/react-start": "^1.169.2",
+    "google-play-scraper": "^10.1.4",
     "hono": "^4.13.8",
     "marked": "^18.0.13",
     "react": "^19.3.1",

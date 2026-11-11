@@ -2,7 +2,7 @@ import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
 import { getProblem, getRun, latestVerdicts, listBriefs, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type BriefRow, type ProblemRow, type VerdictRow } from "#src/db.ts";
-import { BRIEF_GROUPS, CATEGORIES, QUESTIONS, VERDICTS, judgeBar, problemStats, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
+import { BRIEF_GROUPS, CATEGORIES, QUESTIONS, RADAR, VERDICTS, judgeBar, problemStats, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
 import { mentions } from "#src/mute.ts";
 import { listRuns, listTasks, loadTask, type TaskConfig } from "#src/runner.ts";
 import { isRunning, isWaiting } from "#src/scheduler.ts";
@@ -11,13 +11,25 @@ import { PASSWORD, loggedIn } from "./admin.ts";
 import { ago, formatDate, formatDay } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
 
-// The task whose runs collect and sort the posts (tasks/ideas), and the one that judges (tasks/ideas-judge).
-const TASK = "ideas";
-const JUDGE = "ideas-judge";
-const BRIEF = "ideas-brief";
+// A radar is the task whose runs collect and sort its posts (tasks/ideas, tasks/gym); its judge and its
+// brief, when it has them, are the tasks named after it (tasks/ideas-judge, tasks/ideas-brief).
+const judgeOf = (radar: string) => `${radar}-judge`;
+const briefOf = (radar: string) => `${radar}-brief`;
+
+// Every radar, the small business one first: the tasks that sort posts, with the name the page shows.
+async function radars(): Promise<{ task: string; label: string }[]> {
+  const out: { task: string; label: string }[] = [];
+  for (const task of await listTasks()) {
+    const config = await loadTask(task).then((t) => t.config, () => null);
+    if (config?.output === "sort") out.push({ task, label: (config.radarLabel as string | undefined) ?? config.label ?? task });
+  }
+  return out.sort((a, b) => Number(b.task === RADAR) - Number(a.task === RADAR));
+}
 
 export type ProblemItem = {
   id: number;
+  /** The radar it belongs to. */
+  task: string;
   name: string;
   category: string;
   summary: string;
@@ -57,9 +69,12 @@ export type BriefState = {
   lastRun: { failed: boolean; text: string; href: string } | null;
 };
 export type BriefsPage = { nav: Nav } & BriefState;
+export type RadarTab = { task: string; label: string };
 export type Show = Verdict | "starred" | "killed" | "unjudged";
 export type IdeasPage = {
   nav: Nav;
+  radar: string;
+  radars: RadarTab[];
   show?: Show;
   shows: { show: Show; label: string; count: number }[];
   categories: { slug: string; name: string; count: number }[];
@@ -73,7 +88,8 @@ export type IdeasPage = {
   totals: { posts: number; sorted: number; raising: number; problems: number; waiting: number };
   lastSort?: string;
   sources: TaskSources;
-  brief: BriefState;
+  /** Null for a radar without a brief task. */
+  brief: BriefState | null;
 };
 export type VerdictView = {
   verdict: Verdict;
@@ -89,6 +105,8 @@ export type VerdictView = {
 };
 export type ProblemPage = {
   nav: Nav;
+  /** The radar's name, when there is more than one. */
+  radarLabel?: string;
   problem: ProblemItem;
   verdict?: VerdictView;
   earlier: { label: string; verdict: Verdict; day: string }[];
@@ -115,6 +133,7 @@ function gate(next: string) {
 function item(p: ProblemRow, s: ProblemStats, v?: VerdictRow): ProblemItem {
   return {
     id: p.id,
+    task: p.task,
     name: p.name,
     category: p.category,
     summary: p.summary,
@@ -150,15 +169,16 @@ function briefView(b: BriefRow, names: Map<number, string>): BriefView {
   };
 }
 
-async function briefState(limit: number): Promise<BriefState> {
-  const names = new Map(listProblems().map((p) => [p.id, p.name]));
-  const briefs = listBriefs(limit);
+async function briefState(radar: string, limit: number): Promise<BriefState> {
+  const names = new Map(listProblems(radar).map((p) => [p.id, p.name]));
+  const briefs = listBriefs(radar, limit);
+  const BRIEF = briefOf(radar);
   const briefing = isRunning(BRIEF) || isWaiting(BRIEF);
   return {
     briefs: briefs.map((b) => briefView(b, names)),
     briefing,
     canBrief: (await listTasks()).includes(BRIEF),
-    lastRun: briefing ? null : lastBriefRun(briefs[0]),
+    lastRun: briefing ? null : lastBriefRun(BRIEF, briefs[0]),
   };
 }
 
@@ -166,7 +186,7 @@ async function briefState(limit: number): Promise<BriefState> {
 // brief on, which looked like a button that does nothing. The page says what became of it instead:
 // the newest brief run, when it started after the newest brief and wrote none. A row still `running`
 // that this server is not running was cut off.
-function lastBriefRun(latest: BriefRow | undefined): BriefState["lastRun"] {
+function lastBriefRun(BRIEF: string, latest: BriefRow | undefined): BriefState["lastRun"] {
   const run = listRuns(BRIEF)[0];
   if (!run || (latest && run.startedAt <= latest.createdAt)) return null;
   const when = formatDate(run.startedAt, "Europe/London");
@@ -199,17 +219,21 @@ const SHOWS: Record<Show, { label: string; has: (r: Row) => boolean }> = {
 // The board: every problem with a mention, counted by code (src/ideas.ts), in a category or all of
 // them. By default only problems more than one person raised; `all` adds the one-offs.
 export const getIdeasPage = createServerFn({ method: "GET" })
-  .validator((data: { category?: string; all?: boolean; show?: string }) => data)
+  .validator((data: { radar?: string; category?: string; all?: boolean; show?: string }) => data)
   .handler(async ({ data }): Promise<IdeasPage> => {
-    gate(`/ideas${data.category ? `?category=${data.category}` : ""}`);
+    const query = new URLSearchParams(Object.entries({ radar: data.radar, category: data.category }).filter((e): e is [string, string] => !!e[1])).toString();
+    gate(`/ideas${query ? `?${query}` : ""}`);
     const { configs: _, ...sidebar } = await nav();
+    const all = await radars();
+    const TASK = data.radar ?? RADAR;
+    if (!all.some((r) => r.task === TASK)) throw notFound();
     const config = await loadTask(TASK).then((t) => t.config, () => ({}) as TaskConfig);
     const names = (config.categories as string[] | undefined) ?? CATEGORIES;
-    const stats = problemStats();
+    const stats = problemStats(TASK);
     const muted = listMutes(TASK);
     const isMuted = (p: ProblemRow) => muted.some((m) => mentions(`${p.name}\n${p.summary}`, m));
     const verdicts = latestVerdicts();
-    const counted: Row[] = listProblems().flatMap((p) => (stats.has(p.id) ? [{ p, s: stats.get(p.id)!, v: verdicts.get(p.id) }] : []));
+    const counted: Row[] = listProblems(TASK).flatMap((p) => (stats.has(p.id) ? [{ p, s: stats.get(p.id)!, v: verdicts.get(p.id) }] : []));
     const unmuted = counted.filter(({ p }) => !isMuted(p));
     const category = data.category ? names.find((n) => slug(n) === data.category) : undefined;
     if (data.category && !category) throw notFound();
@@ -222,9 +246,12 @@ export const getIdeasPage = createServerFn({ method: "GET" })
     const visible = inCategory.filter((r) => data.all || r.s.people > 1 || r.v || r.p.status === "starred").sort(byEvidence);
     // The last run that sorted something (a run with nothing to sort costs nothing and has no cost).
     const lastSort = listRuns(TASK).find((r) => r.status === "ok" && r.costUsd !== undefined);
-    const totals = radarTotals();
+    const totals = radarTotals(TASK);
+    const briefs = (await listTasks()).includes(briefOf(TASK));
     return {
       nav: sidebar,
+      radar: TASK,
+      radars: all.length > 1 ? all : [],
       categories: names.map((n) => ({ slug: slug(n), name: n, count: shown.filter((r) => r.p.category === n && (data.all || r.s.people > 1 || r.v || r.p.status === "starred")).length })),
       category: category && slug(category),
       show,
@@ -236,7 +263,7 @@ export const getIdeasPage = createServerFn({ method: "GET" })
       totals: { ...totals, waiting: totals.posts - totals.sorted },
       lastSort: lastSort && ago(lastSort.finishedAt ?? lastSort.startedAt),
       sources: await taskSources(TASK, config),
-      brief: await briefState(1),
+      brief: briefs ? await briefState(TASK, 1) : null,
     };
   });
 
@@ -249,13 +276,16 @@ export const getProblemPage = createServerFn({ method: "GET" })
     const problem = /^\d+$/.test(data.id) ? getProblem(Number(data.id)) : null;
     // A merged problem's page is the one it went into.
     if (problem?.status === "merged" && problem.mergedInto) throw redirect({ to: "/ideas/$id", params: { id: String(problem.mergedInto) } });
-    const all = problemStats();
+    const all = problem ? problemStats(problem.task) : new Map<number, ProblemStats>();
     const stats = problem && all.get(problem.id);
     if (!problem || !stats) throw notFound();
+    const JUDGE = judgeOf(problem.task);
+    const tabs = await radars();
     const [latest, ...older] = problemVerdicts(problem.id);
     const day = (v: VerdictRow) => formatDay(v.createdAt);
     return {
       nav: sidebar,
+      radarLabel: tabs.length > 1 ? tabs.find((r) => r.task === problem.task)?.label : undefined,
       problem: item(problem, stats, latest),
       verdict: latest && {
         verdict: latest.verdict,
@@ -274,7 +304,7 @@ export const getProblemPage = createServerFn({ method: "GET" })
       judging: !!problem.judgeAsked && (isRunning(JUDGE) || isWaiting(JUDGE)),
       overBar: judgeBar(stats),
       canJudge: (await listTasks()).includes(JUDGE),
-      mergeTargets: listProblems()
+      mergeTargets: listProblems(problem.task)
         .filter((p) => p.id !== problem.id && p.category === problem.category && all.has(p.id))
         .map((p) => ({ id: p.id, name: p.name }))
         .sort((a, b) => a.name.localeCompare(b.name)),
@@ -298,5 +328,5 @@ export const getProblemPage = createServerFn({ method: "GET" })
 export const getBriefsPage = createServerFn({ method: "GET" }).handler(async (): Promise<BriefsPage> => {
   gate("/ideas/briefs");
   const { configs: _, ...sidebar } = await nav();
-  return { nav: sidebar, ...(await briefState(100)) };
+  return { nav: sidebar, ...(await briefState(RADAR, 100)) };
 });

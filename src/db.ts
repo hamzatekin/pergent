@@ -14,10 +14,11 @@ export type RunRow = { meta: RunMeta; output: string; images: Record<string, str
 export type NewIssue = { feed: string; title: string; url: string; date: string; html: string };
 export type IssueRow = { id: number; feed: string; title: string; url: string; date: string };
 export type PostRow = { id: string; source: string; community: string; author: string; postedAt: string; title: string; body: string; url: string; budget: string | null; kind: string | null };
-// A problem of the ideas radar (src/ideas.ts): what several posts complain about, named in the owners'
-// words. `status` is open, starred, killed (hidden, its posts still land on it) or merged (into
+// A problem of a radar (src/ideas.ts): what several posts complain about, named in the owners'
+// words. `task` is the radar it belongs to, the task that collects and sorts its posts (ideas, gym).
+// `status` is open, starred, killed (hidden, its posts still land on it) or merged (into
 // `merged_into`, which has its mentions now). `judgeAsked` is set by the page's Judge again.
-export type ProblemRow = { id: number; name: string; category: string; summary: string; status: string; mergedInto: number | null; createdAt: string; judgeAsked: string | null };
+export type ProblemRow = { id: number; task: string; name: string; category: string; summary: string; status: string; mergedInto: number | null; createdAt: string; judgeAsked: string | null };
 // One judgement of a problem (src/ideas.ts): the verdict code derived from the model's scores.
 export type Score = { score: number; why: string };
 export type VerdictRow = {
@@ -319,6 +320,10 @@ export function openDb(runsDir: string): DatabaseSync {
   if (!columns.some((c) => c.name === "paper")) db.exec("ALTER TABLE runs ADD COLUMN paper TEXT");
   const problemColumns = db.prepare("PRAGMA table_info(problems)").all() as { name: string }[];
   if (!problemColumns.some((c) => c.name === "judge_asked")) db.exec("ALTER TABLE problems ADD COLUMN judge_asked TEXT");
+  // A second radar (gym) came after the first; what was there before is the ideas radar's.
+  if (!problemColumns.some((c) => c.name === "task")) db.exec("ALTER TABLE problems ADD COLUMN task TEXT NOT NULL DEFAULT 'ideas'");
+  const briefColumns = db.prepare("PRAGMA table_info(briefs)").all() as { name: string }[];
+  if (!briefColumns.some((c) => c.name === "task")) db.exec("ALTER TABLE briefs ADD COLUMN task TEXT NOT NULL DEFAULT 'ideas'");
   // What the model read from an advert's text (src/jobs.ts), on the advert's row; read_at is empty until then.
   const jobColumns = db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[];
   for (const [name, type] of Object.entries(JOB_READ_COLUMNS)) {
@@ -983,19 +988,20 @@ export function firstJobSeen(): string | null {
 // A post's columns as PostRow names them, from `posts p`.
 const POST_COLUMNS = "p.id, p.source, p.community, p.author, p.posted_at AS postedAt, p.title, p.body, p.url, p.budget, p.kind";
 
-// The kept posts no sort has seen yet, newest first, and how many there are in all.
-export function unsortedPosts(limit: number): { posts: PostRow[]; total: number } {
-  const from = "FROM posts p LEFT JOIN mentions m ON m.post_id = p.id WHERE p.kept = 1 AND m.post_id IS NULL";
-  const posts = use().prepare(`SELECT ${POST_COLUMNS} ${from} ORDER BY p.posted_at DESC LIMIT ?`).all(limit) as PostRow[];
-  const { total } = use().prepare(`SELECT COUNT(*) AS total ${from}`).get() as { total: number };
+// A radar's kept posts no sort has seen yet, newest first, and how many there are in all. A post is the
+// radar's that collected it (posts.task).
+export function unsortedPosts(task: string, limit: number): { posts: PostRow[]; total: number } {
+  const from = "FROM posts p LEFT JOIN mentions m ON m.post_id = p.id WHERE p.task = ? AND p.kept = 1 AND m.post_id IS NULL";
+  const posts = use().prepare(`SELECT ${POST_COLUMNS} ${from} ORDER BY p.posted_at DESC LIMIT ?`).all(task, limit) as PostRow[];
+  const { total } = use().prepare(`SELECT COUNT(*) AS total ${from}`).get(task) as { total: number };
   return { posts, total };
 }
 
 // Every problem a post can still go to (not merged away), oldest first.
-const PROBLEM_COLUMNS = "id, name, category, summary, status, merged_into AS mergedInto, created_at AS createdAt, judge_asked AS judgeAsked";
+const PROBLEM_COLUMNS = "id, task, name, category, summary, status, merged_into AS mergedInto, created_at AS createdAt, judge_asked AS judgeAsked";
 
-export function listProblems(): ProblemRow[] {
-  return use().prepare(`SELECT ${PROBLEM_COLUMNS} FROM problems WHERE status != 'merged' ORDER BY id`).all() as ProblemRow[];
+export function listProblems(task: string): ProblemRow[] {
+  return use().prepare(`SELECT ${PROBLEM_COLUMNS} FROM problems WHERE task = ? AND status != 'merged' ORDER BY id`).all(task) as ProblemRow[];
 }
 
 export function getProblem(id: number): ProblemRow | null {
@@ -1063,13 +1069,13 @@ export function saveVerdicts(runId: string, verdicts: Omit<VerdictRow, "id" | "c
 
 // One sort's result, all or nothing: the problems it opened, then every post's mention. A mention's
 // `problemId` below zero points at the new problem of that index (-1 the first).
-export function saveSort(runId: string, opened: { name: string; category: string; summary: string }[], found: Mention[]): number[] {
+export function saveSort(task: string, runId: string, opened: { name: string; category: string; summary: string }[], found: Mention[]): number[] {
   const db = use();
   const now = new Date().toISOString();
   db.exec("BEGIN");
   try {
-    const add = db.prepare("INSERT INTO problems (name, category, summary, created_at, run_id) VALUES (?, ?, ?, ?, ?)");
-    const ids = opened.map((p) => Number(add.run(p.name, p.category, p.summary, now, runId).lastInsertRowid));
+    const add = db.prepare("INSERT INTO problems (task, name, category, summary, created_at, run_id) VALUES (?, ?, ?, ?, ?, ?)");
+    const ids = opened.map((p) => Number(add.run(task, p.name, p.category, p.summary, now, runId).lastInsertRowid));
     const put = db.prepare(`
       INSERT OR REPLACE INTO mentions (post_id, problem_id, recurring, cost, workaround, quote, note, run_id, sorted_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1108,23 +1114,23 @@ export function problemMentions(problemId: number): (Mention & { post: PostRow }
   }));
 }
 
-// What the radar counts, per problem with at least one mention: one row per mention, with the facts
+// What a radar counts, per problem with at least one mention: one row per mention, with the facts
 // about its post that the counts need. The counting is in src/ideas.ts.
-export function mentionFacts(): { problemId: number; postId: string; source: string; community: string; author: string; title: string; postedAt: string; budget: string | null; recurring: number; cost: string; workaround: string }[] {
+export function mentionFacts(task: string): { problemId: number; postId: string; source: string; community: string; author: string; title: string; postedAt: string; budget: string | null; recurring: number; cost: string; workaround: string }[] {
   return use().prepare(`
     SELECT m.problem_id AS problemId, p.id AS postId, p.source, p.community, p.author, p.title, p.posted_at AS postedAt, p.budget, m.recurring, m.cost, m.workaround
-    FROM mentions m JOIN posts p ON p.id = m.post_id WHERE m.problem_id IS NOT NULL
-  `).all() as ReturnType<typeof mentionFacts>;
+    FROM mentions m JOIN posts p ON p.id = m.post_id JOIN problems pr ON pr.id = m.problem_id WHERE pr.task = ?
+  `).all(task) as ReturnType<typeof mentionFacts>;
 }
 
-// How far the sort has got: posts kept, sorted, raising a problem, and problems.
-export function radarTotals(): { posts: number; sorted: number; raising: number; problems: number } {
+// How far a radar's sort has got: posts kept, sorted, raising a problem, and problems.
+export function radarTotals(task: string): { posts: number; sorted: number; raising: number; problems: number } {
   return use().prepare(`
-    SELECT (SELECT COUNT(*) FROM posts WHERE kept = 1) AS posts,
-           (SELECT COUNT(*) FROM mentions) AS sorted,
-           (SELECT COUNT(*) FROM mentions WHERE problem_id IS NOT NULL) AS raising,
-           (SELECT COUNT(*) FROM problems WHERE status != 'merged') AS problems
-  `).get() as { posts: number; sorted: number; raising: number; problems: number };
+    SELECT (SELECT COUNT(*) FROM posts WHERE task = ? AND kept = 1) AS posts,
+           (SELECT COUNT(*) FROM mentions m JOIN posts p ON p.id = m.post_id WHERE p.task = ?) AS sorted,
+           (SELECT COUNT(*) FROM mentions m JOIN posts p ON p.id = m.post_id WHERE p.task = ? AND m.problem_id IS NOT NULL) AS raising,
+           (SELECT COUNT(*) FROM problems WHERE task = ? AND status != 'merged') AS problems
+  `).get(task, task, task, task) as { posts: number; sorted: number; raising: number; problems: number };
 }
 
 // The radar's on-demand brief (src/ideas.ts): what changed since `since`, in a few grouped lines that
@@ -1132,29 +1138,29 @@ export function radarTotals(): { posts: number; sorted: number; raising: number;
 export type BriefItem = { group: string; problem: number; text: string };
 export type BriefRow = { id: number; since: string; summary: string; items: BriefItem[]; next: string; createdAt: string };
 
-export function saveBrief(runId: string, brief: Omit<BriefRow, "id" | "createdAt">): number {
+export function saveBrief(task: string, runId: string, brief: Omit<BriefRow, "id" | "createdAt">): number {
   return Number(
     use()
-      .prepare("INSERT INTO briefs (since, summary, items, next, created_at, run_id) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(brief.since, brief.summary, JSON.stringify(brief.items), brief.next, new Date().toISOString(), runId).lastInsertRowid,
+      .prepare("INSERT INTO briefs (task, since, summary, items, next, created_at, run_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(task, brief.since, brief.summary, JSON.stringify(brief.items), brief.next, new Date().toISOString(), runId).lastInsertRowid,
   );
 }
 
-// The briefs, newest first.
-export function listBriefs(limit = 50): BriefRow[] {
-  const rows = use().prepare("SELECT id, since, summary, items, next, created_at AS createdAt FROM briefs ORDER BY id DESC LIMIT ?").all(limit) as (Omit<BriefRow, "items"> & { items: string })[];
+// A radar's briefs, newest first.
+export function listBriefs(task: string, limit = 50): BriefRow[] {
+  const rows = use().prepare("SELECT id, since, summary, items, next, created_at AS createdAt FROM briefs WHERE task = ? ORDER BY id DESC LIMIT ?").all(task, limit) as (Omit<BriefRow, "items"> & { items: string })[];
   return rows.map((r) => ({ ...r, items: JSON.parse(r.items) }));
 }
 
 // What the radar did since a time: posts collected (by the run that saved them, whose id is its start
 // time), posts sorted, and of those, how many raised a problem.
-export function radarSince(since: string): { collected: number; sorted: number; raising: number } {
+export function radarSince(task: string, since: string): { collected: number; sorted: number; raising: number } {
   const runId = since.replace(/[:.]/g, "-");
   return use().prepare(`
-    SELECT (SELECT COUNT(*) FROM posts WHERE kept = 1 AND run_id >= ?) AS collected,
-           (SELECT COUNT(*) FROM mentions WHERE sorted_at >= ?) AS sorted,
-           (SELECT COUNT(*) FROM mentions WHERE sorted_at >= ? AND problem_id IS NOT NULL) AS raising
-  `).get(runId, since, since) as { collected: number; sorted: number; raising: number };
+    SELECT (SELECT COUNT(*) FROM posts WHERE task = ? AND kept = 1 AND run_id >= ?) AS collected,
+           (SELECT COUNT(*) FROM mentions m JOIN posts p ON p.id = m.post_id WHERE p.task = ? AND m.sorted_at >= ?) AS sorted,
+           (SELECT COUNT(*) FROM mentions m JOIN posts p ON p.id = m.post_id WHERE p.task = ? AND m.sorted_at >= ? AND m.problem_id IS NOT NULL) AS raising
+  `).get(task, runId, task, since, task, since) as { collected: number; sorted: number; raising: number };
 }
 
 // The newest issues, of one newsletter or all of them, without their text.
