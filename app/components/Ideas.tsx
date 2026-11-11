@@ -58,46 +58,58 @@ function TrendBadge({ trend }: { trend: ProblemItem["trend"] }) {
 export function IdeasBoard({ data }: { data: IdeasPage }) {
   const { totals } = data;
   const category = data.categories.find((c) => c.slug === data.category);
+  // The small business radar is /ideas itself; another radar carries ?radar=.
+  const radar = data.radars[0] && data.radar !== data.radars[0].task ? data.radar : undefined;
   const header = (
     <>
       <h1 className="crumb">
         <span className="crumb-task">Ideas</span>
+        {radar && <span className="stamp">{data.radars.find((r) => r.task === radar)?.label}</span>}
         {category && <span className="stamp">{category.name}</span>}
       </h1>
-      <a href="/admin/mutes/ideas" className="linkbtn">
+      <a href={`/admin/mutes/${data.radar}`} className="linkbtn">
         Never show{data.muted ? ` (${data.muted} hidden)` : ""}
       </a>
     </>
   );
   return (
     <Shell nav={data.nav} active="ideas" header={header}>
-      <BriefPanel state={data.brief} />
+      {data.radars.length > 0 && (
+        <nav className="feed-chips" aria-label="Radars">
+          {data.radars.map((r, i) => (
+            <Link key={r.task} to="/ideas" search={{ radar: i === 0 ? undefined : r.task }} className="chip" data-active={r.task === data.radar}>
+              {r.label}
+            </Link>
+          ))}
+        </nav>
+      )}
+      {data.brief && <BriefPanel state={data.brief} />}
       <Sources sources={data.sources} />
       <p className="note feed-note">
         {totals.posts.toLocaleString("en-GB")} posts collected, {totals.sorted.toLocaleString("en-GB")} sorted into {plural(totals.problems, "problem")}
         {data.lastSort ? `, last sorted ${data.lastSort}` : ""}.{totals.waiting > 0 && ` ${totals.waiting.toLocaleString("en-GB")} waiting for the next sorts.`}
       </p>
       <nav className="feed-chips">
-        <Link to="/ideas" search={{ all: data.all || undefined, show: data.show }} className="chip" data-active={!data.category}>
+        <Link to="/ideas" search={{ radar, all: data.all || undefined, show: data.show }} className="chip" data-active={!data.category}>
           All
         </Link>
         {data.categories
           .filter((c) => c.count > 0 || c.slug === data.category)
           .map((c) => (
-            <Link key={c.slug} to="/ideas" search={{ category: c.slug, all: data.all || undefined, show: data.show }} className="chip" data-active={c.slug === data.category}>
+            <Link key={c.slug} to="/ideas" search={{ radar, category: c.slug, all: data.all || undefined, show: data.show }} className="chip" data-active={c.slug === data.category}>
               {c.name}
               <span className="chip-count">{c.count}</span>
             </Link>
           ))}
       </nav>
       <nav className="feed-chips">
-        <Link to="/ideas" search={{ category: data.category, all: data.all || undefined }} className="chip" data-active={!data.show}>
+        <Link to="/ideas" search={{ radar, category: data.category, all: data.all || undefined }} className="chip" data-active={!data.show}>
           Everything
         </Link>
         {data.shows
           .filter((s) => s.count > 0 || s.show === data.show)
           .map((s) => (
-            <Link key={s.show} to="/ideas" search={{ category: data.category, all: data.all || undefined, show: s.show }} className="chip" data-active={s.show === data.show}>
+            <Link key={s.show} to="/ideas" search={{ radar, category: data.category, all: data.all || undefined, show: s.show }} className="chip" data-active={s.show === data.show}>
               {s.label}
               <span className="chip-count">{s.count}</span>
             </Link>
@@ -135,17 +147,17 @@ export function IdeasBoard({ data }: { data: IdeasPage }) {
         </ol>
       ) : (
         <p className="callout">
-          {totals.sorted === 0 ? "Nothing sorted yet. The radar sorts new posts every 3 hours." : data.all ? "No problems here yet." : "No problem here has been raised by more than one person yet."}
+          {totals.sorted === 0 ? "Nothing sorted yet. The radar sorts new posts after each collection." : data.all ? "No problems here yet." : "No problem here has been raised by more than one person yet."}
         </p>
       )}
       {(data.oneOffs > 0 || data.all) && (
         <p className="note more">
           {data.all ? (
-            <Link to="/ideas" search={{ category: data.category, show: data.show }}>
+            <Link to="/ideas" search={{ radar, category: data.category, show: data.show }}>
               Only problems more than one person raised
             </Link>
           ) : (
-            <Link to="/ideas" search={{ category: data.category, all: true, show: data.show }}>
+            <Link to="/ideas" search={{ radar, category: data.category, all: true, show: data.show }}>
               Show {plural(data.oneOffs, "problem")} only one person raised so far
             </Link>
           )}
@@ -160,9 +172,10 @@ export function ProblemView({ data }: { data: ProblemPage }) {
   const { problem: p } = data;
   const header = (
     <h1 className="crumb">
-      <Link to="/ideas" className="crumb-task">
+      <Link to="/ideas" search={{ radar: data.radarLabel && p.task !== "ideas" ? p.task : undefined }} className="crumb-task">
         Ideas
       </Link>
+      {data.radarLabel && <span className="stamp">{data.radarLabel}</span>}
       <span className="stamp">{p.category}</span>
     </h1>
   );
@@ -171,7 +184,7 @@ export function ProblemView({ data }: { data: ProblemPage }) {
     ["People", p.people],
     ["Mentions", p.mentions],
     ["Sources", p.sources.join(", ")],
-    ["Paid jobs", p.jobs || "none"],
+    ...(p.task === "ideas" ? [["Paid jobs", p.jobs || "none"] as [string, string | number]] : []),
     ["Say it recurs", p.recurring],
     ["Name a cost", p.costed],
     ["Have a workaround", p.workarounds],
@@ -286,7 +299,9 @@ function VerdictCard({ data }: { data: ProblemPage }) {
   if (!v)
     return (
       <p className="callout">
-        {data.overBar
+        {!data.canJudge
+          ? "This radar has no verdicts yet: it only collects and counts."
+          : data.overBar
           ? "Not judged yet. The nightly run will take it, or press Judge now."
           : "Not judged yet: the nightly run waits for 4 mentions from 3 people, or a paid job and 2 more posts. Judge now to judge it anyway."}
       </p>

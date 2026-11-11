@@ -7,6 +7,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  getProblem,
   latestVerdicts,
   listBriefs,
   listProblems,
@@ -27,8 +28,11 @@ import {
 import { mentions } from "./mute.ts";
 import type { TaskConfig } from "./runner.ts";
 
-// The task that collects and sorts; its never-show list is the radar's.
+// The task that collects and sorts; its never-show list is the radar's. A radar is the task that
+// collects and sorts its posts: ideas (small businesses) and gym (gym and fitness apps) share the
+// tables, each row carrying its task. The judge and brief tasks name theirs under "radar".
 export const RADAR = "ideas";
+export const radarOf = (config: TaskConfig) => (config.radar as string | undefined) ?? RADAR;
 
 // Who has the problem. Fixed, so the page can filter by it and counts stay comparable; a task can set
 // its own under "categories". The last one takes whatever fits nowhere else.
@@ -46,10 +50,14 @@ export const CATEGORIES = [
 ];
 
 const categoriesOf = (config: TaskConfig) => (config.categories as string[] | undefined) ?? CATEGORIES;
-const sortConfig = (config: TaskConfig) => (config.sort ?? {}) as { maxPosts?: number; bodyChars?: number };
+type SortFields = Partial<Record<"name" | "summary" | "recurring" | "cost" | "workaround", string>>;
+const sortConfig = (config: TaskConfig) => (config.sort ?? {}) as { maxPosts?: number; bodyChars?: number; fields?: SortFields };
 
+// The field descriptions the model reads are the small business radar's; another radar words its own
+// under sort.fields (the gym radar's posts are app reviews, not owners' chores).
 export function sortSchema(config: TaskConfig) {
-  const text = (description: string) => ({ type: "string", description });
+  const fields = sortConfig(config).fields ?? {};
+  const text = (description: string, own?: string) => ({ type: "string", description: own ?? description });
   return {
     type: "object",
     required: ["problems", "posts"],
@@ -64,9 +72,9 @@ export function sortSchema(config: TaskConfig) {
           additionalProperties: false,
           properties: {
             key: text("n1, n2, n3…: how `posts` refers to this new problem."),
-            name: text("The problem in the words of the people who have it, at most 12 words, like \"Re-typing rent payments into MTD software every quarter\". Not a product name."),
+            name: text("The problem in the words of the people who have it, at most 12 words, like \"Re-typing rent payments into MTD software every quarter\". Not a product name.", fields.name),
             category: { type: "string", enum: categoriesOf(config), description: "Who has it." },
-            summary: text("One sentence: who has it, what they do today, what it costs them."),
+            summary: text("One sentence: who has it, what they do today, what it costs them.", fields.summary),
           },
         },
       },
@@ -80,9 +88,9 @@ export function sortSchema(config: TaskConfig) {
           properties: {
             ref: text("The post's ref from posts.md, like p12."),
             problem: text("The number of the existing problem it raises (\"17\"), the key of a new one (\"n1\"), or \"\" when it raises none."),
-            recurring: { type: "boolean", description: "The post says it happens again and again: every week, month, order, job or tenant; or it is a job post for a recurring chore." },
-            cost: text("Money or time the post names for it, short, like \"$400 a month\" or \"6 hours a week\". Not a job post's budget, which is already known. \"\" when it names none."),
-            workaround: text("What they do about it today, short, like \"a spreadsheet\", \"a VA\", \"copies between Square and Xero by hand\". \"\" when the post doesn't say."),
+            recurring: { type: "boolean", description: fields.recurring ?? "The post says it happens again and again: every week, month, order, job or tenant; or it is a job post for a recurring chore." },
+            cost: text("Money or time the post names for it, short, like \"$400 a month\" or \"6 hours a week\". Not a job post's budget, which is already known. \"\" when it names none.", fields.cost),
+            workaround: text("What they do about it today, short, like \"a spreadsheet\", \"a VA\", \"copies between Square and Xero by hand\". \"\" when the post doesn't say.", fields.workaround),
             quote: text("At most 20 words copied from the post that show the problem. \"\" when it raises none."),
           },
         },
@@ -97,13 +105,13 @@ export function sortSchema(config: TaskConfig) {
 // mention a muted phrase are set aside here, without the model. Returns how many posts went in.
 export async function prepareSort(task: string, runId: string, dir: string, config: TaskConfig, muted: string[]): Promise<{ posts: number; waiting: number }> {
   const { maxPosts = 250, bodyChars = 700 } = sortConfig(config);
-  const { posts: fetched, total } = unsortedPosts(maxPosts);
+  const { posts: fetched, total } = unsortedPosts(task, maxPosts);
   const isMuted = (p: PostRow) => muted.find((m) => mentions(`${p.community}\n${p.title}\n${p.body}\n${p.url}`, m));
   const set = fetched.filter(isMuted).map((p): Mention => ({ postId: p.id, problemId: null, recurring: false, cost: "", workaround: "", quote: "", note: `muted: ${isMuted(p)}` }));
-  if (set.length) saveSort(runId, [], set);
+  if (set.length) saveSort(task, runId, [], set);
   const posts = fetched.filter((p) => !isMuted(p));
 
-  const problems = listProblems();
+  const problems = listProblems(task);
   const lines = ["# Categories", "", ...categoriesOf(config).map((c) => `- ${c}`), "", `# Problems so far (${problems.length})`];
   for (const c of categoriesOf(config)) {
     const these = problems.filter((p) => p.category === c);
@@ -122,7 +130,7 @@ export async function prepareSort(task: string, runId: string, dir: string, conf
     return `### ${ref} · ${by}\n${p.title}${body ? `\n\n${body}` : ""}`;
   });
   await writeFile(join(dir, "posts.md"), `# Posts to sort (${posts.length})\n\n${blocks.join("\n\n")}\n`);
-  await writeFile(join(dir, "sort.json"), JSON.stringify({ refs, problems: problems.map((p) => p.id) }));
+  await writeFile(join(dir, "sort.json"), JSON.stringify({ task, refs, problems: problems.map((p) => p.id) }));
   return { posts: posts.length, waiting: total - fetched.length };
 }
 
@@ -138,7 +146,7 @@ type SortOutput = {
 export async function saveSortOutput(runId: string, output: unknown, dir: string, config: TaskConfig): Promise<string | null> {
   const out = output as SortOutput | undefined;
   if (!out || !Array.isArray(out.problems) || !Array.isArray(out.posts)) return null;
-  const { refs, problems: known } = JSON.parse(await readFile(join(dir, "sort.json"), "utf8")) as { refs: Record<string, string>; problems: number[] };
+  const { task = RADAR, refs, problems: known } = JSON.parse(await readFile(join(dir, "sort.json"), "utf8")) as { task?: string; refs: Record<string, string>; problems: number[] };
   const existing = new Set(known);
   const categories = categoriesOf(config);
   const opened = out.problems.filter((p) => p?.key && p.name?.trim());
@@ -168,6 +176,7 @@ export async function saveSortOutput(runId: string, output: unknown, dir: string
   for (const postId of skipped) found.set(postId, { postId, problemId: null, recurring: false, cost: "", workaround: "", quote: "", note: "left out of the answer" });
 
   const ids = saveSort(
+    task,
     runId,
     kept.map((p) => ({ name: p.name.trim(), category: categories.includes(p.category) ? p.category : categories.at(-1)!, summary: String(p.summary ?? "").trim() })),
     [...found.values()],
@@ -211,9 +220,9 @@ const WEEK = 7 * 86_400_000;
 //   rising  3 or more mentions this week, at least double its weekly average over the 4 weeks before
 //   steady  mentioned in at least 3 of the last 4 weeks
 //   fading  nothing in the last two weeks, after 2 or more in the 4 weeks before this one
-export function problemStats(now = Date.now()): Map<number, ProblemStats> {
+export function problemStats(task: string, now = Date.now()): Map<number, ProblemStats> {
   const stats = new Map<number, ProblemStats & { people_: Set<string> }>();
-  for (const f of mentionFacts()) {
+  for (const f of mentionFacts(task)) {
     let s = stats.get(f.problemId);
     if (!s) {
       s = { id: f.problemId, mentions: 0, people: 0, people_: new Set(), sources: [], communities: [], jobs: 0, budgets: [], recurring: 0, costed: 0, workarounds: 0, first: f.postedAt, last: f.postedAt, weeks: new Array(8).fill(0), trend: null };
@@ -279,10 +288,10 @@ export const judgeBar = (s: ProblemStats) => (s.mentions >= 4 && s.people >= 3) 
 
 // The problems the next judge run takes, asked ones first, then those with the most people: open or
 // starred, not muted, over the bar, and never judged, grown by half since, or judged 30 days ago.
-export function toJudge(max: number, muted: string[], now = Date.now()): { p: ProblemRow; s: ProblemStats; last?: VerdictRow }[] {
-  const stats = problemStats(now);
+export function toJudge(task: string, max: number, muted: string[], now = Date.now()): { p: ProblemRow; s: ProblemStats; last?: VerdictRow }[] {
+  const stats = problemStats(task, now);
   const verdicts = latestVerdicts();
-  return listProblems()
+  return listProblems(task)
     .filter((p) => p.status !== "killed" && stats.has(p.id) && !muted.some((m) => mentions(`${p.name}\n${p.summary}`, m)))
     .map((p) => ({ p, s: stats.get(p.id)!, last: verdicts.get(p.id) }))
     .filter(({ p, s, last }) => p.judgeAsked || (judgeBar(s) && (!last || s.mentions >= last.mentions * 1.5 || now - Date.parse(last.createdAt) > 30 * 86_400_000)))
@@ -340,7 +349,7 @@ export function judgeSchema() {
 // nothing to judge.
 export async function prepareJudge(dir: string, config: TaskConfig, muted: string[]): Promise<{ problems: number }> {
   const { maxProblems = 5, mentionsEach = 15, bodyChars = 400 } = (config.judge ?? {}) as { maxProblems?: number; mentionsEach?: number; bodyChars?: number };
-  const picked = toJudge(maxProblems, muted);
+  const picked = toJudge(radarOf(config), maxProblems, muted);
   const blocks = picked.map(({ p, s, last }) => {
     const facts = [
       `${s.people} people, ${s.mentions} mentions, from ${s.sources.join(", ")} (${s.communities.slice(0, 6).join(", ")})`,
@@ -386,7 +395,7 @@ export async function saveJudgeOutput(runId: string, output: unknown, dir: strin
   }
   if (!rows.length) return null;
   saveVerdicts(runId, rows);
-  const names = new Map(listProblems().map((p) => [p.id, p.name]));
+  const names = new Map(rows.map((r) => [r.problemId, getProblem(r.problemId)?.name]));
   return [
     `# Verdicts, ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
     "",
@@ -427,12 +436,12 @@ export function briefSchema() {
   };
 }
 
-export async function prepareBrief(dir: string, muted: string[], now = Date.now()): Promise<{ problems: number }> {
-  const last = listBriefs(1)[0];
+export async function prepareBrief(task: string, dir: string, muted: string[], now = Date.now()): Promise<{ problems: number }> {
+  const last = listBriefs(task, 1)[0];
   const since = last?.createdAt ?? new Date(now - 7 * 86_400_000).toISOString();
-  const stats = problemStats(now);
+  const stats = problemStats(task, now);
   const verdicts = latestVerdicts();
-  const rows = listProblems()
+  const rows = listProblems(task)
     .filter((p) => p.status !== "killed" && stats.has(p.id) && !muted.some((m) => mentions(`${p.name}\n${p.summary}`, m)))
     .map((p) => ({ p, s: stats.get(p.id)!, v: verdicts.get(p.id) }));
   const line = ({ p, s, v }: (typeof rows)[number]) =>
@@ -441,7 +450,7 @@ export async function prepareBrief(dir: string, muted: string[], now = Date.now(
   const byPeople = (a: (typeof rows)[number], b: (typeof rows)[number]) => b.s.people - a.s.people || b.s.mentions - a.s.mentions;
   const recent = (f: { postedAt: string }) => f.postedAt >= since;
   const newSince = new Map<number, number>();
-  for (const f of mentionFacts()) if (recent(f)) newSince.set(f.problemId, (newSince.get(f.problemId) ?? 0) + 1);
+  for (const f of mentionFacts(task)) if (recent(f)) newSince.set(f.problemId, (newSince.get(f.problemId) ?? 0) + 1);
 
   const worth = rows.filter((r) => r.v?.verdict === "worth").sort(byPeople);
   const watch = rows.filter((r) => r.v?.verdict === "watch").sort(byPeople).slice(0, 6);
@@ -451,7 +460,7 @@ export async function prepareBrief(dir: string, muted: string[], now = Date.now(
     .map((r) => ({ ...r, before: problemVerdicts(r.p.id)[1] }))
     .slice(0, 12);
   const starred = rows.filter((r) => r.p.status === "starred");
-  const done = radarSince(since);
+  const done = radarSince(task, since);
   const sections = [
     `# The radar since ${since.slice(0, 16).replace("T", " ")} UTC${last ? " (the last brief)" : " (7 days; no brief yet)"}`,
     `${done.collected} new posts kept, ${done.sorted} sorted, ${done.raising} of them raising a problem. ${rows.length} problems in all, ${rows.filter((r) => r.v).length} judged.`,
@@ -463,7 +472,7 @@ export async function prepareBrief(dir: string, muted: string[], now = Date.now(
     ...(last ? [`## The last brief, for what it said then\n\n${last.summary}\n\n${last.items.map((i) => `- ${i.group}, ${i.problem}: ${i.text}`).join("\n")}`] : []),
   ];
   await writeFile(join(dir, "radar.md"), sections.join("\n\n") + "\n");
-  await writeFile(join(dir, "brief.json"), JSON.stringify({ since, problems: rows.map((r) => r.p.id) }));
+  await writeFile(join(dir, "brief.json"), JSON.stringify({ task, since, problems: rows.map((r) => r.p.id) }));
   return { problems: rows.length };
 }
 
@@ -472,14 +481,14 @@ type BriefOutput = { summary: string; items: { group: string; problem: number; t
 export async function saveBriefOutput(runId: string, output: unknown, dir: string): Promise<string | null> {
   const out = output as BriefOutput | undefined;
   if (!out || typeof out.summary !== "string" || !Array.isArray(out.items)) return null;
-  const { since, problems } = JSON.parse(await readFile(join(dir, "brief.json"), "utf8")) as { since: string; problems: number[] };
+  const { task = RADAR, since, problems } = JSON.parse(await readFile(join(dir, "brief.json"), "utf8")) as { task?: string; since: string; problems: number[] };
   const known = new Set(problems);
   const items = out.items
     .filter((i) => known.has(i?.problem) && (BRIEF_GROUPS as readonly string[]).includes(i.group) && String(i.text ?? "").trim())
     .slice(0, 16)
     .map((i) => ({ group: i.group, problem: i.problem, text: String(i.text).trim() }));
-  saveBrief(runId, { since, summary: out.summary.trim(), items, next: String(out.next ?? "").trim() });
-  const names = new Map(listProblems().map((p) => [p.id, p.name]));
+  saveBrief(task, runId, { since, summary: out.summary.trim(), items, next: String(out.next ?? "").trim() });
+  const names = new Map(listProblems(task).map((p) => [p.id, p.name]));
   return [
     `# Brief, ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
     "",

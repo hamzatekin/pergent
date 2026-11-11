@@ -1,17 +1,35 @@
-// Collects what small business owners post, and what they pay others to do by hand, for the ideas
-// radar: every post not seen before goes to posts.json in the current directory with the kind Jev
-// gives it, and the runner saves the file to the database's posts table, which keeps them all.
+// Collects posts for a radar: what small business owners post, and what they pay others to do by hand,
+// for the ideas radar; what people say about gym and fitness apps for the gym radar. Every post not seen
+// before goes to posts.json in the current directory with the kind Jev gives it, and the runner saves
+// the file to the database's posts table, which keeps them all, under the task that collected it.
 // Keyless sources, under $TASK_DIR/task.json's "collect":
 //   reddit       `subs`, read through Arctic Shift (arctic-shift.photon-reddit.com), a free archive of
 //                Reddit that needs no key: every post of each subreddit since `hours` ago, 100 to a
 //                page, removed and deleted posts left out. Reddit's own RSS ends on 2026-11-13 and its
 //                logged-out JSON answers 403. Arctic Shift lags Reddit by an hour or two, which the
-//                window covers, and refuses requests that come too fast (see arctic()).
+//                window covers, and refuses requests that come too fast (see arctic()). `search`,
+//                `[{ sub, query }]`, keeps only the posts of a big subreddit that name the word, or its
+//                plural, as a whole word (r/Fitness about an app): every post is fetched and matched here,
+//                since Arctic Shift's full-text search over a big subreddit answers 422 "Timeout" more
+//                often than not. `comments`, the same shape, is its comments that do, through Arctic
+//                Shift's comment search (a subreddit's every comment would be thousands a day): in the
+//                big subreddits the talk about apps is mostly in the comments of the daily threads.
+//   stores       App Store and Google Play reviews of `apps` (`{ name, apple?, play? }`, the App Store id
+//                and the Play package) in each of `countries`, the newest first, back to `days` ago, only
+//                those rated `maxRating` or less (the praise is in the fives). The App Store's public
+//                reviews feed (itunes.apple.com/<cc>/rss/customerreviews, 50 a page, 10 pages at most)
+//                and the google-play-scraper package, which reads what the Play website shows; neither
+//                needs a key. A review is known by its store's id.
 //   freelancer   Freelancer.com's open projects API: `queries`, kept to `currencies` (USD and GBP, for UK
 //                and US clients), `perQuery` newest each; a job paying someone to do a chore by hand is
 //                the plainest sign the chore is worth money
 //   khoros       Khoros communities with the public LiQL API, `{ host, name, skipBoards }` (Square's
 //                seller community): their newest 100 topics, grouped by board, from `forumDays` back
+// Keyed, used only when the key is set:
+//   youtube      YOUTUBE_API_KEY (YouTube Data API v3, 10,000 units a day free): for each of `queries`,
+//                the `videos` most viewed videos published in the last `days` (a search costs 100 units),
+//                and the newest `comments` top-level comments of each (1 unit a page), back to `hours`
+//                ago after the first run. A comment is known by its id.
 // `hours` (default 24) is the window for Reddit and Freelancer. A post already in the posts table (read
 // from ../../pergent.db, opened read-only) is skipped before Jev sees it, so the windows can overlap
 // from run to run. No new fetch starts after `budgetSeconds` (default 210), which leaves Jev a minute and a
@@ -25,6 +43,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { classify } from "../src/jev.ts";
+import gplay from "google-play-scraper";
 
 type Post = {
   id: string;
@@ -130,10 +149,10 @@ type ArcticPost = {
 // quickly, so its requests go one at a time, 2s apart, and a refused one is tried three more times,
 // 5, 10 and 20s later. A subreddit that still fails is caught up by the next run, whose window
 // overlaps this one.
-async function arctic(params: URLSearchParams): Promise<ArcticPost[]> {
+async function arctic<T = ArcticPost>(params: URLSearchParams, what: "posts" | "comments" = "posts"): Promise<T[]> {
   for (let attempt = 0; ; attempt++) {
     await sleep(2000);
-    const res = await fetch(`https://arctic-shift.photon-reddit.com/api/posts/search?${params}`, {
+    const res = await fetch(`https://arctic-shift.photon-reddit.com/api/${what}/search?${params}`, {
       headers: { "user-agent": UA, accept: "application/json" },
       signal: AbortSignal.timeout(30_000),
     });
@@ -148,15 +167,18 @@ async function arctic(params: URLSearchParams): Promise<ArcticPost[]> {
   }
 }
 
-// Oldest first, a page at a time from the newest post of the page before.
-async function reddit(sub: string): Promise<Post[]> {
+// Oldest first, a page at a time from the newest post of the page before; with `word`, only the posts
+// that name it (or its plural) as a whole word.
+async function reddit(sub: string, word?: string): Promise<Post[]> {
   const posts: Post[] = [];
+  const names = word && new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}s?\\b`, "i");
   let after = Math.floor(since / 1000);
   for (let page = 0; page < 10 && Date.now() < deadline; page++) {
     const items = await arctic(new URLSearchParams({ subreddit: sub, after: String(after), sort: "asc", limit: "100" }));
     for (const p of items) {
       const body = (p.selftext ?? "").trim();
       if (p.removed_by_category || p.author === "[deleted]" || body === "[removed]" || body === "[deleted]") continue;
+      if (names && !names.test(`${p.title}\n${body}`)) continue;
       posts.push({
         id: `reddit:${p.id.toLowerCase()}`,
         source: "reddit",
@@ -170,6 +192,130 @@ async function reddit(sub: string): Promise<Post[]> {
     }
     if (items.length < 100) break;
     after = items.at(-1)!.created_utc;
+  }
+  return posts;
+}
+
+type ArcticComment = { id: string; created_utc: number; author: string; body: string; permalink: string; link_id: string; subreddit: string };
+
+// A subreddit's comments that match `query`, oldest first. A comment has no title; the sort reads it
+// under the subreddit's name.
+async function redditComments(sub: string, query: string): Promise<Post[]> {
+  const posts: Post[] = [];
+  let after = Math.floor(since / 1000);
+  for (let page = 0; page < 10 && Date.now() < deadline; page++) {
+    const items = await arctic<ArcticComment>(new URLSearchParams({ subreddit: sub, body: query, after: String(after), sort: "asc", limit: "100" }), "comments");
+    for (const c of items) {
+      const body = (c.body ?? "").trim();
+      if (c.author === "[deleted]" || body === "[removed]" || body === "[deleted]" || body.length < 40) continue;
+      posts.push({
+        id: `reddit:${c.id.toLowerCase()}`,
+        source: "reddit",
+        community: `r/${c.subreddit} comments`,
+        author: c.author,
+        postedAt: new Date(c.created_utc * 1000).toISOString(),
+        title: "",
+        body: decode(body),
+        url: `https://www.reddit.com${c.permalink}`,
+      });
+    }
+    if (items.length < 100) break;
+    after = items.at(-1)!.created_utc;
+  }
+  return posts;
+}
+
+type StoreApp = { name: string; apple?: number; play?: string };
+const stores = collect.stores ?? {};
+const storeSince = Date.now() - (stores.days ?? 7) * 86_400_000;
+const maxRating: number = stores.maxRating ?? 4;
+const stars = (n: number) => `${n}★`;
+
+type AppleEntry = { id: { label: string }; author: { name: { label: string } }; updated: { label: string }; "im:rating": { label: string }; "im:version"?: { label: string }; title: { label: string }; content: { label: string } };
+
+// The App Store's reviews feed, newest first, a page of 50 at a time until a page reaches back past
+// `days`. The country is a query parameter (`cc`), not the path's /gb/, which robots.txt asks bots to
+// leave alone.
+async function appStore(app: StoreApp, country: string): Promise<Post[]> {
+  const posts: Post[] = [];
+  for (let page = 1; page <= 10 && Date.now() < deadline; page++) {
+    const data = JSON.parse(await get(`https://itunes.apple.com/rss/customerreviews/page=${page}/id=${app.apple}/sortby=mostrecent/json?cc=${country}`));
+    const raw = data.feed?.entry ?? [];
+    const entries: AppleEntry[] = (Array.isArray(raw) ? raw : [raw]).filter((e: AppleEntry) => e?.["im:rating"]);
+    for (const e of entries) {
+      const at = Date.parse(e.updated.label);
+      const rating = Number(e["im:rating"].label);
+      if (at < storeSince || rating > maxRating) continue;
+      posts.push({
+        id: `appstore:${e.id.label}`,
+        source: "appstore",
+        community: `App Store ${country.toUpperCase()}: ${app.name}`,
+        author: e.author.name.label,
+        postedAt: new Date(at).toISOString(),
+        title: `${stars(rating)} ${decode(e.title.label)}`,
+        body: decode(e.content.label).trim(),
+        url: `https://apps.apple.com/${country}/app/id${app.apple}?see-all=reviews`,
+      });
+    }
+    if (entries.length < 50 || Date.parse(entries.at(-1)!.updated.label) < storeSince) break;
+    await sleep(500);
+  }
+  return posts;
+}
+
+// Google Play's newest reviews, 150 at a time until a page reaches back past `days`. Its reviews have
+// no title; the sort reads them under the app's name.
+async function googlePlay(app: StoreApp, country: string): Promise<Post[]> {
+  const posts: Post[] = [];
+  let token: string | undefined;
+  for (let page = 0; page < 6 && Date.now() < deadline; page++) {
+    const res = await gplay.reviews({ appId: app.play!, country, lang: "en", sort: gplay.sort.NEWEST, num: 150, paginate: true, nextPaginationToken: token });
+    for (const r of res.data) {
+      const at = Date.parse(r.date);
+      if (at < storeSince || r.score > maxRating || !r.text?.trim()) continue;
+      posts.push({
+        id: `play:${r.id}`,
+        source: "play",
+        community: `Google Play ${country.toUpperCase()}: ${app.name}`,
+        author: r.userName ?? "",
+        postedAt: new Date(at).toISOString(),
+        title: `${stars(r.score)} ${app.name}`,
+        body: r.text.trim(),
+        url: r.url ?? `https://play.google.com/store/apps/details?id=${app.play}&hl=en_GB&gl=${country.toUpperCase()}`,
+      });
+    }
+    token = res.nextPaginationToken ?? undefined;
+    if (!token || !res.data.length || Date.parse(res.data.at(-1)!.date) < storeSince) break;
+  }
+  return posts;
+}
+
+// YouTube comments under the most viewed recent videos of each query. Only with a key.
+const youtubeKey = process.env.YOUTUBE_API_KEY;
+const yt = collect.youtube ?? {};
+async function youtube(query: string): Promise<Post[]> {
+  const api = (path: string, params: Record<string, string>) => get(`https://www.googleapis.com/youtube/v3/${path}?${new URLSearchParams({ ...params, key: youtubeKey! })}`).then(JSON.parse);
+  const after = new Date(Date.now() - (yt.days ?? 60) * 86_400_000).toISOString();
+  const search = await api("search", { part: "snippet", q: query, type: "video", order: "viewCount", publishedAfter: after, maxResults: String(yt.videos ?? 5), relevanceLanguage: "en" });
+  const posts: Post[] = [];
+  for (const v of search.items ?? []) {
+    const videoId = v.id?.videoId;
+    if (!videoId || Date.now() > deadline) continue;
+    const threads = await api("commentThreads", { part: "snippet", videoId, order: "time", maxResults: String(yt.comments ?? 100), textFormat: "plainText" }).catch(() => ({ items: [] }));
+    for (const t of threads.items ?? []) {
+      const c = t.snippet?.topLevelComment?.snippet;
+      if (!c?.textDisplay || c.textDisplay.length < 40) continue;
+      posts.push({
+        id: `youtube:${t.id}`,
+        source: "youtube",
+        community: `YouTube: ${decode(v.snippet.title)}`,
+        author: c.authorDisplayName ?? "",
+        postedAt: new Date(c.publishedAt).toISOString(),
+        title: "",
+        body: c.textDisplay.trim(),
+        url: `https://www.youtube.com/watch?v=${videoId}&lc=${t.id}`,
+      });
+    }
   }
   return posts;
 }
@@ -287,13 +433,24 @@ async function fetchFrom(label: string, run: () => Promise<Post[]>) {
 }
 
 // Arctic Shift one subreddit at a time; the rest 6 at a time beside it.
+const countries: string[] = stores.countries ?? ["gb", "us"];
+const apps: StoreApp[] = stores.apps ?? [];
 const jobs: [string, () => Promise<Post[]>][] = [
   ...(collect.freelancer?.queries ?? []).map((q: string) => [`freelancer "${q}"`, () => freelancer(q)]),
   ...(collect.khoros ?? []).map((k: { host: string; name: string; skipBoards?: string[] }) => [k.name, () => khoros(k.host, k.name, k.skipBoards)]),
+  ...apps.flatMap((a) => countries.flatMap((cc): [string, () => Promise<Post[]>][] => [
+    ...(a.apple ? [[`App Store ${cc} ${a.name}`, () => appStore(a, cc)] as [string, () => Promise<Post[]>]] : []),
+    ...(a.play ? [[`Google Play ${cc} ${a.name}`, () => googlePlay(a, cc)] as [string, () => Promise<Post[]>]] : []),
+  ])),
+  ...(youtubeKey ? ((yt.queries ?? []) as string[]).map((q): [string, () => Promise<Post[]>] => [`YouTube "${q}"`, () => youtube(q)]) : []),
 ];
+if (!youtubeKey && yt.queries?.length) say("youtube: skipped, no YOUTUBE_API_KEY");
+type Search = { sub: string; query: string };
 await Promise.all([
   (async () => {
     for (const sub of (collect.reddit?.subs ?? []) as string[]) await fetchFrom(`r/${sub}`, () => reddit(sub));
+    for (const s of (collect.reddit?.search ?? []) as Search[]) await fetchFrom(`r/${s.sub} "${s.query}"`, () => reddit(s.sub, s.query));
+    for (const s of (collect.reddit?.comments ?? []) as Search[]) await fetchFrom(`r/${s.sub} comments "${s.query}"`, () => redditComments(s.sub, s.query));
   })(),
   ...Array.from({ length: 6 }, async () => {
     for (let job = jobs.shift(); job; job = jobs.shift()) await fetchFrom(...job);
@@ -318,7 +475,7 @@ if (apiKey && fresh.length) {
   const texts = fresh.map((p) => {
     const by = p.budget ? ` · budget ${p.budget}` : p.author ? ` · ${p.author}` : "";
     const body = p.body.length > 1500 ? `${p.body.slice(0, 1500)}…` : p.body;
-    return `- ${p.community} · ${p.postedAt.slice(0, 10)}${by}\n  ${p.title}${body ? `\n  ${body.replace(/\n/g, "\n  ")}` : ""}`;
+    return `- ${p.community} · ${p.postedAt.slice(0, 10)}${by}${p.title ? `\n  ${p.title}` : ""}${body ? `\n  ${body.replace(/\n/g, "\n  ")}` : ""}`;
   });
   const { answers, requests, failures } = await classify(texts, filter.kinds ?? {}, filter.about ?? "post", apiKey);
   fresh.forEach((p, i) => {

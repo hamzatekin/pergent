@@ -1,0 +1,103 @@
+{
+  "schedule": "40 */6 * * *",
+  "timezone": "Europe/London",
+  "label": "gym",
+  "radarLabel": "Gym apps",
+  "tab": false,
+  "order": 6,
+  "lang": "en",
+  "model": "claude-haiku-5-5",
+  "allowedTools": [],
+  "output": "sort",
+  "inputs": ["problems.md", "posts.md"],
+  "mute": true,
+  "timeoutMinutes": 15,
+  "maxOutputTokens": 48000,
+  "effort": "low",
+  "systemPrompt": "You sort what people say about gym and fitness apps into a list of the problems they raise. The user message holds the problems so far, the posts and the editor's brief. You deliver the sort by calling the StructuredOutput tool once, with the sort object as the tool's arguments: `problems` and `posts` arrays, never JSON strings. Do not write the sort, or any JSON, as a text reply: a sort written as text is thrown away.",
+  "before": "node ../../../scripts/collect-posts.ts",
+  "categories": [
+    "Logging workouts",
+    "Programs & coaching",
+    "Progress & stats",
+    "Watches & syncing",
+    "Nutrition & body weight",
+    "Gym chains & booking",
+    "Social & motivation",
+    "Pricing & subscriptions",
+    "Other"
+  ],
+  "sort": {
+    "maxPosts": 120,
+    "bodyChars": 600,
+    "fields": {
+      "name": "The problem in the words of the people who have it, at most 12 words, like \"Can't log supersets without the rest timer going wrong\" or \"Workout history lost when moving to a new phone\". Not an app's name.",
+      "summary": "One sentence: who has it (lifters, runners, gym members, coaches), what they do today, what it costs them.",
+      "recurring": "The post says it happens every workout or every week, keeps happening, or made them leave or switch app.",
+      "cost": "Money or time the post names for it, short, like \"£10 a month\" or \"10 minutes every session\", including a subscription price they balk at. \"\" when it names none.",
+      "workaround": "What they do about it today, short, like \"a notes app\", \"a spreadsheet\", \"two apps side by side\", \"switched to Strong\". \"\" when the post doesn't say."
+    }
+  },
+  "collect": {
+    "hours": 24,
+    "budgetSeconds": 210,
+    "reddit": {
+      "subs": ["Hevy", "fitbod", "boostcamp"],
+      "search": [
+        { "sub": "Fitness", "query": "app" },
+        { "sub": "weightroom", "query": "app" },
+        { "sub": "GYM", "query": "app" },
+        { "sub": "xxfitness", "query": "app" },
+        { "sub": "bodyweightfitness", "query": "app" },
+        { "sub": "naturalbodybuilding", "query": "app" },
+        { "sub": "HomeGym", "query": "app" },
+        { "sub": "ukfitness", "query": "app" },
+        { "sub": "PureGym", "query": "app" }
+      ],
+      "comments": [
+        { "sub": "Fitness", "query": "app" },
+        { "sub": "xxfitness", "query": "app" },
+        { "sub": "weightroom", "query": "app" }
+      ]
+    },
+    "stores": {
+      "countries": ["gb", "us"],
+      "maxRating": 4,
+      "days": 7,
+      "apps": [
+        { "name": "Hevy", "apple": 1458862350, "play": "com.hevy" },
+        { "name": "Strong", "apple": 464254577, "play": "io.strongapp.strong" },
+        { "name": "Fitbod", "apple": 1041517543, "play": "com.fitbod.fitbod" },
+        { "name": "JEFIT", "apple": 449810000, "play": "je.fit" },
+        { "name": "StrongLifts", "apple": 488580022, "play": "com.stronglifts.app" },
+        { "name": "Boostcamp", "apple": 1529354455, "play": "com.bpmhealth.boostcamp" },
+        { "name": "Alpha Progression", "apple": 1462277793, "play": "com.alphaprogression.alphaprogression" },
+        { "name": "Gymverse", "apple": 1048454034 },
+        { "name": "Ladder", "apple": 1502936453 },
+        { "name": "Nike Training Club", "apple": 301521403, "play": "com.nike.ntc" },
+        { "name": "MyFitnessPal", "apple": 341232718, "play": "com.myfitnesspal.android" },
+        { "name": "PureGym", "apple": 588860938, "play": "com.puregym" },
+        { "name": "The Gym Group", "apple": 1444707310, "play": "com.netpulse.mobile.thegymgroup" }
+      ]
+    },
+    "youtube": {
+      "queries": ["best workout tracker app", "best gym app", "Hevy vs Strong", "fitness app review"],
+      "videos": 5,
+      "comments": 100,
+      "days": 90
+    }
+  },
+  "filter": {
+    "threshold": 0.6,
+    "about": "post, comment or app review about a gym or fitness app",
+    "kinds": {
+      "complaint": "Says what is wrong with or missing from a fitness, workout, nutrition or gym app: a feature it lacks, something slow or awkward to do, a limit, data lost or not syncing, a paywall on something they need, a reason they left or would leave it.",
+      "wish": "Describes an app or feature they want and cannot find, or a way they track training that no app fits (a spreadsheet, a notebook, two apps at once).",
+      "question": "Asks which app to use for something, or how to do something in one, saying what they need.",
+      "praise": "Praise, thanks or a star rating with nothing they want changed.",
+      "promo": "Promotes an app or service the poster makes or sells, a survey or 'what do you want in an app' post from someone building one, or an ad.",
+      "other": "Anything else: training, diet or form advice, a progress post, gym etiquette, chatter, a comment that only names an app, off topic."
+    },
+    "drop": ["praise", "promo", "other"]
+  }
+}
