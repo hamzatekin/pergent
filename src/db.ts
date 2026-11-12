@@ -232,15 +232,16 @@ export function openDb(runsDir: string): DatabaseSync {
       run_id      TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS verdicts_by_problem ON verdicts (problem_id, id);
-    CREATE TABLE IF NOT EXISTS briefs (
+    CREATE TABLE IF NOT EXISTS overviews (
       id         INTEGER PRIMARY KEY,
-      since      TEXT NOT NULL,
+      task       TEXT NOT NULL,
       summary    TEXT NOT NULL,
-      items      TEXT NOT NULL,
-      next       TEXT NOT NULL DEFAULT '',
+      categories TEXT NOT NULL,
+      input_hash TEXT NOT NULL,
       created_at TEXT NOT NULL,
       run_id     TEXT NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS overviews_by_task ON overviews (task, id);
     CREATE TABLE IF NOT EXISTS jobs (
       id               TEXT PRIMARY KEY,
       source           TEXT NOT NULL,
@@ -322,8 +323,6 @@ export function openDb(runsDir: string): DatabaseSync {
   if (!problemColumns.some((c) => c.name === "judge_asked")) db.exec("ALTER TABLE problems ADD COLUMN judge_asked TEXT");
   // A second radar (gym) came after the first; what was there before is the ideas radar's.
   if (!problemColumns.some((c) => c.name === "task")) db.exec("ALTER TABLE problems ADD COLUMN task TEXT NOT NULL DEFAULT 'ideas'");
-  const briefColumns = db.prepare("PRAGMA table_info(briefs)").all() as { name: string }[];
-  if (!briefColumns.some((c) => c.name === "task")) db.exec("ALTER TABLE briefs ADD COLUMN task TEXT NOT NULL DEFAULT 'ideas'");
   // What the model read from an advert's text (src/jobs.ts), on the advert's row; read_at is empty until then.
   const jobColumns = db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[];
   for (const [name, type] of Object.entries(JOB_READ_COLUMNS)) {
@@ -1133,34 +1132,26 @@ export function radarTotals(task: string): { posts: number; sorted: number; rais
   `).get(task, task, task, task) as { posts: number; sorted: number; raising: number; problems: number };
 }
 
-// The radar's on-demand brief (src/ideas.ts): what changed since `since`, in a few grouped lines that
-// point at problems.
-export type BriefItem = { group: string; problem: number; text: string };
-export type BriefRow = { id: number; since: string; summary: string; items: BriefItem[]; next: string; createdAt: string };
+// A radar's overview (src/ideas.ts): the whole board summed up, and per category what one person could
+// build from it. `input_hash` is the hash of what the model was given, so a run with nothing new skips it.
+export type OverviewIdea = { name: string; pitch: string; why: string; risk: string; first: string; problems: number[]; best: boolean };
+export type OverviewCategory = { category: string; take: string; summary: string; ideas: OverviewIdea[] };
+export type OverviewRow = { id: number; summary: string; categories: OverviewCategory[]; inputHash: string; createdAt: string };
 
-export function saveBrief(task: string, runId: string, brief: Omit<BriefRow, "id" | "createdAt">): number {
+export function saveOverview(task: string, runId: string, overview: Omit<OverviewRow, "id" | "createdAt">): number {
   return Number(
     use()
-      .prepare("INSERT INTO briefs (task, since, summary, items, next, created_at, run_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(task, brief.since, brief.summary, JSON.stringify(brief.items), brief.next, new Date().toISOString(), runId).lastInsertRowid,
+      .prepare("INSERT INTO overviews (task, summary, categories, input_hash, created_at, run_id) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(task, overview.summary, JSON.stringify(overview.categories), overview.inputHash, new Date().toISOString(), runId).lastInsertRowid,
   );
 }
 
-// A radar's briefs, newest first.
-export function listBriefs(task: string, limit = 50): BriefRow[] {
-  const rows = use().prepare("SELECT id, since, summary, items, next, created_at AS createdAt FROM briefs WHERE task = ? ORDER BY id DESC LIMIT ?").all(task, limit) as (Omit<BriefRow, "items"> & { items: string })[];
-  return rows.map((r) => ({ ...r, items: JSON.parse(r.items) }));
-}
-
-// What the radar did since a time: posts collected (by the run that saved them, whose id is its start
-// time), posts sorted, and of those, how many raised a problem.
-export function radarSince(task: string, since: string): { collected: number; sorted: number; raising: number } {
-  const runId = since.replace(/[:.]/g, "-");
-  return use().prepare(`
-    SELECT (SELECT COUNT(*) FROM posts WHERE task = ? AND kept = 1 AND run_id >= ?) AS collected,
-           (SELECT COUNT(*) FROM mentions m JOIN posts p ON p.id = m.post_id WHERE p.task = ? AND m.sorted_at >= ?) AS sorted,
-           (SELECT COUNT(*) FROM mentions m JOIN posts p ON p.id = m.post_id WHERE p.task = ? AND m.sorted_at >= ? AND m.problem_id IS NOT NULL) AS raising
-  `).get(task, runId, task, since, task, since) as { collected: number; sorted: number; raising: number };
+// A radar's newest overview, or null before its first.
+export function latestOverview(task: string): OverviewRow | null {
+  const row = use().prepare("SELECT id, summary, categories, input_hash AS inputHash, created_at AS createdAt FROM overviews WHERE task = ? ORDER BY id DESC LIMIT 1").get(task) as
+    | (Omit<OverviewRow, "categories"> & { categories: string })
+    | undefined;
+  return row ? { ...row, categories: JSON.parse(row.categories) } : null;
 }
 
 // The newest issues, of one newsletter or all of them, without their text.

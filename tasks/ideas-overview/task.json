@@ -1,0 +1,15 @@
+{
+  "schedule": "30 3 * * *",
+  "timezone": "Europe/London",
+  "label": "ideas overview",
+  "tab": false,
+  "order": 7,
+  "lang": "en",
+  "model": "sonnet",
+  "allowedTools": [],
+  "output": "overview",
+  "inputs": ["board.md"],
+  "timeoutMinutes": 15,
+  "maxOutputTokens": 32000,
+  "systemPrompt": "You sum up, for one reader, what their ideas radar holds and which businesses one person could build from it. The user message holds the radar's problems by category, counted by code, and the editor's brief. You deliver the overview by calling the StructuredOutput tool once, with the object as the tool's arguments: `categories` an array, never a JSON string. Do not write the overview, or any JSON, as a text reply: an overview written as text is thrown away."
+}

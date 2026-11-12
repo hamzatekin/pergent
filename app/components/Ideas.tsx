@@ -1,6 +1,6 @@
 import { Link, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
-import type { BriefState, BriefView, BriefsPage, IdeasPage, ProblemItem, ProblemPage } from "../server/ideas.functions.ts";
+import type { IdeaView, IdeasCategory, IdeasHome, IdeasPage, OverviewState, ProblemItem, ProblemPage } from "../server/ideas.functions.ts";
 import { Shell } from "./Shell.tsx";
 import { Sources } from "./Sources.tsx";
 
@@ -52,118 +52,317 @@ function TrendBadge({ trend }: { trend: ProblemItem["trend"] }) {
   ) : null;
 }
 
-// The radar's board: the problems found in what small business owners post, counted by code, the ones
-// most people raised first. Category chips filter it; by default a problem only one person raised is
-// left out until someone else does.
-export function IdeasBoard({ data }: { data: IdeasPage }) {
-  const { totals } = data;
-  const category = data.categories.find((c) => c.slug === data.category);
-  // The small business radar is /ideas itself; another radar carries ?radar=.
-  const radar = data.radars[0] && data.radar !== data.radars[0].task ? data.radar : undefined;
-  const header = (
+// The page's header: Ideas (a link home from a category), the radar when there is more than one, the
+// category, and the never-show list.
+function Header({ data, category }: { data: IdeasPage; category?: string }) {
+  const radar = radarParam(data);
+  return (
     <>
       <h1 className="crumb">
-        <span className="crumb-task">Ideas</span>
+        {category ? (
+          <Link to="/ideas" search={{ radar }} className="crumb-task">
+            Ideas
+          </Link>
+        ) : (
+          <span className="crumb-task">Ideas</span>
+        )}
         {radar && <span className="stamp">{data.radars.find((r) => r.task === radar)?.label}</span>}
-        {category && <span className="stamp">{category.name}</span>}
+        {category && <span className="stamp">{category}</span>}
       </h1>
       <a href={`/admin/mutes/${data.radar}`} className="linkbtn">
         Never show{data.muted ? ` (${data.muted} hidden)` : ""}
       </a>
     </>
   );
+}
+
+// The small business radar is /ideas itself; another radar carries ?radar=.
+const radarParam = (data: IdeasPage) => (data.radars[0] && data.radar !== data.radars[0].task ? data.radar : undefined);
+
+const anchor = (idea: IdeaView) => `idea-${idea.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+
+function RadarChips({ data }: { data: IdeasPage }) {
+  if (!data.radars.length) return null;
   return (
-    <Shell nav={data.nav} active="ideas" header={header}>
-      {data.radars.length > 0 && (
-        <nav className="feed-chips" aria-label="Radars">
-          {data.radars.map((r, i) => (
-            <Link key={r.task} to="/ideas" search={{ radar: i === 0 ? undefined : r.task }} className="chip" data-active={r.task === data.radar}>
-              {r.label}
-            </Link>
-          ))}
-        </nav>
-      )}
-      {data.brief && <BriefPanel state={data.brief} />}
-      <Sources sources={data.sources} />
-      <p className="note feed-note">
-        {totals.posts.toLocaleString("en-GB")} posts collected, {totals.sorted.toLocaleString("en-GB")} sorted into {plural(totals.problems, "problem")}
-        {data.lastSort ? `, last sorted ${data.lastSort}` : ""}.{totals.waiting > 0 && ` ${totals.waiting.toLocaleString("en-GB")} waiting for the next sorts.`}
-      </p>
-      <nav className="feed-chips">
-        <Link to="/ideas" search={{ radar, all: data.all || undefined, show: data.show }} className="chip" data-active={!data.category}>
-          All
+    <nav className="feed-chips" aria-label="Radars">
+      {data.radars.map((r, i) => (
+        <Link key={r.task} to="/ideas" search={{ radar: i === 0 ? undefined : r.task }} className="chip" data-active={r.task === data.radar}>
+          {r.label}
         </Link>
-        {data.categories
-          .filter((c) => c.count > 0 || c.slug === data.category)
-          .map((c) => (
-            <Link key={c.slug} to="/ideas" search={{ radar, category: c.slug, all: data.all || undefined, show: data.show }} className="chip" data-active={c.slug === data.category}>
-              {c.name}
-              <span className="chip-count">{c.count}</span>
-            </Link>
-          ))}
+      ))}
+    </nav>
+  );
+}
+
+// A radar's Ideas page: its home, or one of its categories.
+export function IdeasBoard({ data }: { data: IdeasPage }) {
+  return data.kind === "home" ? <Home data={data} /> : <Category data={data} />;
+}
+
+// The home: what the nightly overview makes of the whole board and the ideas it would start with, then a
+// card per category, the reader's starred problems, and where the posts come from.
+function Home({ data }: { data: IdeasHome }) {
+  const { totals } = data;
+  const radar = radarParam(data);
+  return (
+    <Shell nav={data.nav} active="ideas" header={<Header data={data} />}>
+      <RadarChips data={data} />
+      {data.overview && (
+        <section className="overview">
+          {data.summary ? (
+            <>
+              <p className="overview-summary">{data.summary}</p>
+              {data.best.length > 0 && (
+                <>
+                  <h3 className="overview-h">Start with</h3>
+                  <ol className="best">
+                    {data.best.map((idea) => (
+                      <li key={idea.name}>
+                        <Link to="/ideas" search={{ radar, category: idea.category.slug }} hash={anchor(idea)} className="best-idea">
+                          <span className="best-name">{idea.name}</span>
+                          <span className="best-pitch">{idea.pitch}</span>
+                          <span className="best-cat">{idea.category.name} →</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              )}
+            </>
+          ) : (
+            <p className="overview-empty">No overview yet. Each night the radar sums up the whole board and, for each category, what one person could build from it.</p>
+          )}
+          <OverviewFoot state={data.overview} radar={data.radar} />
+        </section>
+      )}
+      {data.categories.length > 0 ? (
+        <>
+          <h3 className="overview-h ideas-h">Categories</h3>
+          <ul className="cats">
+            {data.categories.map((c) => (
+              <li key={c.slug}>
+                <Link to="/ideas" search={{ radar, category: c.slug }} className="cat">
+                  <span className="cat-name">{c.name}</span>
+                  {c.take && <span className="cat-take">{c.take}</span>}
+                  <span className="cat-foot">
+                    <span className="problem-meta">
+                      {c.problems > 0 ? (
+                        <>
+                          <span>{plural(c.problems, "problem")}</span>
+                          <span>{plural(c.people, "person", "people")}</span>
+                        </>
+                      ) : (
+                        <span>{c.oneOffs ? `${plural(c.oneOffs, "problem")} raised by one person so far` : "Only killed problems"}</span>
+                      )}
+                      {c.worth > 0 && <span className="cat-worth">{c.worth} worth testing</span>}
+                      {c.watch > 0 && <span>{c.watch} to watch</span>}
+                    </span>
+                    {c.ideas > 0 && <span className="cat-ideas">{plural(c.ideas, "idea")}</span>}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="callout">{totals.sorted === 0 ? "Nothing sorted yet. The radar sorts new posts after each collection." : "No problem has been raised by more than one person yet."}</p>
+      )}
+      {data.starred.length > 0 && (
+        <>
+          <h3 className="overview-h ideas-h">Your starred</h3>
+          <Problems problems={data.starred} withCategory />
+        </>
+      )}
+      <div className="ideas-foot">
+        <Sources sources={data.sources} />
+        <p className="note feed-note">
+          {totals.posts.toLocaleString("en-GB")} posts collected, {totals.sorted.toLocaleString("en-GB")} sorted into {plural(totals.problems, "problem")}
+          {data.lastSort ? `, last sorted ${data.lastSort}` : ""}.{totals.waiting > 0 && ` ${totals.waiting.toLocaleString("en-GB")} waiting for the next sorts.`}
+        </p>
+      </div>
+    </Shell>
+  );
+}
+
+// One category: the overview's summary of it and the businesses one person could build from it, then its
+// problems, starred first, then by verdict and people. By default a problem only one person raised is
+// left out until someone else does.
+function Category({ data }: { data: IdeasCategory }) {
+  const radar = radarParam(data);
+  const { category } = data;
+  return (
+    <Shell nav={data.nav} active="ideas" header={<Header data={data} category={category.name} />}>
+      <nav className="feed-chips scroll" aria-label="Categories">
+        <Link to="/ideas" search={{ radar }} className="chip">
+          Overview
+        </Link>
+        {data.categories.map((c) => (
+          <Link key={c.slug} to="/ideas" search={{ radar, category: c.slug }} className="chip" data-active={c.slug === category.slug}>
+            {c.name}
+            <span className="chip-count">{c.count}</span>
+          </Link>
+        ))}
       </nav>
+      {data.overview && (
+        <section className="overview">
+          {category.summary ? (
+            <>
+              <p className="overview-summary">{category.summary}</p>
+              <h3 className="overview-h">What one person could build</h3>
+              {category.ideas.length > 0 ? (
+                <div className="ideas">
+                  {category.ideas.map((idea) => (
+                    <Idea key={idea.name} idea={idea} />
+                  ))}
+                </div>
+              ) : (
+                <p className="overview-empty">Nothing here yet that one person could build a business on.</p>
+              )}
+            </>
+          ) : (
+            <p className="overview-empty">The overview has nothing on this category yet: each night it covers the problems raised by more than one person, judged or starred.</p>
+          )}
+          <OverviewFoot state={data.overview} radar={data.radar} category={category.slug} />
+        </section>
+      )}
+      <h3 className="overview-h ideas-h">Problems</h3>
       <nav className="feed-chips">
-        <Link to="/ideas" search={{ radar, category: data.category, all: data.all || undefined }} className="chip" data-active={!data.show}>
+        <Link to="/ideas" search={{ radar, category: category.slug, all: data.all || undefined }} className="chip" data-active={!data.show}>
           Everything
         </Link>
         {data.shows
           .filter((s) => s.count > 0 || s.show === data.show)
           .map((s) => (
-            <Link key={s.show} to="/ideas" search={{ radar, category: data.category, all: data.all || undefined, show: s.show }} className="chip" data-active={s.show === data.show}>
+            <Link key={s.show} to="/ideas" search={{ radar, category: category.slug, all: data.all || undefined, show: s.show }} className="chip" data-active={s.show === data.show}>
               {s.label}
               <span className="chip-count">{s.count}</span>
             </Link>
           ))}
       </nav>
       {data.problems.length > 0 ? (
-        <ol className="problems">
-          {data.problems.map((p) => (
-            <li key={p.id}>
-              <Link to="/ideas/$id" params={{ id: String(p.id) }} className="problem-row">
-                <span className="problem-main">
-                  <span className="problem-name">
-                    {p.status === "starred" && <span className="star" role="img" aria-label="Starred">★ </span>}
-                    {p.name}
-                  </span>
-                  <span className="problem-summary">{p.summary}</span>
-                  <span className="problem-meta">
-                    {!data.category && <span>{p.category}</span>}
-                    {evidence(p).map((e) => (
-                      <span key={String(e)}>{e}</span>
-                    ))}
-                    <span>last {p.last}</span>
-                  </span>
-                </span>
-                <span className="problem-side">
-                  <span className="badges">
-                    <VerdictBadge verdict={p.verdict} />
-                    <TrendBadge trend={p.trend} />
-                  </span>
-                  <Weeks weeks={p.weeks} />
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ol>
+        <Problems problems={data.problems} />
       ) : (
-        <p className="callout">
-          {totals.sorted === 0 ? "Nothing sorted yet. The radar sorts new posts after each collection." : data.all ? "No problems here yet." : "No problem here has been raised by more than one person yet."}
-        </p>
+        <p className="callout">{data.all || data.show ? "No problems here yet." : "No problem here has been raised by more than one person yet."}</p>
       )}
       {(data.oneOffs > 0 || data.all) && (
         <p className="note more">
           {data.all ? (
-            <Link to="/ideas" search={{ radar, category: data.category, show: data.show }}>
+            <Link to="/ideas" search={{ radar, category: category.slug, show: data.show }}>
               Only problems more than one person raised
             </Link>
           ) : (
-            <Link to="/ideas" search={{ radar, category: data.category, all: true, show: data.show }}>
+            <Link to="/ideas" search={{ radar, category: category.slug, all: true, show: data.show }}>
               Show {plural(data.oneOffs, "problem")} only one person raised so far
             </Link>
           )}
         </p>
       )}
     </Shell>
+  );
+}
+
+// One business the overview thinks one person could build, with the problems it answers.
+function Idea({ idea }: { idea: IdeaView }) {
+  return (
+    <article className="idea" id={anchor(idea)}>
+      <header className="idea-head">
+        <h4 className="idea-name">{idea.name}</h4>
+        {idea.best && <span className="best-badge">Start here</span>}
+      </header>
+      <p className="idea-pitch">{idea.pitch}</p>
+      <dl className="idea-facts">
+        {idea.why && (
+          <div>
+            <dt>Why it could work</dt>
+            <dd>{idea.why}</dd>
+          </div>
+        )}
+        {idea.risk && (
+          <div>
+            <dt>Risk</dt>
+            <dd>{idea.risk}</dd>
+          </div>
+        )}
+        {idea.first && (
+          <div>
+            <dt>First step</dt>
+            <dd>{idea.first}</dd>
+          </div>
+        )}
+      </dl>
+      {idea.problems.length > 0 && (
+        <ul className="idea-from" aria-label="The problems it answers">
+          {idea.problems.map((p) => (
+            <li key={p.id}>
+              <Link to="/ideas/$id" params={{ id: String(p.id) }}>
+                {p.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  );
+}
+
+// When the overview was written, Refresh, and what became of the last run that wrote none. While one is
+// being written the page asks the server again every 5s, so it appears without a reload.
+function OverviewFoot({ state, radar, category }: { state: OverviewState; radar: string; category?: string }) {
+  useRefreshWhile(state.writing);
+  return (
+    <div className="overview-foot">
+      <form method="post" action="/admin/ideas/overview">
+        <input type="hidden" name="radar" value={radar} />
+        {category && <input type="hidden" name="category" value={category} />}
+        <button type="submit" className="btn" disabled={state.writing || !state.canWrite}>
+          {state.writing ? "Writing…" : state.when ? "Refresh" : "Write it now"}
+        </button>
+      </form>
+      {state.when && (
+        <span className="note" data-old={!state.fresh || undefined}>
+          Written {state.when}
+        </span>
+      )}
+      {state.lastRun && (
+        <span className={state.lastRun.failed ? "note failed" : "note"}>
+          {state.lastRun.text} <a href={state.lastRun.href}>See the run</a>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Problems({ problems, withCategory }: { problems: ProblemItem[]; withCategory?: boolean }) {
+  return (
+    <ol className="problems">
+      {problems.map((p) => (
+        <li key={p.id}>
+          <Link to="/ideas/$id" params={{ id: String(p.id) }} className="problem-row">
+            <span className="problem-main">
+              <span className="problem-name">
+                {p.status === "starred" && <span className="star" role="img" aria-label="Starred">★ </span>}
+                {p.name}
+              </span>
+              <span className="problem-summary">{p.summary}</span>
+              <span className="problem-meta">
+                {withCategory && <span>{p.category}</span>}
+                {evidence(p).map((e) => (
+                  <span key={String(e)}>{e}</span>
+                ))}
+                <span>last {p.last}</span>
+              </span>
+            </span>
+            <span className="problem-side">
+              <span className="badges">
+                <VerdictBadge verdict={p.verdict} />
+                <TrendBadge trend={p.trend} />
+              </span>
+              <Weeks weeks={p.weeks} />
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -176,7 +375,9 @@ export function ProblemView({ data }: { data: ProblemPage }) {
         Ideas
       </Link>
       {data.radarLabel && <span className="stamp">{data.radarLabel}</span>}
-      <span className="stamp">{p.category}</span>
+      <Link to="/ideas" search={{ radar: data.radarLabel && p.task !== "ideas" ? p.task : undefined, category: data.categorySlug }} className="stamp">
+        {p.category}
+      </Link>
     </h1>
   );
   const budgets = [...new Set(p.budgets)];
@@ -365,7 +566,7 @@ function VerdictCard({ data }: { data: ProblemPage }) {
   );
 }
 
-// While a brief is being written the page asks the server again every 5s, so it appears without a reload.
+// While an overview is being written the page asks the server again every 5s.
 function useRefreshWhile(busy: boolean) {
   const router = useRouter();
   useEffect(() => {
@@ -373,111 +574,4 @@ function useRefreshWhile(busy: boolean) {
     const timer = setInterval(() => router.invalidate(), 5_000);
     return () => clearInterval(timer);
   }, [busy, router]);
-}
-
-function BriefMe({ state, label = "Brief me" }: { state: BriefState; label?: string }) {
-  if (!state.canBrief) return null;
-  return (
-    <div className="brief-me">
-      <form method="post" action="/admin/ideas/brief">
-        <button type="submit" className="btn primary" disabled={state.briefing}>
-          {state.briefing ? "Writing your brief…" : label}
-        </button>
-      </form>
-      {state.lastRun && (
-        <p className={state.lastRun.failed ? "note failed" : "note"}>
-          {state.lastRun.text} <a href={state.lastRun.href}>See the run</a>
-        </p>
-      )}
-    </div>
-  );
-}
-
-// The top of the board: the newest brief (open for 12 hours, then closed to one line), with Brief me to
-// write a new one covering what changed since. The briefs page keeps the earlier ones.
-function BriefPanel({ state }: { state: BriefState }) {
-  useRefreshWhile(state.briefing);
-  const [latest] = state.briefs;
-  if (!latest)
-    return (
-      <div className="radar-brief brief-empty">
-        <p>Ask for a brief and the radar sums up what it found: what is worth a look, what is new or rising, which verdicts changed.</p>
-        <BriefMe state={state} />
-      </div>
-    );
-  return (
-    <details className="radar-brief" open={latest.fresh || state.briefing || !!state.lastRun}>
-      <summary>
-        <span className="brief-title">Brief</span>
-        <span className="stamp">{latest.when}</span>
-      </summary>
-      <BriefBody brief={latest} />
-      <div className="brief-foot">
-        <BriefMe state={state} label="Brief me again" />
-        <Link to="/ideas/briefs" className="linkbtn">
-          Earlier briefs
-        </Link>
-      </div>
-    </details>
-  );
-}
-
-function BriefBody({ brief }: { brief: BriefView }) {
-  return (
-    <div className="brief-body">
-      <p className="brief-summary">{brief.summary}</p>
-      {brief.groups.map((g) => (
-        <section key={g.group} className="brief-group">
-          <h4>{g.group}</h4>
-          <ul>
-            {g.items.map((i) => (
-              <li key={i.problem}>
-                <Link to="/ideas/$id" params={{ id: String(i.problem) }}>
-                  {i.name}
-                </Link>{" "}
-                {i.text}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-      {brief.next && (
-        <p className="brief-next">
-          <strong>Next:</strong> {brief.next}
-        </p>
-      )}
-      <p className="note">Covers what changed since {brief.since}.</p>
-    </div>
-  );
-}
-
-export function BriefsList({ data }: { data: BriefsPage }) {
-  useRefreshWhile(data.briefing);
-  const header = (
-    <>
-      <h1 className="crumb">
-        <Link to="/ideas" className="crumb-task">
-          Ideas
-        </Link>
-        <span className="stamp">Briefs</span>
-      </h1>
-      <BriefMe state={data} />
-    </>
-  );
-  return (
-    <Shell nav={data.nav} active="ideas" header={header}>
-      <div className="briefs-list">
-        {data.briefs.length ? (
-          data.briefs.map((b) => (
-            <article key={b.id} className="radar-brief">
-              <h3 className="brief-when">{b.when}</h3>
-              <BriefBody brief={b} />
-            </article>
-          ))
-        ) : (
-          <p className="callout">No briefs yet.</p>
-        )}
-      </div>
-    </Shell>
-  );
 }

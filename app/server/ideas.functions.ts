@@ -1,8 +1,8 @@
 import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
-import { getProblem, getRun, latestVerdicts, listBriefs, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type BriefRow, type ProblemRow, type VerdictRow } from "#src/db.ts";
-import { BRIEF_GROUPS, CATEGORIES, QUESTIONS, RADAR, VERDICTS, briefOf, judgeBar, judgeOf, problemStats, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
+import { getProblem, getRun, latestOverview, latestVerdicts, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type OverviewRow, type ProblemRow, type VerdictRow } from "#src/db.ts";
+import { QUESTIONS, RADAR, VERDICTS, categoriesOf, judgeBar, judgeOf, overviewOf, problemStats, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
 import { mentions } from "#src/mute.ts";
 import { listRuns, listTasks, loadTask, type TaskConfig } from "#src/runner.ts";
 import { isRunning, isWaiting } from "#src/scheduler.ts";
@@ -12,7 +12,7 @@ import { ago, formatDate, formatDay } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
 
 // A radar is the task whose runs collect and sort its posts (tasks/ideas, tasks/gym); its judge and its
-// brief, when it has them, are the tasks named after it (judgeOf and briefOf in src/ideas.ts).
+// overview, when it has them, are the tasks named after it (judgeOf and overviewOf in src/ideas.ts).
 
 // Every radar, the small business one first: the tasks that sort posts, with the name the page shows.
 async function radars(): Promise<{ task: string; label: string }[]> {
@@ -47,48 +47,77 @@ export type ProblemItem = {
   /** Mentions per week, oldest first, the last one this week. */
   weeks: number[];
 };
-export type BriefView = {
-  id: number;
-  when: string;
-  /** Written in the last 12 hours: the board shows it open, an older one closed. */
-  fresh: boolean;
-  since: string;
-  summary: string;
-  groups: { group: string; items: { problem: number; name: string; text: string }[] }[];
-  next: string;
+export type IdeaView = {
+  name: string;
+  pitch: string;
+  why: string;
+  risk: string;
+  first: string;
+  best: boolean;
+  /** The category it came from, for the best bets on the home page. */
+  category: { slug: string; name: string };
+  problems: { id: number; name: string }[];
 };
-export type BriefState = {
-  /** The newest brief, or every brief on the briefs page. */
-  briefs: BriefView[];
-  /** A brief is being written (Brief me was pressed and the run is going or waiting). */
-  briefing: boolean;
-  canBrief: boolean;
-  /** The last Brief me that wrote no brief: it failed, was cut off, or found nothing to brief on. */
+export type OverviewState = {
+  /** When the newest overview was written; null before the first. */
+  when: string | null;
+  /** Written in the last 36 hours: older, the page says it is old. */
+  fresh: boolean;
+  /** An overview is being written (Refresh was pressed, or the nightly run is going or waiting). */
+  writing: boolean;
+  canWrite: boolean;
+  /** The newest overview run that wrote none since: it failed, or found nothing new. */
   lastRun: { failed: boolean; text: string; href: string } | null;
 };
-export type BriefsPage = { nav: Nav } & BriefState;
 export type RadarTab = { task: string; label: string };
 export type Show = Verdict | "starred" | "killed" | "unjudged";
-export type IdeasPage = {
+type Board = {
   nav: Nav;
   radar: string;
   radars: RadarTab[];
+  /** Problems hidden because they mention a never-show phrase. */
+  muted: number;
+  /** Null for a radar without an overview task. */
+  overview: OverviewState | null;
+};
+export type CategoryCard = {
+  slug: string;
+  name: string;
+  /** Raised by more than one person, or judged or starred. */
+  problems: number;
+  /** Raised by one person so far, not killed. */
+  oneOffs: number;
+  people: number;
+  worth: number;
+  watch: number;
+  ideas: number;
+  take: string | null;
+};
+// The home of a radar: the overview's summary and best bets, then a card per category.
+export type IdeasHome = Board & {
+  kind: "home";
+  summary: string | null;
+  best: IdeaView[];
+  categories: CategoryCard[];
+  /** The reader's starred problems, whatever their category. */
+  starred: ProblemItem[];
+  totals: { posts: number; sorted: number; raising: number; problems: number; waiting: number };
+  lastSort?: string;
+  sources: TaskSources;
+};
+// One category: what the overview made of it, then its problems.
+export type IdeasCategory = Board & {
+  kind: "category";
+  category: { slug: string; name: string; take: string | null; summary: string | null; ideas: IdeaView[] };
+  categories: { slug: string; name: string; count: number }[];
   show?: Show;
   shows: { show: Show; label: string; count: number }[];
-  categories: { slug: string; name: string; count: number }[];
-  category?: string;
   all: boolean;
   problems: ProblemItem[];
   /** Problems left out of the default view, raised by one person so far. */
   oneOffs: number;
-  /** Problems hidden because they mention a never-show phrase. */
-  muted: number;
-  totals: { posts: number; sorted: number; raising: number; problems: number; waiting: number };
-  lastSort?: string;
-  sources: TaskSources;
-  /** Null for a radar without a brief task. */
-  brief: BriefState | null;
 };
+export type IdeasPage = IdeasHome | IdeasCategory;
 export type VerdictView = {
   verdict: Verdict;
   label: string;
@@ -106,6 +135,8 @@ export type ProblemPage = {
   /** The radar's name, when there is more than one. */
   radarLabel?: string;
   problem: ProblemItem;
+  /** The problem's category on the Ideas page. */
+  categorySlug: string;
   verdict?: VerdictView;
   earlier: { label: string; verdict: Verdict; day: string }[];
   /** Judge again was pressed and no judge run has answered yet; `judging` while one is going. */
@@ -152,50 +183,33 @@ function item(p: ProblemRow, s: ProblemStats, v?: VerdictRow): ProblemItem {
   };
 }
 
-function briefView(b: BriefRow, names: Map<number, string>): BriefView {
-  return {
-    id: b.id,
-    when: formatDate(b.createdAt, "Europe/London"),
-    fresh: Date.now() - Date.parse(b.createdAt) < 12 * 3_600_000,
-    since: formatDay(b.since, "Europe/London"),
-    summary: b.summary,
-    groups: BRIEF_GROUPS.map((group) => ({
-      group,
-      items: b.items.filter((i) => i.group === group && names.has(i.problem)).map((i) => ({ problem: i.problem, name: names.get(i.problem)!, text: i.text })),
-    })).filter((g) => g.items.length),
-    next: b.next,
-  };
-}
-
-async function briefState(radar: string, limit: number): Promise<BriefState> {
-  const names = new Map(listProblems(radar).map((p) => [p.id, p.name]));
-  const briefs = listBriefs(radar, limit);
-  const BRIEF = briefOf(radar);
-  const briefing = isRunning(BRIEF) || isWaiting(BRIEF);
-  return {
-    briefs: briefs.map((b) => briefView(b, names)),
-    briefing,
-    canBrief: (await listTasks()).includes(BRIEF),
-    lastRun: briefing ? null : lastBriefRun(BRIEF, briefs[0]),
-  };
-}
-
-// Brief me went back to the button with nothing new to show when its run failed or had nothing to
-// brief on, which looked like a button that does nothing. The page says what became of it instead:
-// the newest brief run, when it started after the newest brief and wrote none. A row still `running`
-// that this server is not running was cut off.
-function lastBriefRun(BRIEF: string, latest: BriefRow | undefined): BriefState["lastRun"] {
-  const run = listRuns(BRIEF)[0];
+// The newest overview run that wrote none after the newest overview: failed or cut off (a row still
+// `running` that this server is not running), or ended without claude because nothing was new.
+function lastOverviewRun(task: string, latest: OverviewRow | null): OverviewState["lastRun"] {
+  const run = listRuns(task)[0];
   if (!run || (latest && run.startedAt <= latest.createdAt)) return null;
   const when = formatDate(run.startedAt, "Europe/London");
-  const href = `/admin/runs/${BRIEF}/${run.runId}`;
-  if (run.status !== "ok") return { failed: true, text: `The brief asked for on ${when} ${run.status === "running" ? "was cut off" : "failed"}.`, href };
-  const note = (getRun(BRIEF, run.runId)?.output ?? "").trim();
-  return { failed: false, text: `No brief on ${when}. ${note || "The run wrote none."}`, href };
+  const href = `/admin/runs/${task}/${run.runId}`;
+  if (run.status !== "ok") return { failed: true, text: `The overview run on ${when} ${run.status === "running" ? "was cut off" : "failed"}.`, href };
+  const note = (getRun(task, run.runId)?.output ?? "").trim();
+  return { failed: false, text: `Checked again ${when}: ${note || "the run wrote none."}`, href };
 }
 
-// The order of the board: starred first, then by verdict (worth testing, watch, not judged yet, pass),
-// then the most people, the busiest this week, the latest.
+async function overviewState(radar: string, latest: OverviewRow | null): Promise<OverviewState | null> {
+  const task = overviewOf(radar);
+  if (!(await listTasks()).includes(task)) return null;
+  const writing = isRunning(task) || isWaiting(task);
+  return {
+    when: latest && formatDate(latest.createdAt, "Europe/London"),
+    fresh: !!latest && Date.now() - Date.parse(latest.createdAt) < 36 * 3_600_000,
+    writing,
+    canWrite: true,
+    lastRun: writing ? null : lastOverviewRun(task, latest),
+  };
+}
+
+// The order of a category's problems: starred first, then by verdict (worth testing, watch, not judged
+// yet, pass), then the most people, the busiest this week, the latest.
 const RANK: Record<string, number> = { worth: 0, watch: 1, none: 2, pass: 3 };
 type Row = { p: ProblemRow; s: ProblemStats; v?: VerdictRow };
 const byEvidence = (a: Row, b: Row) =>
@@ -214,8 +228,13 @@ const SHOWS: Record<Show, { label: string; has: (r: Row) => boolean }> = {
   killed: { label: "Killed", has: (r) => r.p.status === "killed" },
 };
 
-// The board: every problem with a mention, counted by code (src/ideas.ts), in a category or all of
-// them. By default only problems more than one person raised; `all` adds the one-offs.
+// Shown by default: raised by more than one person, or judged, or starred. A one-off waits for a second.
+const onBoard = (r: Row) => r.s.people > 1 || !!r.v || r.p.status === "starred";
+
+// A radar's Ideas page. Without a category, its home: the nightly overview's summary of the whole board
+// and the ideas it would start with, then a card per category with its counts and the overview's one
+// line. With one, the category: what the overview made of it, the businesses one person could build
+// from it, then its problems, counted by code (src/ideas.ts), the one-offs behind a link.
 export const getIdeasPage = createServerFn({ method: "GET" })
   .validator((data: { radar?: string; category?: string; all?: boolean; show?: string }) => data)
   .handler(async ({ data }): Promise<IdeasPage> => {
@@ -226,42 +245,83 @@ export const getIdeasPage = createServerFn({ method: "GET" })
     const TASK = data.radar ?? RADAR;
     if (!all.some((r) => r.task === TASK)) throw notFound();
     const config = await loadTask(TASK).then((t) => t.config, () => ({}) as TaskConfig);
-    const names = (config.categories as string[] | undefined) ?? CATEGORIES;
+    const names = categoriesOf(config);
     const stats = problemStats(TASK);
     const muted = listMutes(TASK);
     const isMuted = (p: ProblemRow) => muted.some((m) => mentions(`${p.name}\n${p.summary}`, m));
     const verdicts = latestVerdicts();
-    const counted: Row[] = listProblems(TASK).flatMap((p) => (stats.has(p.id) ? [{ p, s: stats.get(p.id)!, v: verdicts.get(p.id) }] : []));
+    const problems = listProblems(TASK);
+    const counted: Row[] = problems.flatMap((p) => (stats.has(p.id) ? [{ p, s: stats.get(p.id)!, v: verdicts.get(p.id) }] : []));
     const unmuted = counted.filter(({ p }) => !isMuted(p));
-    const category = data.category ? names.find((n) => slug(n) === data.category) : undefined;
-    if (data.category && !category) throw notFound();
-    const show = data.show && data.show in SHOWS ? (data.show as Show) : undefined;
-    if (data.show && !show) throw notFound();
-    // Killed problems only under their own chip.
-    const shown = unmuted.filter((r) => (show ? SHOWS[show].has(r) : r.p.status !== "killed"));
-    const inCategory = shown.filter(({ p }) => !category || p.category === category);
-    // A judged or starred problem is always shown; the one-off filter is for the rest.
-    const visible = inCategory.filter((r) => data.all || r.s.people > 1 || r.v || r.p.status === "starred").sort(byEvidence);
-    // The last run that sorted something (a run with nothing to sort costs nothing and has no cost).
-    const lastSort = listRuns(TASK).find((r) => r.status === "ok" && r.costUsd !== undefined);
-    const totals = radarTotals(TASK);
-    const briefs = (await listTasks()).includes(briefOf(TASK));
-    return {
+    const live = unmuted.filter((r) => r.p.status !== "killed");
+    const latest = latestOverview(TASK);
+    const problemNames = new Map(problems.map((p) => [p.id, p.name]));
+    const ideasOf = (c: OverviewRow["categories"][number]): IdeaView[] =>
+      c.ideas.map((i) => ({
+        ...i,
+        category: { slug: slug(c.category), name: c.category },
+        problems: i.problems.filter((id) => problemNames.has(id)).map((id) => ({ id, name: problemNames.get(id)! })),
+      }));
+    const board: Board = {
       nav: sidebar,
       radar: TASK,
       radars: all.length > 1 ? all : [],
-      categories: names.map((n) => ({ slug: slug(n), name: n, count: shown.filter((r) => r.p.category === n && (data.all || r.s.people > 1 || r.v || r.p.status === "starred")).length })),
-      category: category && slug(category),
+      muted: counted.length - unmuted.length,
+      overview: await overviewState(TASK, latest),
+    };
+
+    if (!data.category) {
+      const lastSort = listRuns(TASK).find((r) => r.status === "ok" && r.costUsd !== undefined);
+      const totals = radarTotals(TASK);
+      return {
+        ...board,
+        kind: "home",
+        summary: latest?.summary ?? null,
+        best: (latest?.categories ?? []).flatMap(ideasOf).filter((i) => i.best),
+        categories: names
+          .map((name) => {
+            const here = live.filter((r) => r.p.category === name && onBoard(r));
+            const o = latest?.categories.find((c) => c.category === name);
+            return {
+              slug: slug(name),
+              name,
+              problems: here.length,
+              oneOffs: live.filter((r) => r.p.category === name && !onBoard(r)).length,
+              people: here.reduce((n, r) => n + r.s.people, 0),
+              worth: here.filter((r) => r.v?.verdict === "worth").length,
+              watch: here.filter((r) => r.v?.verdict === "watch").length,
+              ideas: o?.ideas.length ?? 0,
+              take: o?.take || null,
+            };
+          })
+          // Every category with a problem, so one with only one-offs or killed problems can still be opened.
+          .filter((c) => unmuted.some((r) => r.p.category === c.name)),
+        starred: unmuted.filter((r) => r.p.status === "starred").sort(byEvidence).map(({ p, s, v }) => item(p, s, v)),
+        totals: { ...totals, waiting: totals.posts - totals.sorted },
+        lastSort: lastSort && ago(lastSort.finishedAt ?? lastSort.startedAt),
+        sources: await taskSources(TASK, config),
+      };
+    }
+
+    const category = names.find((n) => slug(n) === data.category);
+    if (!category) throw notFound();
+    const show = data.show && data.show in SHOWS ? (data.show as Show) : undefined;
+    if (data.show && !show) throw notFound();
+    const inCategory = unmuted.filter((r) => r.p.category === category);
+    // Killed problems only under their own chip.
+    const shown = inCategory.filter((r) => (show ? SHOWS[show].has(r) : r.p.status !== "killed"));
+    const visible = shown.filter((r) => data.all || onBoard(r)).sort(byEvidence);
+    const o = latest?.categories.find((c) => c.category === category);
+    return {
+      ...board,
+      kind: "category",
+      category: { slug: slug(category), name: category, take: o?.take || null, summary: o?.summary || null, ideas: o ? ideasOf(o) : [] },
+      categories: names.map((n) => ({ slug: slug(n), name: n, count: live.filter((r) => r.p.category === n && onBoard(r)).length })).filter((c) => c.name === category || unmuted.some((r) => r.p.category === c.name)),
       show,
-      shows: (Object.keys(SHOWS) as Show[]).map((k) => ({ show: k, label: SHOWS[k].label, count: unmuted.filter((r) => SHOWS[k].has(r) && (!category || r.p.category === category)).length })),
+      shows: (Object.keys(SHOWS) as Show[]).map((k) => ({ show: k, label: SHOWS[k].label, count: inCategory.filter((r) => SHOWS[k].has(r)).length })),
       all: !!data.all,
       problems: visible.map(({ p, s, v }) => item(p, s, v)),
-      oneOffs: data.all ? 0 : inCategory.length - visible.length,
-      muted: counted.length - shown.length,
-      totals: { ...totals, waiting: totals.posts - totals.sorted },
-      lastSort: lastSort && ago(lastSort.finishedAt ?? lastSort.startedAt),
-      sources: await taskSources(TASK, config),
-      brief: briefs ? await briefState(TASK, 1) : null,
+      oneOffs: data.all ? 0 : shown.length - visible.length,
     };
   });
 
@@ -285,6 +345,7 @@ export const getProblemPage = createServerFn({ method: "GET" })
       nav: sidebar,
       radarLabel: tabs.length > 1 ? tabs.find((r) => r.task === problem.task)?.label : undefined,
       problem: item(problem, stats, latest),
+      categorySlug: slug(problem.category),
       verdict: latest && {
         verdict: latest.verdict,
         label: VERDICTS[latest.verdict],
@@ -322,10 +383,3 @@ export const getProblemPage = createServerFn({ method: "GET" })
       })),
     };
   });
-
-// Every brief, newest first.
-export const getBriefsPage = createServerFn({ method: "GET" }).handler(async (): Promise<BriefsPage> => {
-  gate("/ideas/briefs");
-  const { configs: _, ...sidebar } = await nav();
-  return { nav: sidebar, ...(await briefState(RADAR, 100)) };
-});
