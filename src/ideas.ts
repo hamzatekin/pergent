@@ -30,9 +30,13 @@ import type { TaskConfig } from "./runner.ts";
 
 // The task that collects and sorts; its never-show list is the radar's. A radar is the task that
 // collects and sorts its posts: ideas (small businesses) and gym (gym and fitness apps) share the
-// tables, each row carrying its task. The judge and brief tasks name theirs under "radar".
+// tables, each row carrying its task. Its judge and brief are the tasks named after it (ideas-judge,
+// ideas-brief): the name is the only link, so the page that starts a judge run and the run itself
+// cannot disagree about whose problems it judges.
 export const RADAR = "ideas";
-export const radarOf = (config: TaskConfig) => (config.radar as string | undefined) ?? RADAR;
+export const judgeOf = (radar: string) => `${radar}-judge`;
+export const briefOf = (radar: string) => `${radar}-brief`;
+export const radarOf = (task: string) => task.replace(/-(judge|brief)$/, "");
 
 // Who has the problem. Fixed, so the page can filter by it and counts stay comparable; a task can set
 // its own under "categories". The last one takes whatever fits nowhere else.
@@ -214,7 +218,9 @@ const WEEK = 7 * 86_400_000;
 
 // The counts behind each problem, from every mention it has. A person is a source's author, or, when the
 // source names none (Freelancer, back-filled forum posts), the post's title: Freelancer clients repost
-// the same job as "Title -- 2", "Title -- 3". Weeks are counted back from
+// the same job as "Title -- 2", "Title -- 3". A post with neither, or whose title is not its own (a
+// Google Play review's is its stars and the app's name), is one person; so is "A Google user", the name
+// Play shows for every anonymous review. Weeks are counted back from
 // now, so "this week" is the last 7 days. The trend:
 //   new     first seen in the last 7 days, with 2 or more mentions
 //   rising  3 or more mentions this week, at least double its weekly average over the 4 weeks before
@@ -229,7 +235,8 @@ export function problemStats(task: string, now = Date.now()): Map<number, Proble
       stats.set(f.problemId, s);
     }
     s.mentions++;
-    s.people_.add(f.author ? `${f.source}:${f.author}` : `${f.source}:${f.title.toLowerCase().replace(/\s*--\s*\d+\s*$/, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim()}`);
+    const title = f.source === "play" ? "" : f.title.toLowerCase().replace(/\s*--\s*\d+\s*$/, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    s.people_.add(f.author && f.author !== "A Google user" ? `${f.source}:${f.author}` : title ? `${f.source}:${title}` : `post:${f.postId}`);
     if (!s.sources.includes(f.source)) s.sources.push(f.source);
     if (!s.communities.includes(f.community)) s.communities.push(f.community);
     if (f.source === "freelancer") {
@@ -347,9 +354,9 @@ export function judgeSchema() {
 
 // Writes problems.md: each problem to judge with its counts and the posts behind it. False when there is
 // nothing to judge.
-export async function prepareJudge(dir: string, config: TaskConfig, muted: string[]): Promise<{ problems: number }> {
+export async function prepareJudge(radar: string, dir: string, config: TaskConfig, muted: string[]): Promise<{ problems: number }> {
   const { maxProblems = 5, mentionsEach = 15, bodyChars = 400 } = (config.judge ?? {}) as { maxProblems?: number; mentionsEach?: number; bodyChars?: number };
-  const picked = toJudge(radarOf(config), maxProblems, muted);
+  const picked = toJudge(radar, maxProblems, muted);
   const blocks = picked.map(({ p, s, last }) => {
     const facts = [
       `${s.people} people, ${s.mentions} mentions, from ${s.sources.join(", ")} (${s.communities.slice(0, 6).join(", ")})`,

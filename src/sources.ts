@@ -138,11 +138,12 @@ function collectGroups(cfg: any): SourceGroup[] {
   const apps = (st?.apps ?? []) as { name: string; apple?: number; play?: string }[];
   if (apps.length) {
     const cc = ((st.countries ?? ["gb", "us"]) as string[]).map((c) => c.toUpperCase()).join(" and ");
-    const note = `Reviews rated ${st.maxRating ?? 4} stars or less in the ${cc} stores, the last ${st.days ?? 7} days.`;
+    const rated = `rated ${st.maxRating ?? 4} stars or less, the last ${st.days ?? 7} days.`;
     const apple = apps.filter((a) => a.apple);
     const play = apps.filter((a) => a.play);
-    if (apple.length) groups.push({ title: `App Store, ${plural(apple.length, "app")}`, note, links: apple.map((a) => ({ label: a.name, href: `https://apps.apple.com/gb/app/id${a.apple}` })) });
-    if (play.length) groups.push({ title: `Google Play, ${plural(play.length, "app")}`, note, links: play.map((a) => ({ label: a.name, href: `https://play.google.com/store/apps/details?id=${a.play}` })) });
+    if (apple.length) groups.push({ title: `App Store, ${plural(apple.length, "app")}`, note: `Reviews in the ${cc} stores ${rated}`, links: apple.map((a) => ({ label: a.name, href: `https://apps.apple.com/gb/app/id${a.apple}` })) });
+    // Play does not split its reviews by country (scripts/collect-posts.ts).
+    if (play.length) groups.push({ title: `Google Play, ${plural(play.length, "app")}`, note: `Reviews in English from every country ${rated}`, links: play.map((a) => ({ label: a.name, href: `https://play.google.com/store/apps/details?id=${a.play}` })) });
   }
   const yt = cfg?.youtube;
   if (yt?.queries?.length)

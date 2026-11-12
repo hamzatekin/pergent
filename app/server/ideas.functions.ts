@@ -2,7 +2,7 @@ import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { setResponseHeader } from "@tanstack/react-start/server";
 import { getProblem, getRun, latestVerdicts, listBriefs, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type BriefRow, type ProblemRow, type VerdictRow } from "#src/db.ts";
-import { BRIEF_GROUPS, CATEGORIES, QUESTIONS, RADAR, VERDICTS, judgeBar, problemStats, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
+import { BRIEF_GROUPS, CATEGORIES, QUESTIONS, RADAR, VERDICTS, briefOf, judgeBar, judgeOf, problemStats, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
 import { mentions } from "#src/mute.ts";
 import { listRuns, listTasks, loadTask, type TaskConfig } from "#src/runner.ts";
 import { isRunning, isWaiting } from "#src/scheduler.ts";
@@ -12,9 +12,7 @@ import { ago, formatDate, formatDay } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
 
 // A radar is the task whose runs collect and sort its posts (tasks/ideas, tasks/gym); its judge and its
-// brief, when it has them, are the tasks named after it (tasks/ideas-judge, tasks/ideas-brief).
-const judgeOf = (radar: string) => `${radar}-judge`;
-const briefOf = (radar: string) => `${radar}-brief`;
+// brief, when it has them, are the tasks named after it (judgeOf and briefOf in src/ideas.ts).
 
 // Every radar, the small business one first: the tasks that sort posts, with the name the page shows.
 async function radars(): Promise<{ task: string; label: string }[]> {
@@ -117,7 +115,7 @@ export type ProblemPage = {
   overBar: boolean;
   canJudge: boolean;
   mergeTargets: { id: number; name: string }[];
-  mentions: { url: string; title: string; community: string; day: string; author: string; budget: string | null; quote: string; cost: string; workaround: string; recurring: boolean; body: string }[];
+  mentions: { id: string; url: string; title: string; community: string; day: string; author: string; budget: string | null; quote: string; cost: string; workaround: string; recurring: boolean; body: string }[];
 };
 
 const slug = (name: string) => name.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -309,6 +307,7 @@ export const getProblemPage = createServerFn({ method: "GET" })
         .map((p) => ({ id: p.id, name: p.name }))
         .sort((a, b) => a.name.localeCompare(b.name)),
       mentions: problemMentions(problem.id).map((m) => ({
+        id: m.post.id,
         url: m.post.url,
         title: m.post.title,
         community: m.post.community,

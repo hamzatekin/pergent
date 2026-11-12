@@ -134,16 +134,16 @@ const OUTPUTS: Record<string, Output> = {
     save: saveSortOutput,
   },
   judge: {
-    prepare: async (_task, _runId, dir, config) => {
-      const { problems } = await prepareJudge(dir, config, listMutes(radarOf(config)));
+    prepare: async (task, _runId, dir, config) => {
+      const { problems } = await prepareJudge(radarOf(task), dir, config, listMutes(radarOf(task)));
       return { go: problems > 0, note: problems ? `${problems} problems to judge` : "Nothing to judge" };
     },
     schema: judgeSchema,
     save: (runId, output, dir) => saveJudgeOutput(runId, output, dir),
   },
   brief: {
-    prepare: async (_task, _runId, dir, config) => {
-      const { problems } = await prepareBrief(radarOf(config), dir, listMutes(radarOf(config)));
+    prepare: async (task, _runId, dir) => {
+      const { problems } = await prepareBrief(radarOf(task), dir, listMutes(radarOf(task)));
       return { go: problems > 0, note: problems ? `${problems} problems on the radar` : "Nothing on the radar yet" };
     },
     schema: briefSchema,
