@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { askJudge, getProblem, mergeProblem, setProblemStatus } from "#src/db.ts";
+import { judgeOf } from "#src/ideas.ts";
 import { listTasks } from "#src/runner.ts";
 import { startRun } from "#src/scheduler.ts";
 import { guardPost, seeOther } from "../../server/admin.ts";
@@ -24,12 +25,14 @@ export const Route = createFileRoute("/admin/ideas/$id")({
         else if (action === "reopen") setProblemStatus(problem.id, "open");
         else if (action === "judge") {
           askJudge(problem.id);
-          const judge = `${problem.task}-judge`;
+          const judge = judgeOf(problem.task);
           if ((await listTasks()).includes(judge)) startRun(judge);
           await new Promise((done) => setTimeout(done, 300)); // let the run's row land before the redirect
         } else if (action === "merge") {
           const into = getProblem(Number(form.get("into")));
-          if (!into || into.id === problem.id || into.status === "merged") return new Response("no such problem to merge into", { status: 400 });
+          // Only into another problem of the same radar and category, as the page offers: the two boards never mix.
+          if (!into || into.id === problem.id || into.status === "merged" || into.task !== problem.task || into.category !== problem.category)
+            return new Response("no such problem to merge into", { status: 400 });
           mergeProblem(problem.id, into.id);
           return seeOther(`/ideas/${into.id}`);
         } else return new Response("unknown action", { status: 400 });

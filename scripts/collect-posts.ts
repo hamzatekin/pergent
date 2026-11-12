@@ -15,11 +15,13 @@
 //                Shift's comment search (a subreddit's every comment would be thousands a day): in the
 //                big subreddits the talk about apps is mostly in the comments of the daily threads.
 //   stores       App Store and Google Play reviews of `apps` (`{ name, apple?, play? }`, the App Store id
-//                and the Play package) in each of `countries`, the newest first, back to `days` ago, only
-//                those rated `maxRating` or less (the praise is in the fives). The App Store's public
-//                reviews feed (itunes.apple.com/<cc>/rss/customerreviews, 50 a page, 10 pages at most)
-//                and the google-play-scraper package, which reads what the Play website shows; neither
-//                needs a key. A review is known by its store's id.
+//                and the Play package), the newest first, back to `days` ago, only those rated
+//                `maxRating` or less (the praise is in the fives). The App Store's public reviews feed
+//                (itunes.apple.com/rss/customerreviews/…?cc=<country>, 50 a page, 10 pages at most) in
+//                each of `countries`; the google-play-scraper package, which reads what the Play website
+//                shows, once per app, in English: Play's country does not split its reviews (GB and US
+//                gave the same 150 for Hevy), so they come from every country. Neither needs a key. A
+//                review is known by its store's id.
 //   freelancer   Freelancer.com's open projects API: `queries`, kept to `currencies` (USD and GBP, for UK
 //                and US clients), `perQuery` newest each; a job paying someone to do a chore by hand is
 //                the plainest sign the chore is worth money
@@ -28,8 +30,8 @@
 // Keyed, used only when the key is set:
 //   youtube      YOUTUBE_API_KEY (YouTube Data API v3, 10,000 units a day free): for each of `queries`,
 //                the `videos` most viewed videos published in the last `days` (a search costs 100 units),
-//                and the newest `comments` top-level comments of each (1 unit a page), back to `hours`
-//                ago after the first run. A comment is known by its id.
+//                and the newest `comments` top-level comments of each (1 unit a page), whatever their
+//                age: the posts table skips those seen before. A comment is known by its id.
 // `hours` (default 24) is the window for Reddit and Freelancer. A post already in the posts table (read
 // from ../../pergent.db, opened read-only) is skipped before Jev sees it, so the windows can overlap
 // from run to run. No new fetch starts after `budgetSeconds` (default 210), which leaves Jev a minute and a
@@ -37,10 +39,11 @@
 // Kind: one Jev Choice question per post over `filter.kinds` (src/jev.ts); a post whose kind is in
 // `filter.drop` with probability at least `filter.threshold` is stored with kept false and no body.
 // Without TYPESAFE_API_KEY every post is kept with no kind.
-// Back-fill: while the posts table is empty, the posts of every earlier run of the `backfill` task
-// (pains) are read from its pains.md files, which hold what its Jev filter kept; they get no kind.
+// Back-fill: while the posts table holds none of this radar's posts, the posts of every earlier run of
+// the `backfill` task (pains) are read from its pains.md files, which hold what its Jev filter kept;
+// they get no kind.
 import { readdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { classify } from "../src/jev.ts";
 import gplay from "google-play-scraper";
@@ -82,16 +85,19 @@ const postId = (url: string) => {
   return m ? `reddit:${m[1].toLowerCase()}` : url;
 };
 
-// What the database already holds. A fresh deployment has no file yet.
+// What the database already holds, every radar's (a post is stored once, under the radar that collected
+// it first). A fresh deployment has no file yet. `empty` is this radar's own: the radars share the table,
+// so another radar's posts must not stop this one's back-fill.
 const seen = new Set<string>();
+let empty = true;
 try {
   const db = new DatabaseSync(join("..", "..", "pergent.db"), { readOnly: true });
   for (const { id } of db.prepare("SELECT id FROM posts").all() as { id: string }[]) seen.add(id);
+  empty = !db.prepare("SELECT 1 FROM posts WHERE task = ? LIMIT 1").get(basename(process.env.TASK_DIR!));
   db.close();
 } catch (err) {
   say(`no posts read from the database: ${err instanceof Error ? err.message : err}`);
 }
-const empty = seen.size === 0;
 
 function decode(s: string) {
   return s
@@ -235,13 +241,17 @@ type AppleEntry = { id: { label: string }; author: { name: { label: string } }; 
 
 // The App Store's reviews feed, newest first, a page of 50 at a time until a page reaches back past
 // `days`. The country is a query parameter (`cc`), not the path's /gb/, which robots.txt asks bots to
-// leave alone.
+// leave alone. A feed whose first page has no review at all, whatever its date, is noted in `emptyFeeds`:
+// a small app can have none in one country, but every feed empty is Apple refusing this address (it
+// does for a laptop at home, 2026-11-12), which would otherwise look like a quiet week.
+const emptyFeeds: string[] = [];
 async function appStore(app: StoreApp, country: string): Promise<Post[]> {
   const posts: Post[] = [];
   for (let page = 1; page <= 10 && Date.now() < deadline; page++) {
     const data = JSON.parse(await get(`https://itunes.apple.com/rss/customerreviews/page=${page}/id=${app.apple}/sortby=mostrecent/json?cc=${country}`));
     const raw = data.feed?.entry ?? [];
     const entries: AppleEntry[] = (Array.isArray(raw) ? raw : [raw]).filter((e: AppleEntry) => e?.["im:rating"]);
+    if (page === 1 && !entries.length) emptyFeeds.push(`${country} ${app.name}`);
     for (const e of entries) {
       const at = Date.parse(e.updated.label);
       const rating = Number(e["im:rating"].label);
@@ -263,25 +273,27 @@ async function appStore(app: StoreApp, country: string): Promise<Post[]> {
   return posts;
 }
 
-// Google Play's newest reviews, 150 at a time until a page reaches back past `days`. Its reviews have
-// no title; the sort reads them under the app's name.
-async function googlePlay(app: StoreApp, country: string): Promise<Post[]> {
+// Google Play's newest reviews in English, 150 at a time until a page reaches back past `days`. Its
+// reviews have no title; the sort reads them under the app's name. The package's requests (got) have no
+// timeout of their own, and one that hung kept the collector from ever writing posts.json, so each gets
+// 20s like every other fetch here.
+async function googlePlay(app: StoreApp): Promise<Post[]> {
   const posts: Post[] = [];
   let token: string | undefined;
   for (let page = 0; page < 6 && Date.now() < deadline; page++) {
-    const res = await gplay.reviews({ appId: app.play!, country, lang: "en", sort: gplay.sort.NEWEST, num: 150, paginate: true, nextPaginationToken: token });
+    const res = await gplay.reviews({ appId: app.play!, country: "gb", lang: "en", sort: gplay.sort.NEWEST, num: 150, paginate: true, nextPaginationToken: token, requestOptions: { timeout: { request: 20_000 } } });
     for (const r of res.data) {
       const at = Date.parse(r.date);
       if (at < storeSince || r.score > maxRating || !r.text?.trim()) continue;
       posts.push({
         id: `play:${r.id}`,
         source: "play",
-        community: `Google Play ${country.toUpperCase()}: ${app.name}`,
+        community: `Google Play: ${app.name}`,
         author: r.userName ?? "",
         postedAt: new Date(at).toISOString(),
         title: `${stars(r.score)} ${app.name}`,
         body: r.text.trim(),
-        url: r.url ?? `https://play.google.com/store/apps/details?id=${app.play}&hl=en_GB&gl=${country.toUpperCase()}`,
+        url: r.url ?? `https://play.google.com/store/apps/details?id=${app.play}&hl=en_GB&gl=GB`,
       });
     }
     token = res.nextPaginationToken ?? undefined;
@@ -438,10 +450,10 @@ const apps: StoreApp[] = stores.apps ?? [];
 const jobs: [string, () => Promise<Post[]>][] = [
   ...(collect.freelancer?.queries ?? []).map((q: string) => [`freelancer "${q}"`, () => freelancer(q)]),
   ...(collect.khoros ?? []).map((k: { host: string; name: string; skipBoards?: string[] }) => [k.name, () => khoros(k.host, k.name, k.skipBoards)]),
-  ...apps.flatMap((a) => countries.flatMap((cc): [string, () => Promise<Post[]>][] => [
-    ...(a.apple ? [[`App Store ${cc} ${a.name}`, () => appStore(a, cc)] as [string, () => Promise<Post[]>]] : []),
-    ...(a.play ? [[`Google Play ${cc} ${a.name}`, () => googlePlay(a, cc)] as [string, () => Promise<Post[]>]] : []),
-  ])),
+  ...apps.flatMap((a): [string, () => Promise<Post[]>][] => [
+    ...(a.apple ? countries.map((cc): [string, () => Promise<Post[]>] => [`App Store ${cc} ${a.name}`, () => appStore(a, cc)]) : []),
+    ...(a.play ? [[`Google Play ${a.name}`, () => googlePlay(a)] as [string, () => Promise<Post[]>]] : []),
+  ]),
   ...(youtubeKey ? ((yt.queries ?? []) as string[]).map((q): [string, () => Promise<Post[]>] => [`YouTube "${q}"`, () => youtube(q)]) : []),
 ];
 if (!youtubeKey && yt.queries?.length) say("youtube: skipped, no YOUTUBE_API_KEY");
@@ -456,6 +468,9 @@ await Promise.all([
     for (let job = jobs.shift(); job; job = jobs.shift()) await fetchFrom(...job);
   }),
 ]);
+const appleFeeds = apps.filter((a) => a.apple).length * countries.length;
+if (appleFeeds && emptyFeeds.length === appleFeeds) say(`App Store: every one of the ${appleFeeds} feeds came back empty, so Apple is likely refusing this address`);
+else if (emptyFeeds.length) say(`App Store feeds with no reviews at all: ${emptyFeeds.join(", ")}`);
 
 // New posts only, each once (a job can come from two queries), with something to read.
 const fresh: Post[] = [];

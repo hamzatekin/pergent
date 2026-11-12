@@ -224,7 +224,7 @@ export function ProblemView({ data }: { data: ProblemPage }) {
         <h3 className="problem-h">What people said</h3>
         <ol className="mentions">
           {data.mentions.map((m) => (
-            <li key={m.url} className="mention">
+            <li key={m.id} className="mention">
               <p className="mention-quote">{m.quote || m.title}</p>
               <p className="mention-meta">
                 <span>{m.community}</span>
