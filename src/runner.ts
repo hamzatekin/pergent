@@ -10,7 +10,7 @@ import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
 import { prepareRead, readSchema, saveReadOutput } from "./jobs.ts";
 import { homesReadSchema, prepareHomesRead, saveHomesRead } from "./homes.ts";
-import { briefSchema, judgeSchema, prepareBrief, prepareJudge, prepareSort, radarOf, saveBriefOutput, saveJudgeOutput, saveSortOutput, sortSchema } from "./ideas.ts";
+import { categoriesOf, judgeSchema, overviewSchema, prepareJudge, prepareOverview, prepareSort, radarOf, saveJudgeOutput, saveOverviewOutput, saveSortOutput, sortSchema } from "./ideas.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -55,7 +55,7 @@ export type TaskConfig = {
   layout?: string;
   /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar). */
   tab?: boolean;
-  /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort", "judge" and "brief", the job tracker's "read", the homes task's "homes"). */
+  /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort", "judge" and "overview", the job tracker's "read", the homes task's "homes"). */
   output?: string;
   [extra: string]: unknown;
 };
@@ -121,7 +121,7 @@ export type Part = { text: string } | { file: string; mediaType: string };
 // when the output is unusable and the run failed.
 type Output = {
   prepare: (task: string, runId: string, dir: string, config: TaskConfig) => Promise<{ go: boolean; note: string; parts?: Part[] }>;
-  schema: (config: TaskConfig) => object;
+  schema: (config: TaskConfig, task: string) => object | Promise<object>;
   save: (runId: string, output: unknown, dir: string, config: TaskConfig) => Promise<string | null>;
 };
 const OUTPUTS: Record<string, Output> = {
@@ -141,13 +141,16 @@ const OUTPUTS: Record<string, Output> = {
     schema: judgeSchema,
     save: (runId, output, dir) => saveJudgeOutput(runId, output, dir),
   },
-  brief: {
+  overview: {
     prepare: async (task, _runId, dir) => {
-      const { problems } = await prepareBrief(radarOf(task), dir, listMutes(radarOf(task)));
-      return { go: problems > 0, note: problems ? `${problems} problems on the radar` : "Nothing on the radar yet" };
+      const radar = radarOf(task);
+      const { problems, unchanged } = await prepareOverview(radar, dir, (await loadTask(radar)).config, listMutes(radar));
+      if (!problems) return { go: false, note: "Nothing on the board yet" };
+      return unchanged ? { go: false, note: "Nothing has changed since the last overview" } : { go: true, note: `${problems} problems on the board` };
     },
-    schema: briefSchema,
-    save: (runId, output, dir) => saveBriefOutput(runId, output, dir),
+    // The categories are the radar's, which the overview task does not repeat.
+    schema: async (_config, task) => overviewSchema(categoriesOf((await loadTask(radarOf(task))).config)),
+    save: (runId, output, dir) => saveOverviewOutput(runId, output, dir),
   },
   read: {
     prepare: async (task, _runId, dir, config) => {
@@ -334,7 +337,7 @@ export async function runTask(name: string): Promise<{ meta: RunMeta; dir: strin
   // laptop otherwise picked up from the repo above its run directory (about 33k tokens on every
   // request; it pushed a homes read past Haiku's 100k price step); the Docker image has none of them.
   // json-schema: the paper comes back as structured output, held to the schema on the model's side.
-  const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--setting-sources=", "--json-schema", JSON.stringify(custom ? custom.schema(config) : PAPER_SCHEMA)];
+  const args = ["-p", "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--setting-sources=", "--json-schema", JSON.stringify(custom ? await custom.schema(config, name) : PAPER_SCHEMA)];
   if (config.model) args.push("--model", config.model);
   if (config.effort) args.push("--effort", config.effort);
   if (parts) args.push("--input-format", "stream-json");

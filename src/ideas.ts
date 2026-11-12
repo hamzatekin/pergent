@@ -4,22 +4,22 @@
 // one when none fits) along with what the post says about it, and saveSortOutput stores that in the
 // problems and mentions tables. The counting is code (board): people, sources, paid jobs, weeks, and a
 // trend label. The model never counts.
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   getProblem,
+  latestOverview,
   latestVerdicts,
-  listBriefs,
   listProblems,
   mentionFacts,
   problemMentions,
-  problemVerdicts,
-  radarSince,
-  saveBrief,
+  saveOverview,
   saveSort,
   saveVerdicts,
   unsortedPosts,
   type Mention,
+  type OverviewCategory,
   type PostRow,
   type ProblemRow,
   type Score,
@@ -30,13 +30,13 @@ import type { TaskConfig } from "./runner.ts";
 
 // The task that collects and sorts; its never-show list is the radar's. A radar is the task that
 // collects and sorts its posts: ideas (small businesses) and gym (gym and fitness apps) share the
-// tables, each row carrying its task. Its judge and brief are the tasks named after it (ideas-judge,
-// ideas-brief): the name is the only link, so the page that starts a judge run and the run itself
+// tables, each row carrying its task. Its judge and overview are the tasks named after it (ideas-judge,
+// ideas-overview): the name is the only link, so the page that starts a judge run and the run itself
 // cannot disagree about whose problems it judges.
 export const RADAR = "ideas";
 export const judgeOf = (radar: string) => `${radar}-judge`;
-export const briefOf = (radar: string) => `${radar}-brief`;
-export const radarOf = (task: string) => task.replace(/-(judge|brief)$/, "");
+export const overviewOf = (radar: string) => `${radar}-overview`;
+export const radarOf = (task: string) => task.replace(/-(judge|overview)$/, "");
 
 // Who has the problem. Fixed, so the page can filter by it and counts stay comparable; a task can set
 // its own under "categories". The last one takes whatever fits nowhere else.
@@ -53,7 +53,7 @@ export const CATEGORIES = [
   "General admin",
 ];
 
-const categoriesOf = (config: TaskConfig) => (config.categories as string[] | undefined) ?? CATEGORIES;
+export const categoriesOf = (config: TaskConfig) => (config.categories as string[] | undefined) ?? CATEGORIES;
 type SortFields = Partial<Record<"name" | "summary" | "recurring" | "cost" | "workaround", string>>;
 const sortConfig = (config: TaskConfig) => (config.sort ?? {}) as { maxPosts?: number; bodyChars?: number; fields?: SortFields };
 
@@ -263,7 +263,8 @@ export function problemStats(task: string, now = Date.now()): Map<number, Proble
   return new Map([...stats].map(([id, { people_: _, ...s }]) => [id, s]));
 }
 
-// The verdict: whether a problem is worth a small team testing as a business. The model answers fixed
+// The verdict: whether a problem is worth testing as a business for one person, a developer based in the
+// UK who builds alone with AI. The model answers fixed
 // questions with evidence (judgeSchema); code turns the answers into the verdict (verdictOf), so it does
 // not drift from run to run. A problem is judged once it has the evidence (`judgeBar`), again when its
 // mentions have grown by half or its verdict is a month old, and whenever the page asks.
@@ -271,15 +272,15 @@ export const QUESTIONS: Record<string, { label: string; ask: string }> = {
   pain: { label: "Pain", ask: "Does it come back, and what does it cost them? 5: every week or more, with hours or money named by several people. 3: recurring but mild, or costly but rare. 1: a one-off annoyance." },
   pay: { label: "Willing to pay", ask: "Are they already paying to deal with it? 5: job posts with budgets, a VA, an accountant or a tool they pay for and work around. 3: they say they would pay. 1: they expect it free." },
   gap: { label: "Gap", ask: "What exists, and why doesn't it solve it? Search for it. 5: nothing does it, or the tools that exist miss this case the way the posts say. 3: tools exist but are too dear or too complex for a small business. 1: good, cheap tools already do it and the posters just don't know." },
-  build: { label: "Buildable", ask: "Could two or three people with AI ship a first version in weeks? 5: yes, on public APIs of tools they already use (Shopify, Square, Xero, QuickBooks, Google). 3: months, or one hard integration. 1: it means replacing a big platform, a licence, hardware, or data nobody can get." },
-  reach: { label: "Reachable", ask: "Can you find and sell to these people? 5: a named trade that gathers in places you can name (the subreddit or forum itself, an app store). 1: anyone and nowhere in particular." },
+  build: { label: "Buildable", ask: "Could one person with AI ship a first version in weeks, and run it alone? 5: yes, on public APIs of tools they already use (Shopify, Square, Xero, QuickBooks, Google). 3: months, or one hard integration. 1: it means replacing a big platform, a licence, hardware, data nobody can get, or a team to sell and support it." },
+  reach: { label: "Reachable", ask: "Can one founder based in the UK find and sell to these people? 5: a named trade that gathers online in places you can name (the subreddit or forum itself, an app store), in the UK or reachable from it. 3: they can be found, but are sold to mostly by calls or in person, or only in the US. 1: anyone and nowhere in particular." },
   size: { label: "Size", ask: "How many such businesses in the UK and the US, at what monthly price? 5: 100,000 or more at $30 a month or more. 3: around 10,000. 1: a few hundred. A rough guess, said as one." },
 };
 
 export type Verdict = VerdictRow["verdict"];
 export const VERDICTS: Record<Verdict, string> = { worth: "Worth testing", watch: "Watch", pass: "Pass" };
 
-// Pass: a hard no, not buildable by a small team (build 2 or less), a market already served well (gap
+// Pass: a hard no, not buildable by one person (build 2 or less), a market already served well (gap
 // 1), or two weak answers. Worth testing: pain, willingness to pay and the gap all 4 or more, buildable
 // and reachable 3 or more. Watch: everything between.
 export function verdictOf(hardNo: string, scores: Record<string, Score>): Verdict {
@@ -411,100 +412,160 @@ export async function saveJudgeOutput(runId: string, output: unknown, dir: strin
   ].join("\n") + "\n";
 }
 
-// The brief, written when the page's Brief me asks (tasks/ideas-brief): what changed since the last
-// brief (or the last 7 days), from the tables, not the raw posts, so it is small. prepareBrief writes
-// radar.md, the facts by group, all counted by code; the model only says what matters in them.
-export const BRIEF_GROUPS = ["Worth a look", "New and rising", "Verdicts that changed", "Your starred"] as const;
+// The overview (tasks/ideas-overview, tasks/gym-overview), written each night after the judge and when
+// the page's Refresh asks: the whole board summed up for one reader, a developer based in the UK who
+// builds alone with AI, and per category what business they could build from it. prepareOverview
+// writes board.md: every problem raised by more than one person, or judged or starred, by category, with
+// its counts, the costs people name, what they do about it today and its verdict, all from the tables;
+// the model only says what it makes of them. A board the same as the last overview's ends the run
+// without claude.
+const MAX_IDEAS = 3;
+const MAX_BEST = 3;
 
-export function briefSchema() {
+export function overviewSchema(categories: string[]) {
   const text = (description: string) => ({ type: "string", description });
   return {
     type: "object",
-    required: ["summary", "items", "next"],
+    required: ["summary", "categories"],
     additionalProperties: false,
     properties: {
-      summary: text("Two to four plain sentences: what the radar found since the last brief and what deserves attention, or that little changed."),
-      items: {
+      summary: text("The whole board in three to five plain sentences: where the best openings for one person are and why, which categories are mostly noise, and what is new or starred if it matters. Lead with the strongest thing."),
+      categories: {
         type: "array",
-        description: "At most 12 lines, the most important first within each group. Leave a group out when it has nothing worth saying.",
+        description: "One per category of board.md that has problems, in its order.",
         items: {
           type: "object",
-          required: ["group", "problem", "text"],
+          required: ["category", "take", "summary", "ideas"],
           additionalProperties: false,
           properties: {
-            group: { type: "string", enum: [...BRIEF_GROUPS] },
-            problem: { type: "integer", description: "The problem's number from radar.md." },
-            text: text("One or two sentences on this problem, starting with why it is here: what changed, with the counts that matter. The page puts the problem's name just before it, so never restate or paraphrase the name."),
+            category: { type: "string", enum: categories, description: "The category, as board.md heads it." },
+            take: text("One sentence of at most 25 words for the category's card on the home page: what people here keep running into, and whether one person could build a business on it."),
+            summary: text("Three to five sentences: what people in this category keep running into, what they do about it today and what it costs them, and where one person could fit in, or why nobody could. Counts from board.md only; name problems in words, never by number."),
+            ideas: {
+              type: "array",
+              description: `Up to ${MAX_IDEAS} businesses one person could build from this category's problems, strongest first. None when the evidence is thin, or every problem needs a big platform replaced, a licence or a team.`,
+              items: {
+                type: "object",
+                required: ["name", "pitch", "why", "risk", "first", "problems", "best"],
+                additionalProperties: false,
+                properties: {
+                  name: text("The business in a few plain words, like \"Rent arrears chaser for small landlords\". Not a brand name."),
+                  pitch: text("What it does and for whom, in one or two sentences."),
+                  why: text("Why it could work for one person based in the UK, in two or three sentences: the evidence from board.md (people, paid jobs, costs named, what they pay for today), the gap, and where the first customers gather. Name problems in words, never by number: the page links them under the idea."),
+                  risk: text("The main reason it might not work, in one sentence."),
+                  first: text("The first thing to do this week to find out whether people would pay, in one sentence."),
+                  problems: { type: "array", items: { type: "integer" }, description: "The numbers of the problems in board.md it answers, the main one first." },
+                  best: { type: "boolean", description: `True for at most ${MAX_BEST} ideas across the whole board: the ones to start with.` },
+                },
+              },
+            },
           },
         },
       },
-      next: text("One or two sentences: the one thing worth doing next, such as running a problem's smallest test, starring or killing something, or waiting for more evidence. Name problems in words, never by number."),
     },
   };
 }
 
-export async function prepareBrief(task: string, dir: string, muted: string[], now = Date.now()): Promise<{ problems: number }> {
-  const last = listBriefs(task, 1)[0];
-  const since = last?.createdAt ?? new Date(now - 7 * 86_400_000).toISOString();
-  const stats = problemStats(task, now);
+// Writes board.md and overview.json (the radar, the board's hash, the categories and the problem numbers
+// saveOverviewOutput checks the answer against). `unchanged` when the board is the one the last overview
+// was written from.
+export async function prepareOverview(radar: string, dir: string, radarConfig: TaskConfig, muted: string[], now = Date.now()): Promise<{ problems: number; unchanged: boolean }> {
+  const stats = problemStats(radar, now);
   const verdicts = latestVerdicts();
-  const rows = listProblems(task)
+  const said = new Map<number, { costs: Set<string>; workarounds: Set<string> }>();
+  for (const f of mentionFacts(radar)) {
+    const s = said.get(f.problemId) ?? { costs: new Set(), workarounds: new Set() };
+    said.set(f.problemId, s);
+    if (f.cost && s.costs.size < 4) s.costs.add(f.cost);
+    if (f.workaround && s.workarounds.size < 4) s.workarounds.add(f.workaround);
+  }
+  const rows = listProblems(radar)
     .filter((p) => p.status !== "killed" && stats.has(p.id) && !muted.some((m) => mentions(`${p.name}\n${p.summary}`, m)))
     .map((p) => ({ p, s: stats.get(p.id)!, v: verdicts.get(p.id) }));
-  const line = ({ p, s, v }: (typeof rows)[number]) =>
-    `- ${p.id}: ${p.name} (${p.category}). ${s.people} people, ${s.mentions} mentions, ${s.sources.join(" and ")}${s.jobs ? `, ${s.jobs} paid jobs` : ""}, first seen ${s.first.slice(0, 10)}, last ${s.last.slice(0, 10)}${s.trend ? `, ${s.trend}` : ""}${p.status === "starred" ? ", starred" : ""}.` +
-    (v ? ` Verdict ${VERDICTS[v.verdict]} on ${v.createdAt.slice(0, 10)} (${Object.entries(v.scores).map(([k, x]) => `${k} ${x.score}`).join(", ")})${v.hardNo ? `, hard no: ${v.hardNo}` : ""}. ${v.reason} Smallest test: ${v.test}` : " Not judged yet.");
-  const byPeople = (a: (typeof rows)[number], b: (typeof rows)[number]) => b.s.people - a.s.people || b.s.mentions - a.s.mentions;
-  const recent = (f: { postedAt: string }) => f.postedAt >= since;
-  const newSince = new Map<number, number>();
-  for (const f of mentionFacts(task)) if (recent(f)) newSince.set(f.problemId, (newSince.get(f.problemId) ?? 0) + 1);
-
-  const worth = rows.filter((r) => r.v?.verdict === "worth").sort(byPeople);
-  const watch = rows.filter((r) => r.v?.verdict === "watch").sort(byPeople).slice(0, 6);
-  const fresh = rows.filter((r) => (r.p.createdAt >= since && r.s.people > 1) || r.s.trend === "new" || r.s.trend === "rising").sort(byPeople).slice(0, 12);
-  const changed = rows
-    .filter((r) => r.v && r.v.createdAt >= since)
-    .map((r) => ({ ...r, before: problemVerdicts(r.p.id)[1] }))
-    .slice(0, 12);
-  const starred = rows.filter((r) => r.p.status === "starred");
-  const done = radarSince(task, since);
-  const sections = [
-    `# The radar since ${since.slice(0, 16).replace("T", " ")} UTC${last ? " (the last brief)" : " (7 days; no brief yet)"}`,
-    `${done.collected} new posts kept, ${done.sorted} sorted, ${done.raising} of them raising a problem. ${rows.length} problems in all, ${rows.filter((r) => r.v).length} judged.`,
-    `## Worth testing (all of them)\n\n${worth.map(line).join("\n") || "None yet."}`,
-    `## Watch (the six with the most people)\n\n${watch.map(line).join("\n") || "None yet."}`,
-    `## New since then, or New or Rising this week\n\n${fresh.map((r) => `${line(r)} ${newSince.get(r.p.id) ?? 0} mentions since the last brief.`).join("\n") || "Nothing."}`,
-    `## Judged since then\n\n${changed.map((r) => `${line(r)}${r.before ? ` Before: ${VERDICTS[r.before.verdict]} on ${r.before.createdAt.slice(0, 10)}.` : " First verdict."}`).join("\n") || "Nothing."}`,
-    `## Starred by the reader\n\n${starred.map((r) => `${line(r)} ${newSince.get(r.p.id) ?? 0} mentions since the last brief.`).join("\n") || "Nothing starred."}`,
-    ...(last ? [`## The last brief, for what it said then\n\n${last.summary}\n\n${last.items.map((i) => `- ${i.group}, ${i.problem}: ${i.text}`).join("\n")}`] : []),
-  ];
-  await writeFile(join(dir, "radar.md"), sections.join("\n\n") + "\n");
-  await writeFile(join(dir, "brief.json"), JSON.stringify({ task, since, problems: rows.map((r) => r.p.id) }));
-  return { problems: rows.length };
+  const shown = (r: (typeof rows)[number]) => r.s.people > 1 || !!r.v || r.p.status === "starred";
+  // Starred first, then by verdict as the page orders them: worth testing, watch, not judged, pass.
+  const order: Record<string, number> = { worth: 1, watch: 2, none: 3, pass: 4 };
+  const rank = (r: (typeof rows)[number]) => (r.p.status === "starred" ? 0 : order[r.v?.verdict ?? "none"]);
+  const block = ({ p, s, v }: (typeof rows)[number]) => {
+    const c = said.get(p.id);
+    const lines = [
+      `### ${p.id}: ${p.name}${p.status === "starred" ? " (starred by the reader)" : ""}`,
+      p.summary,
+      `- ${s.people} people, ${s.mentions} mentions, from ${s.sources.join(" and ")} (${s.communities.slice(0, 5).join(", ")}); ${s.recurring} say it recurs; first seen ${s.first.slice(0, 10)}, last ${s.last.slice(0, 10)}${s.trend ? `; ${s.trend}` : ""}`,
+      ...(s.jobs ? [`- ${s.jobs} paid job posts, budgets: ${[...new Set(s.budgets)].slice(0, 5).join("; ")}`] : []),
+      ...(c?.costs.size ? [`- Costs named: ${[...c.costs].join("; ")}`] : []),
+      ...(c?.workarounds.size ? [`- What they do today: ${[...c.workarounds].join("; ")}`] : []),
+      v
+        ? `- Verdict ${VERDICTS[v.verdict]} on ${v.createdAt.slice(0, 10)} (${Object.entries(v.scores).map(([k, x]) => `${k} ${x.score}`).join(", ")}).${v.hardNo ? ` Hard no: ${v.hardNo}` : ""} ${v.reason}${v.test ? ` Smallest test: ${v.test}` : ""}${v.competitors.length ? ` What exists: ${v.competitors.map((x) => `${x.name} (${x.note})`).join("; ")}.` : ""}`
+        : "- Not judged yet.",
+    ];
+    return lines.join("\n");
+  };
+  const sections: string[] = [];
+  const ids: number[] = [];
+  for (const c of categoriesOf(radarConfig)) {
+    const here = rows.filter((r) => r.p.category === c);
+    const these = here.filter(shown).sort((a, b) => rank(a) - rank(b) || b.s.people - a.s.people || b.s.mentions - a.s.mentions);
+    if (!these.length) continue;
+    ids.push(...these.map((r) => r.p.id));
+    const people = these.reduce((n, r) => n + r.s.people, 0);
+    const oneOffs = here.length - these.length;
+    sections.push(`## ${c}\n\n${these.length} problems, ${people} people in all${oneOffs ? `; ${oneOffs} more raised by one person so far, left out` : ""}.\n\n${these.map(block).join("\n\n")}`);
+  }
+  const body = sections.join("\n\n");
+  const hash = createHash("sha256").update(body).digest("hex");
+  const unchanged = latestOverview(radar)?.inputHash === hash;
+  const judged = rows.filter((r) => r.v && shown(r)).length;
+  const head = `# The radar's board, ${new Date(now).toISOString().slice(0, 10)}\n\n${ids.length} problems raised by more than one person, or judged or starred, ${judged} of them judged. Counted by code.`;
+  await writeFile(join(dir, "board.md"), `${head}\n\n${body || "No problem has been raised by more than one person yet."}\n`);
+  await writeFile(join(dir, "overview.json"), JSON.stringify({ task: radar, hash, categories: categoriesOf(radarConfig), problems: ids }));
+  return { problems: ids.length, unchanged };
 }
 
-type BriefOutput = { summary: string; items: { group: string; problem: number; text: string }[]; next: string };
+type OverviewOutput = {
+  summary: string;
+  categories: { category: string; take: string; summary: string; ideas: { name: string; pitch: string; why: string; risk: string; first: string; problems: number[]; best: boolean }[] }[];
+};
 
-export async function saveBriefOutput(runId: string, output: unknown, dir: string): Promise<string | null> {
-  const out = output as BriefOutput | undefined;
-  if (!out || typeof out.summary !== "string" || !Array.isArray(out.items)) return null;
-  const { task = RADAR, since, problems } = JSON.parse(await readFile(join(dir, "brief.json"), "utf8")) as { task?: string; since: string; problems: number[] };
+// Stores the overview: the categories board.md had, once each, their ideas with problem numbers checked
+// against overview.json, and at most three ideas marked best, the first ones the answer marked. Returns
+// output.md, or null when the answer is not an overview.
+export async function saveOverviewOutput(runId: string, output: unknown, dir: string): Promise<string | null> {
+  const out = output as OverviewOutput | undefined;
+  if (!out || typeof out.summary !== "string" || !out.summary.trim() || !Array.isArray(out.categories)) return null;
+  const { task, hash, categories: names, problems } = JSON.parse(await readFile(join(dir, "overview.json"), "utf8")) as { task: string; hash: string; categories: string[]; problems: number[] };
   const known = new Set(problems);
-  const items = out.items
-    .filter((i) => known.has(i?.problem) && (BRIEF_GROUPS as readonly string[]).includes(i.group) && String(i.text ?? "").trim())
-    .slice(0, 16)
-    .map((i) => ({ group: i.group, problem: i.problem, text: String(i.text).trim() }));
-  saveBrief(task, runId, { since, summary: out.summary.trim(), items, next: String(out.next ?? "").trim() });
-  const names = new Map(listProblems(task).map((p) => [p.id, p.name]));
+  const clean = (s: unknown) => String(s ?? "").trim();
+  let best = 0;
+  const categories: OverviewCategory[] = [];
+  for (const c of out.categories) {
+    if (!names.includes(c?.category) || categories.some((x) => x.category === c.category)) continue;
+    const ideas = (Array.isArray(c.ideas) ? c.ideas : [])
+      .filter((i) => clean(i?.name) && clean(i.pitch))
+      .slice(0, MAX_IDEAS)
+      .map((i) => ({
+        name: clean(i.name),
+        pitch: clean(i.pitch),
+        why: clean(i.why),
+        risk: clean(i.risk),
+        first: clean(i.first),
+        problems: [...new Set((Array.isArray(i.problems) ? i.problems : []).filter((n) => known.has(n)))],
+        best: i.best === true && best++ < MAX_BEST,
+      }));
+    categories.push({ category: c.category, take: clean(c.take), summary: clean(c.summary), ideas });
+  }
+  categories.sort((a, b) => names.indexOf(a.category) - names.indexOf(b.category));
+  saveOverview(task, runId, { summary: out.summary.trim(), categories, inputHash: hash });
   return [
-    `# Brief, ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    `# Overview, ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
     "",
     out.summary.trim(),
-    ...BRIEF_GROUPS.flatMap((g) => {
-      const these = items.filter((i) => i.group === g);
-      return these.length ? ["", `## ${g}`, "", ...these.map((i) => `- ${names.get(i.problem) ?? i.problem}: ${i.text}`)] : [];
-    }),
-    "",
-    `Next: ${String(out.next ?? "").trim()}`,
+    ...categories.flatMap((c) => [
+      "",
+      `## ${c.category}`,
+      "",
+      c.summary,
+      ...c.ideas.flatMap((i) => ["", `### ${i.best ? "★ " : ""}${i.name}`, "", i.pitch, "", `Why: ${i.why}`, "", `Risk: ${i.risk}`, "", `First: ${i.first}`, "", `Problems: ${i.problems.join(", ") || "none"}`]),
+    ]),
   ].join("\n") + "\n";
 }

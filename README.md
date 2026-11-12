@@ -24,7 +24,7 @@ ADMIN_PASSWORD=pick-one npm run serve   # plus the dashboard at http://localhost
 Each directory in `tasks/` is one task: `task.json` (model, tools, schedule, the `before` scripts that fetch its input) and usually `prompt.md`.
 
 - Papers, each a tab: `news` (the Turkish daily, laid out as a printed newspaper), `tech` (AI and web dev from X, Hacker News and newsletters, also a newspaper), `webdev` (the weekly pick of the same newsletters); `jobs-weekly` writes the job market note on top of the Jobs page.
-- The ideas radar, shown on `/ideas`: `ideas` collects and sorts small business owners' posts into problems, `ideas-judge` gives the biggest a verdict, `ideas-brief` writes a brief on demand.
+- The ideas radar, shown on `/ideas`: `ideas` collects and sorts small business owners' posts into problems, `ideas-judge` gives the biggest a verdict, `ideas-overview` sums up the board each night with what one person could build per category (`gym` and `gym-overview` are the same for gym apps).
 - The job market tracker, shown on `/jobs`: `jobs-collect` collects UK developer adverts, `jobs-read` has Haiku read each one for its role, skills, sponsorship and fit.
 
 `/ideas`, `/jobs` and `/newsletters` (the newsletter issues as published) are behind the dashboard's login. CLAUDE.md has the details of every task and script.

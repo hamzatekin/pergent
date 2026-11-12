@@ -833,7 +833,7 @@ a.chip:active {
   @apply bg-transparent text-muted shadow-none hover:bg-black/[0.04] hover:text-ink;
 }
 .linkbtn {
-  @apply cursor-pointer text-[13px] text-muted hover:text-ink;
+  @apply cursor-pointer text-[13px] whitespace-nowrap text-muted hover:text-ink;
 }
 
 /* The Newsletters page (components/Newsletters.tsx): a row of chips to pick a newsletter, the issues as
@@ -1145,7 +1145,7 @@ a.chip:active {
 .epc[data-band="G"] {
   @apply bg-[#e9153b] text-white;
 }
-/* The Ideas pages (components/Ideas.tsx): the radar's problems as one list, each row its name, summary
+/* The Ideas pages (components/Ideas.tsx): a category's problems as one list, each row its name, summary
    and counts with its trend and 8 weeks of mentions on the right; a problem's page with its counts and
    every post that raised it. */
 .problems {
@@ -1188,62 +1188,110 @@ a.chip:active {
 .trend[data-trend="fading"] {
   @apply text-faint;
 }
-.radar-brief {
-  @apply mb-3 rounded-xl bg-surface px-4 py-3 shadow-border;
+/* The Ideas home and a category: the overview card (its summary, the ideas to start with, when it was
+   written and Refresh), the category cards, and a category's ideas, each with the problems it answers. */
+.overview {
+  @apply rounded-xl bg-surface p-4 shadow-border md:px-5;
 }
-.radar-brief summary {
-  @apply flex cursor-pointer list-none items-center gap-2 text-[14px] select-none;
+.overview-summary {
+  @apply max-w-[72ch] text-[15px] leading-[1.6] text-ink text-pretty;
 }
-.radar-brief summary::-webkit-details-marker {
-  display: none;
-}
-.brief-title {
-  @apply font-medium text-ink;
-}
-.radar-brief summary .stamp {
-  @apply text-[12.5px] text-muted;
-}
-.brief-empty {
-  @apply flex flex-col gap-3 text-[13.5px] text-soft md:flex-row md:items-center md:justify-between;
-}
-.brief-body {
-  @apply mt-2;
-}
-.brief-summary {
-  @apply text-[14.5px] leading-[1.6] text-ink text-pretty;
-}
-.brief-group {
-  @apply mt-3;
-}
-.brief-group h4 {
-  @apply text-[11px] font-semibold uppercase tracking-[0.04em] text-muted;
-}
-.brief-group ul {
-  @apply mt-1 flex flex-col gap-1.5;
-}
-.brief-group li {
+.overview-empty {
   @apply text-[13.5px] leading-[1.55] text-soft text-pretty;
 }
-.brief-group a {
-  @apply font-medium text-ink underline decoration-black/20 underline-offset-[3px] hover:decoration-black/60;
+.overview-h {
+  @apply mb-2 mt-4 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted;
 }
-.brief-next {
-  @apply mt-3 rounded-lg bg-accent/5 px-3 py-2 text-[13.5px] leading-[1.55] text-ink;
+.ideas-h {
+  @apply mt-6 px-1;
 }
-.brief-body .note {
-  @apply mt-2 text-[12px];
+.best {
+  @apply grid gap-2 md:grid-cols-3;
 }
-.brief-me {
-  @apply flex flex-wrap items-center gap-x-3 gap-y-1;
+.best-idea {
+  @apply flex h-full flex-col gap-1 rounded-lg bg-bg px-3 py-2.5 shadow-border transition-[box-shadow] duration-150 ease-out hover:shadow-border-hover;
 }
-.brief-foot {
-  @apply mt-3 flex items-center gap-3 border-t border-line pt-3;
+.best-name {
+  @apply text-[13.5px] font-medium text-ink text-pretty;
 }
-.briefs-list {
-  @apply mx-auto max-w-[720px];
+.best-pitch {
+  @apply text-[13px] leading-[1.5] text-soft text-pretty;
 }
-.brief-when {
-  @apply text-[13px] font-medium text-muted;
+.best-cat {
+  @apply mt-auto pt-1 text-[12px] text-muted;
+}
+.overview-foot {
+  @apply mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line pt-3;
+}
+.overview-foot .note {
+  @apply text-[12.5px];
+}
+.overview-foot .note[data-old] {
+  @apply text-warn;
+}
+.cats {
+  @apply grid gap-3 md:grid-cols-2 xl:grid-cols-3;
+}
+.cat {
+  @apply flex h-full flex-col gap-1 rounded-xl bg-surface px-4 py-3 shadow-border transition-[box-shadow] duration-150 ease-out hover:shadow-border-hover;
+}
+.cat-name {
+  @apply text-[14px] font-medium text-ink;
+}
+.cat-take {
+  @apply text-[13px] leading-[1.5] text-soft text-pretty;
+}
+.cat-foot {
+  @apply mt-auto flex items-baseline justify-between gap-3 pt-1.5;
+}
+.cat-worth {
+  @apply font-medium text-good;
+}
+.cat-ideas {
+  @apply shrink-0 text-[12px] font-medium text-accent;
+}
+.ideas {
+  @apply flex flex-col divide-y divide-line;
+}
+.idea {
+  @apply py-3.5 first:pt-0 last:pb-0;
+  scroll-margin-top: 4.5rem;
+}
+.idea-head {
+  @apply flex flex-wrap items-center gap-2;
+}
+.idea-name {
+  @apply text-[14.5px] font-semibold text-ink text-pretty;
+}
+.best-badge {
+  @apply rounded-full bg-accent/10 px-2 text-[11.5px] font-medium leading-[19px] whitespace-nowrap text-accent;
+}
+.idea-pitch {
+  @apply mt-1 max-w-[72ch] text-[14px] leading-[1.55] text-ink text-pretty;
+}
+.idea-facts {
+  @apply mt-2 flex flex-col gap-1.5;
+}
+.idea-facts div {
+  @apply grid gap-x-3 md:grid-cols-[8.5rem_minmax(0,1fr)];
+}
+.idea-facts dt {
+  @apply text-[12.5px] font-medium leading-[1.55] text-muted;
+}
+.idea-facts dd {
+  @apply max-w-[72ch] text-[13.5px] leading-[1.55] text-soft text-pretty;
+}
+.idea-from {
+  @apply mt-2.5 flex flex-wrap gap-1.5;
+}
+.idea-from a {
+  @apply inline-block rounded-md bg-inset px-2 py-0.5 text-[12px] leading-[1.45] text-soft hover:text-ink;
+}
+.ideas-foot {
+  @apply mt-8;
+}
+a.stamp {
+  @apply hover:text-ink;
 }
 .badges {
   @apply flex items-center gap-1.5;

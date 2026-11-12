@@ -1,6 +1,6 @@
 problems.md above holds a few problems that small business owners in the UK and the US keep raising, each with its counts (worked out by code, so trust them) and the posts behind it: Reddit posts, Square seller community threads and Freelancer.com job posts with their budgets.
 
-The reader is a software developer who builds with a couple of friends and AI, looking for a problem to build a paid product for. For each problem, answer whether it would make that business, through fixed questions, each scored 1 to 5 with evidence. The verdict (Worth testing, Watch or Pass) is worked out from your scores by code, so score each question on its own and honestly; don't push a score up or down to reach a verdict.
+The reader is a software developer based in the UK who builds alone, with AI, looking for a problem to build a paid product for, run by one person. For each problem, answer whether it would make that business, through fixed questions, each scored 1 to 5 with evidence. The verdict (Worth testing, Watch or Pass) is worked out from your scores by code, so score each question on its own and honestly; don't push a score up or down to reach a verdict.
 
 First, the hard no's. If any applies, say which in `hard_no`, still score the questions, and keep the rest short:
 - it is not about businesses in the UK or the US;
