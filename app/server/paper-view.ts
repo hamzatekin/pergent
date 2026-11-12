@@ -78,6 +78,7 @@ export function topPicks<T extends { importance: 1 | 2 | 3; forYou?: number; pro
 }
 
 // "🏛️ Gündem ve Siyaset" is "Gündem ve Siyaset" as a label, and tech's "🚀 Claude …" headline is "Claude …" in print.
+// biome-ignore lint/suspicious/noMisleadingCharacterClass: the variation selector (U+FE0F) and the zero-width joiner (U+200D) are part of an emoji, which is what this strips; they are not typos.
 export const plain = (s: string) => s.replace(/^[\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D\s]+/u, "").trim();
 
 const PICKS_HEADING: Record<string, string> = { tr: "Okumaya değer", en: "Worth your time" };
@@ -109,7 +110,9 @@ export function paperView(paper: Paper, images: Record<string, string>, actions?
   // section left with nothing is dropped.
   const leads = new Set(sections.map((s) => s.stories.find((st) => st.importance === 3)));
   const picks = topPicks(sections.map((s) => s.stories));
-  picks.forEach((s, i) => (s.importance = i === 0 ? 3 : 2));
+  picks.forEach((s, i) => {
+    s.importance = i === 0 ? 3 : 2;
+  });
   const views: SectionView[] = sections.flatMap((section) => {
     const rest = section.stories.filter((s) => !picks.includes(s));
     const cards = rest.filter((s) => s.importance > 1);

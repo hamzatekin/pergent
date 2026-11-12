@@ -122,7 +122,7 @@ export function IdeasBoard({ data }: { data: IdeasPage }) {
               <Link to="/ideas/$id" params={{ id: String(p.id) }} className="problem-row">
                 <span className="problem-main">
                   <span className="problem-name">
-                    {p.status === "starred" && <span className="star" aria-label="Starred">★ </span>}
+                    {p.status === "starred" && <span className="star" role="img" aria-label="Starred">★ </span>}
                     {p.name}
                   </span>
                   <span className="problem-summary">{p.summary}</span>
@@ -196,7 +196,7 @@ export function ProblemView({ data }: { data: ProblemPage }) {
       <article className="problem">
         <div className="problem-head">
           <h2 className="masthead">
-            {p.status === "starred" && <span className="star" aria-label="Starred">★ </span>}
+            {p.status === "starred" && <span className="star" role="img" aria-label="Starred">★ </span>}
             {p.name}
           </h2>
           <span className="badges">

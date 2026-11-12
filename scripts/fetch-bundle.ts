@@ -36,7 +36,12 @@ let before = "";
 for (let page = 0; page < maxPages; page++) {
   const items = await get<Item[]>(`get-feed?locale=tr&page=/tr${before && `&beforeRssDataId=${before}`}`);
   if (!items.length) break;
-  for (const i of items) if (!seen.has(i.rssDataId) && when(i).getTime() >= since) feed.push(i), seen.add(i.rssDataId);
+  for (const i of items) {
+    if (!seen.has(i.rssDataId) && when(i).getTime() >= since) {
+      feed.push(i);
+      seen.add(i.rssDataId);
+    }
+  }
   before = items[items.length - 1].rssDataId;
   if (when(items[items.length - 1]).getTime() < since) break;
 }

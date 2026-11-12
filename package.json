@@ -10,9 +10,12 @@
     "serve": "node --disable-warning=ExperimentalWarning src/server.ts",
     "dev": "vite dev",
     "build": "vite build",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p app"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p app",
+    "lint": "biome lint .",
+    "lint:fix": "biome check --write ."
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.7",
     "@fontsource-variable/oswald": "^5.3.0",
     "@fontsource-variable/source-serif-4": "^5.3.1",
     "@fontsource/alfa-slab-one": "^5.3.0",

@@ -11,7 +11,8 @@ npm install
 npm run dev            # http://localhost:4321 with hot reload
 npm run build          # the site -> dist/
 npm run serve          # the built site, as in production: http://localhost:4321
-npm run typecheck      # the only check: tsc for src/, then for app/
+npm run typecheck      # tsc for src/, then for app/
+npm run lint           # biome: the code, formatter off, so it never rewrites a file
 npm run task -- list   # the tasks in tasks/
 npm run task -- run tech
 npm run task -- costs  # cost, turns and duration of recent runs

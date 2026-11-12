@@ -158,7 +158,10 @@ export function fromMarkdown(markdown: string): Paper {
   let story: { headline: string; tokens: Token[] } | undefined;
   const stories: { section: Section; story: typeof story & {} }[] = [];
   const open = () => {
-    if (!section) paper.sections.push((section = { stories: [] }));
+    if (!section) {
+      section = { stories: [] };
+      paper.sections.push(section);
+    }
     return section;
   };
   for (const token of md.lexer(markdown)) {
@@ -166,7 +169,8 @@ export function fromMarkdown(markdown: string): Paper {
     if (heading && heading.depth === 1 && paper.title === undefined) {
       paper.title = heading.text;
     } else if (heading && heading.depth <= 2) {
-      paper.sections.push((section = { heading: heading.text, stories: [] }));
+      section = { heading: heading.text, stories: [] };
+      paper.sections.push(section);
       story = undefined;
     } else if (heading && heading.depth === 3) {
       story = { headline: heading.text, tokens: [] };

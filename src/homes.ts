@@ -167,7 +167,7 @@ export function tokensOf(b: Buffer, mediaType: string): number {
       i += 2 + b.readUInt16BE(i + 2);
     }
   }
-  if (!size || !size[0] || !size[1]) return 1600;
+  if (!size?.[0] || !size?.[1]) return 1600;
   const [w, h] = size;
   const s = Math.min(1, 1568 / Math.max(w, h), Math.sqrt(1_150_000 / (w * h)));
   return Math.ceil((w * s * (h * s)) / 750);

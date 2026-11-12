@@ -76,7 +76,11 @@ export const getPaperPage = createServerFn({ method: "GET" })
     const layout: Layout | undefined = config.newspaper ? (isLayout(chosen) ? chosen : isLayout(config.layout) ? config.layout : "newspaper") : undefined;
     if (run) {
       const places = new Map<Story, string>();
-      run.paper.sections.forEach((s, i) => s.stories.forEach((story, j) => places.set(story, `${task}/${current!.runId}/${i}/${j}`)));
+      run.paper.sections.forEach((s, i) => {
+        s.stories.forEach((story, j) => {
+          places.set(story, `${task}/${current!.runId}/${i}/${j}`);
+        });
+      });
       let shown = run.paper;
       if (config.mute) {
         const muted = hideMuted(run.paper, listMutes(task));

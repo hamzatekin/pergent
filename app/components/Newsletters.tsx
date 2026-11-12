@@ -99,9 +99,9 @@ function IssueArrow({ slug, id, label, glyph, keyName }: { slug: string; id?: nu
   const title = `${label} (${keyName})`;
   if (!id) {
     return (
-      <a className="arrow" aria-disabled="true" aria-label={label} title={title}>
+      <button type="button" className="arrow" disabled aria-disabled="true" aria-label={label} title={title}>
         <Icon name={glyph} />
-      </a>
+      </button>
     );
   }
   return (

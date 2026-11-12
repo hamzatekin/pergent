@@ -8,12 +8,12 @@
 // match, in old papers too. No imports from runner.ts or db.ts: the before scripts import this.
 import type { Paper, Story } from "./paper.ts";
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export function mentions(text: string, phrase: string): boolean {
   const p = phrase.trim();
   if (!p) return false;
-  return new RegExp(`(?<![\\p{L}\\p{N}])${escape(p)}(?![\\p{L}\\p{N}])`, "iu").test(text);
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(p)}(?![\\p{L}\\p{N}])`, "iu").test(text);
 }
 
 export function mutedMarkdown(phrases: string[]): string {

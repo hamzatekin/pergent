@@ -11,6 +11,9 @@
 //   days      lookback window for a never-seen issue (default 7)
 //   maxChars  size cap for newsletters.md (default 60000); claude's Read truncates big files, so older
 //             issues past the cap are left for the next run instead of being silently cut
+//
+// biome-ignore-all lint/suspicious/noControlCharactersInRegex: \u0000 is the placeholder that marks
+// where a link's resolved URL goes in the HTML, in cleanHtml and htmlToText, on purpose.
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -29,7 +32,7 @@ for (const dir of await readdir(runsDir).catch(() => [] as string[])) {
   } catch {}
 }
 
-function unescape(s: string): string {
+function unescapeHtml(s: string): string {
   return s
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -47,7 +50,7 @@ function tag(xml: string, name: string): string {
   if (!m) return "";
   const v = m[1].trim();
   const cdata = v.match(/^<!\[CDATA\[([\s\S]*)\]\]>$/);
-  return cdata ? cdata[1] : unescape(v);
+  return cdata ? cdata[1] : unescapeHtml(v);
 }
 
 // Cooperpress wraps every link in a click tracker (https://<letter>/link/<id>/rss). Follow the redirect
@@ -81,7 +84,7 @@ function stripTracking(url: string): string {
 // (the site's CSP would block inline styles anyway). Layout tables and their cells become divs.
 const KEEP = new Set(["p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code", "a", "strong", "b", "em", "i", "sub", "sup", "img", "figure", "figcaption"]);
 const AS_DIV = new Set(["div", "table", "tbody", "thead", "tfoot", "tr", "td", "th", "section", "article", "center", "header", "footer", "main"]);
-const attr = (attrs: string, name: string) => unescape(attrs.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"))?.slice(1).find((v) => v !== undefined) ?? "");
+const attr = (attrs: string, name: string) => unescapeHtml(attrs.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"))?.slice(1).find((v) => v !== undefined) ?? "");
 const quote = (v: string) => `"${v.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`;
 
 async function cleanHtml(html: string): Promise<string> {
@@ -125,9 +128,11 @@ function elementAt(html: string, start: number): string {
   const re = new RegExp(`<(/?)${name}\\b[^>]*>`, "gi");
   re.lastIndex = start;
   let depth = 0;
-  for (let m; (m = re.exec(html)); ) {
+  let m = re.exec(html);
+  while (m) {
     if (!m[0].endsWith("/>")) depth += m[1] ? -1 : 1;
     if (depth === 0) return html.slice(start, re.lastIndex);
+    m = re.exec(html);
   }
   return html.slice(start);
 }
@@ -141,9 +146,11 @@ function element(html: string, id: string): string {
 // Emails hide a preview line and tracking markers with display:none; they are not part of the issue.
 function withoutHidden(html: string): string {
   const hidden = /<[a-zA-Z]+\b[^>]*style="[^"]*display:\s*none[^>]*>/gi;
-  for (let m; (m = hidden.exec(html)); ) {
+  let m = hidden.exec(html);
+  while (m) {
     html = html.slice(0, m.index) + html.slice(m.index + elementAt(html, m.index).length);
     hidden.lastIndex = m.index;
+    m = hidden.exec(html);
   }
   return html;
 }
@@ -161,7 +168,7 @@ async function htmlToText(html: string): Promise<string> {
     .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)>|<br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, "");
   const urls = (await Promise.all(links)).map(stripTracking);
-  return unescape(text)
+  return unescapeHtml(text)
     .replace(/\u0000(\d+)\u0000/g, (_, i) => urls[Number(i)])
     .replace(/[ \t​]+/g, " ")
     .replace(/ *\n */g, "\n")
@@ -176,7 +183,7 @@ const get = async (url: string) => {
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.text();
 };
-const meta = (html: string, property: string) => unescape(html.match(new RegExp(`<meta[^>]+property="${property}"[^>]+content="([^"]*)"`))?.[1] ?? "").trim();
+const meta = (html: string, property: string) => unescapeHtml(html.match(new RegExp(`<meta[^>]+property="${property}"[^>]+content="([^"]*)"`))?.[1] ?? "").trim();
 
 async function issue(feed: string, title: string, url: string, date: Date, html: string): Promise<Issue> {
   const body = withoutHidden(html.replace(/<!--[\s\S]*?-->/g, ""));
@@ -201,7 +208,7 @@ async function fromSitemap(feed: Feed): Promise<Issue[]> {
   const xml = await get(feed.sitemap!);
   const issues: Issue[] = [];
   for (const [, loc, lastmod] of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>\s*(?:<lastmod>\s*([^<\s]+)\s*<\/lastmod>)?/g)) {
-    const url = unescape(loc);
+    const url = unescapeHtml(loc);
     if (!url.includes(feed.match ?? "/p/") || seen.has(url)) continue;
     if (lastmod && Date.parse(lastmod) + 86_400_000 < since) continue;
     const page = await get(url);

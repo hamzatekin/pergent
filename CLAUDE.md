@@ -20,9 +20,10 @@ npm run serve                   # the built site + API (+ /admin when ADMIN_PASS
 npm run dev                     # vite dev on http://localhost:4321: the same site with hot reload, no scheduler
 npm run build                   # vite build: the TanStack Start app in app/ -> dist/client (browser) and dist/server (SSR)
 npm run typecheck               # tsc for src/, then for app/
+npm run lint                    # biome lint: the other check; `lint:fix` applies only its safe fixes
 ```
 
-There are no tests and no linter. `npm run typecheck` is the only check. The `task` and `serve` scripts (and the Dockerfile `CMD`) pass `--disable-warning=ExperimentalWarning` because `node:sqlite` still prints one on every start.
+There are no tests. `npm run typecheck` and `npm run lint` are the checks. Biome (`biome.json`) is a linter only: the formatter and import sorting are off, so a lint run never rewrites a file, and `lint:fix` applies only its safe fixes. It leaves out `app/routeTree.gen.ts` (generated), `public/sw.js`, and `app/styles.css` (Tailwind's `@theme`/`@apply` is not CSS its parser reads). These rules are off on purpose: `noExplicitAny` (the task JSON is read as `any` at the edge and narrowed where used), `noArrayIndexKey` (the lists are rendered once on the server and never reordered or inserted into), `noDangerouslySetInnerHtml` (the site renders its own marked and cleaned newsletter HTML, under a CSP), `noNonNullAssertion` (92 places where the line above has just checked the value), `useTemplate`, `noAutofocus` (the login's only field, and the phrase just added to a never-show list), and `useLiteralKeys` (index signatures are read with brackets throughout, like the keys that cannot be dotted). The `task` and `serve` scripts (and the Dockerfile `CMD`) pass `--disable-warning=ExperimentalWarning` because `node:sqlite` still prints one on every start.
 
 ## Architecture
 

@@ -13,6 +13,7 @@ export function Shell({ nav, active, header, children }: { nav: Nav; active: str
   // A logged-in visit to any page counts as a read for the scheduler's dead man's switch
   // (src/scheduler.ts), so a reader who follows homes through Telegram and /homes keeps it going: once
   // per page opened, from the script, never on the reloads a page makes while a run is going.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: active is in the list on purpose: each page opened counts as a read, even a reload of the same task.
   useEffect(() => {
     if (nav.reader) fetch("/api/read", { method: "POST" }).catch(() => {});
   }, [nav.reader, active]);

@@ -49,7 +49,9 @@ export async function classify(
       while (next < starts.length) {
         const start = starts[next++];
         try {
-          (await ask(texts.slice(start, start + BATCH), kinds, about, apiKey)).forEach((a, i) => (answers[start + i] = a));
+          (await ask(texts.slice(start, start + BATCH), kinds, about, apiKey)).forEach((a, i) => {
+            answers[start + i] = a;
+          });
         } catch (err) {
           failures.push(err instanceof Error ? err.message : String(err));
         }

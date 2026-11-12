@@ -14,6 +14,7 @@ export function LayoutToggle({ task, current }: { task: string; current: Layout 
     if (!layout) return;
     e.preventDefault();
     if (layout === current) return;
+    // biome-ignore lint/suspicious/noDocumentCookie: the reader's layout is stored in their browser only, never sent to the server.
     document.cookie = layoutCookie(task, layout);
     router.invalidate().then(() => scrollTo({ top: 0 }));
   };
@@ -21,13 +22,13 @@ export function LayoutToggle({ task, current }: { task: string; current: Layout 
     <form className="layouts" method="post" action="/layout" onSubmit={choose}>
       <input type="hidden" name="task" value={task} />
       <input type="hidden" name="next" value={pathname} />
-      <button name="layout" value="cards" aria-pressed={current === "cards"} aria-label="Columns" title="Columns">
+      <button type="submit" name="layout" value="cards" aria-pressed={current === "cards"} aria-label="Columns" title="Columns">
         <Icon name="grid" />
       </button>
-      <button name="layout" value="rows" aria-pressed={current === "rows"} aria-label="Rows" title="Rows">
+      <button type="submit" name="layout" value="rows" aria-pressed={current === "rows"} aria-label="Rows" title="Rows">
         <Icon name="rows" />
       </button>
-      <button name="layout" value="newspaper" aria-pressed={current === "newspaper"} aria-label="Newspaper" title="Newspaper">
+      <button type="submit" name="layout" value="newspaper" aria-pressed={current === "newspaper"} aria-label="Newspaper" title="Newspaper">
         <Icon name="newspaper" />
       </button>
     </form>

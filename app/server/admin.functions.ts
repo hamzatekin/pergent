@@ -90,6 +90,10 @@ export const getDashboard = createServerFn({ method: "GET" })
 type Usage = { inputTokens: number; outputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number; costUSD: number };
 export type Step = { kind: "said" | "tool" | "result"; name?: string; t?: number; text: string; error?: boolean };
 
+// One line of claude's stream-json log: the events this reads, and the parts of an assistant message.
+type LogPart = { type?: string; text: string; name?: string; input?: unknown; content?: string | { text?: string }[]; is_error?: boolean };
+type LogEvent = { type?: string; t?: number; message?: { content?: LogPart[] }; modelUsage?: Record<string, Usage> };
+
 // The stream-json log as a list of steps: what the model said, each tool call with its input, and
 // what came back, cut short; the full log is one click away under Files.
 function parseLog(log: string) {
@@ -97,7 +101,7 @@ function parseLog(log: string) {
   let result: { modelUsage?: Record<string, Usage> } | undefined;
   const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}… (${s.length.toLocaleString("en")} chars)` : s);
   for (const line of log.split("\n")) {
-    let event;
+    let event: LogEvent;
     try {
       event = JSON.parse(line);
     } catch {

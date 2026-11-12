@@ -20,7 +20,7 @@ export function JobsBoard({ data }: { data: JobsPage }) {
     fit: data.fit || undefined,
     pay: data.pay || undefined,
     worth: data.worth || undefined,
-    note: data.note && data.note.newer ? data.note.runId : undefined,
+    note: data.note?.newer ? data.note.runId : undefined,
   };
   const t = data.totals;
   const header = (

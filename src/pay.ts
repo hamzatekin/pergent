@@ -33,7 +33,7 @@ const SCOTTISH: [number, number][] = [
 
 /** A year's pay after income tax and employee Class 1 National Insurance, 2026/27. */
 export function takeHome(gross: number, scotland = false): number {
-  let taxable = Math.max(0, gross - allowance(gross));
+  const taxable = Math.max(0, gross - allowance(gross));
   let tax = 0;
   let from = 0;
   for (const [to, rate] of scotland ? SCOTTISH : BANDS) {

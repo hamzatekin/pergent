@@ -494,7 +494,11 @@ if (apiKey && fresh.length) {
 
 let backfilled: Post[] = [];
 if (empty && collect.backfill) {
-  backfilled = (await backfill(collect.backfill)).filter((p) => !seen.has(p.id) && (seen.add(p.id), true));
+  backfilled = (await backfill(collect.backfill)).filter((p) => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
   say(`back-fill from ${collect.backfill}: ${backfilled.length} posts`);
 }
 

@@ -46,8 +46,8 @@ function entries(buf: Buffer): Map<string, () => string> {
 }
 
 const files = entries(zip);
-const unescape = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
-const strings = [...(files.get("xl/sharedStrings.xml")?.() ?? "").matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => unescape([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join("")));
+const unescapeHtml = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+const strings = [...(files.get("xl/sharedStrings.xml")?.() ?? "").matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => unescapeHtml([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join("")));
 // The data is the biggest sheet ("Table 1"); the others are the cover, contents and notes.
 const sheet = [...files.keys()].filter((n) => n.startsWith("xl/worksheets/sheet")).map((n) => files.get(n)!()).sort((a, b) => b.length - a.length)[0];
 
@@ -57,7 +57,7 @@ for (const r of sheet.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
   const row: string[] = [];
   for (const c of r[1].matchAll(/<c r="([A-Z]+\d+)"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
     const v = /<v>([\s\S]*?)<\/v>/.exec(c[3] ?? "")?.[1] ?? /<t[^>]*>([\s\S]*?)<\/t>/.exec(c[3] ?? "")?.[1] ?? "";
-    row[col(c[1])] = / t="s"/.test(c[2]) ? strings[Number(v)] : unescape(v);
+    row[col(c[1])] = / t="s"/.test(c[2]) ? strings[Number(v)] : unescapeHtml(v);
   }
   rows.push(row);
 }

@@ -30,7 +30,7 @@ export function SaveToNotes({ place, className }: { place: string; className: st
       }}
     >
       <input type="hidden" name="place" value={place} />
-      <button className={className} disabled={state.kind === "saving"} data-failed={state.kind === "failed" || undefined}>
+      <button type="submit" className={className} disabled={state.kind === "saving"} data-failed={state.kind === "failed" || undefined}>
         {state.kind === "saving" ? "Saving…" : state.kind === "failed" ? "Not saved, try again" : "Save to notes"}
       </button>
     </form>

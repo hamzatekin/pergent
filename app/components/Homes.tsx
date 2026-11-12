@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import type { Beds, Epc, HomeItem, HomesPage, HomesSearch, Sort } from "../server/homes.functions.ts";
+import type { Beds, Epc, HomeItem, HomesPage, Sort } from "../server/homes.functions.ts";
 import { Shell } from "./Shell.tsx";
 
 const BEDS: [Beds, string][] = [

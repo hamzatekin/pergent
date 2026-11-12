@@ -27,7 +27,7 @@ export function PaperPage({ data }: { data: Data }) {
 
   useEffect(() => {
     if (runId) fetch("/api/read", { method: "POST" }).catch(() => {});
-  }, [task, runId]);
+  }, [runId]);
 
   const header = (
     <>
@@ -70,9 +70,9 @@ function RunArrow({ task, runId, label, glyph, keyName }: { task: string; runId?
   const title = `${label} (${keyName})`;
   if (!runId) {
     return (
-      <a className="arrow" aria-disabled="true" aria-label={label} title={title}>
+      <button type="button" className="arrow" disabled aria-disabled="true" aria-label={label} title={title}>
         <Icon name={glyph} />
-      </a>
+      </button>
     );
   }
   return (
