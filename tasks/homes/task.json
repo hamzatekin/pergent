@@ -52,7 +52,7 @@
     ]
   },
   "collect": {
-    "area": "5 miles around NG1 (Rightmove's OUTCODE^1752)",
+    "area": "5 miles around NG1 (Rightmove's OUTCODE^1752; OpenRent's 8 km around NG1)",
     "search": {
       "locationIdentifier": "OUTCODE^1752",
       "radius": "5.0",
@@ -66,6 +66,7 @@
     "quickPages": 5,
     "delayMs": 2000,
     "maxPages": 100,
-    "budgetSeconds": 240
+    "budgetSeconds": 240,
+    "openrent": { "term": "NG1", "km": 8, "maxPages": 40 }
   }
 }

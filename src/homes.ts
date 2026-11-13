@@ -1,4 +1,4 @@
-// The homes task's reading step. scripts/collect-homes.ts stores each Rightmove listing with its page;
+// The homes task's reading step. scripts/collect-homes.ts stores each Rightmove and OpenRent listing with its page;
 // then prepareHomesRead downloads the EPC charts of the listings no read has seen and hands claude each
 // listing's text with its charts right under it (the runner sends them as one message), haiku reads
 // them, and saveHomesRead stores on each listing its EPC rating, what it says on the things Rightmove
@@ -50,6 +50,9 @@ export function matches(h: HomeRow, m: Match, places: Place[]): boolean {
   const near = places.every((p) => p.max === undefined || !h.commute[p.name] || (h.commute[p.name].min ?? Infinity) <= p.max);
   return h.pricePcm <= rent && beds >= m.minBeds && beds <= m.maxBeds && !!band && band <= m.epc && near;
 }
+
+// The site a listing is on, for a link's text.
+export const siteOf = (url: string) => (/openrent\.co\.uk/.test(url) ? "OpenRent" : "Rightmove");
 
 // "2 bed flat"; no bedrooms is a studio, and Rightmove's "Not Specified" type says nothing.
 export function titleOf(h: { beds: number | null; type: string }): string {
@@ -446,7 +449,7 @@ export function message(h: HomeRow, was: number | null, x: Context): string {
 }
 
 // Messages the reader on Telegram about each match worth one (`notifyConfig`) that came up since messages
-// were turned on (new to the table and to Rightmove: a widened search brings old listings in as new), or
+// were turned on (new to the table and to its site: a widened search brings old listings in as new), or
 // got cheaper since, once per rent: again only when the rent goes down. A listing whose read is about to
 // be redone (another rent, new commute times) or that is not timed to every place with a limit yet waits
 // a run, since a message cannot be taken back. The first run
@@ -465,7 +468,7 @@ export async function notifyHomes(task: string, config: TaskConfig): Promise<str
   const near = shopsOf(task, config);
   const context: Context = { places, costs: costsOf(config), medians: rentMedians(up, ceilingOf(config)), now: nowOf(task, config), dupes, scores, near };
   const score = (h: HomeRow) => scoreOf(h, scores, near)?.score ?? 0;
-  const buttons = (url?: string) => [...(url ? [{ text: "Rightmove", url }] : []), ...(n.link ? [{ text: "All matches", url: n.link }] : [])];
+  const buttons = (url?: string) => [...(url ? [{ text: siteOf(url), url }] : []), ...(n.link ? [{ text: "All matches", url: n.link }] : [])];
   const since = getState(`notify-since:${task}`);
   if (!since) {
     await sendTelegram({
@@ -477,7 +480,7 @@ export async function notifyHomes(task: string, config: TaskConfig): Promise<str
   }
   const timing = !!process.env.TRAVELTIME_APP_ID && !!process.env.TRAVELTIME_API_KEY;
   const settled = (h: HomeRow) => !h.stale && (!timing || places.every((p) => p.max === undefined || h.commute[p.name]));
-  // Up on Rightmove at most three days before it was first collected: new there too.
+  // Up on its site at most three days before it was first collected: new there too.
   // and first collected in the last `newDays`.
   const fresh = (h: HomeRow) =>
     h.firstSeen >= since && Date.now() - Date.parse(h.firstSeen) <= n.newDays * 86_400_000 && (!h.listedAt || Date.parse(h.firstSeen) - Date.parse(h.listedAt) <= 3 * 86_400_000);

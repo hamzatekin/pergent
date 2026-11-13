@@ -23,7 +23,7 @@ const SORT: [Sort, string][] = [
 
 // The rental search (tasks/homes): what matches the reader by default, or every listing up now, with
 // chips for the bedrooms, the EPC, the postcode district and the things Rightmove cannot filter on,
-// then the listings, best fit first, each linking to Rightmove.
+// then the listings, best fit first, each linking to its listing on Rightmove or OpenRent.
 export function HomesBoard({ data }: { data: HomesPage }) {
   const s = data.search;
   const all = s.view === "all";
@@ -42,7 +42,7 @@ export function HomesBoard({ data }: { data: HomesPage }) {
   return (
     <Shell nav={data.nav} active="homes" header={header}>
       <p className="note feed-note">
-        Rightmove rentals within 5 miles of NG1 up to £1,100, collected every hour
+        Rightmove and OpenRent rentals within 5 miles of NG1 up to £1,100, collected every hour
         {data.lastRun ? `, last ${data.lastRun}` : ""}. A match is at most £{m.rent.toLocaleString("en-GB")} a month (£
         {m.rentWithBills.toLocaleString("en-GB")} with every bill included), {m.minBeds} to {m.maxBeds} bedrooms, EPC {m.epc} or better
         {data.limits.length ? `, and at most ${data.limits.join(" and ")} by bus or tram` : ""}.

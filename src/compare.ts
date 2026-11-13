@@ -76,9 +76,17 @@ export function onMarket(h: { listedAt: string | null; firstSeen: string; prices
 // house or flat number, or both were matched by address to the same certificate; only a maybe when they
 // share an EPC score, a floor area or a certificate matched by score, since flats alike in one block
 // share those (12.6% of the pairs of flats at one postcode on the register had the same score). Anything
-// that disagrees (numbers, scores, areas, certificates matched by address) rules it out. Returns each
-// listing's copies.
+// that disagrees (numbers, scores, areas, certificates matched by address) rules it out. OpenRent's own
+// copy on Rightmove names the OpenRent listing ("Property Reference: 3065896"), so those two are sure
+// whatever else they say. Returns each listing's copies.
 export type Copy = { home: HomeRow; sure: boolean };
+
+// The OpenRent listing a Rightmove listing by OpenRent is a copy of, as its id in the homes table.
+function openrentCopyOf(h: HomeRow): string | null {
+  if (h.id.startsWith("openrent:") || !/openrent/i.test(h.agent) || !h.details) return null;
+  const ref = `${h.details.keyFeatures.join("\n")}\n${h.details.description}`.match(/Property Reference(?: Number)?:\s*(\d+)/i)?.[1];
+  return ref ? `openrent:${ref}` : null;
+}
 
 export function duplicates(homes: HomeRow[]): Map<string, Copy[]> {
   const groups = new Map<string, HomeRow[]>();
@@ -113,6 +121,12 @@ export function duplicates(homes: HomeRow[]): Map<string, Copy[]> {
       });
       if (copies.length) out.set(a.id, copies);
     }
+  }
+  const byId = new Map(homes.map((h) => [h.id, h]));
+  for (const h of homes) {
+    const twin = byId.get(openrentCopyOf(h) ?? "");
+    if (!twin) continue;
+    for (const [a, b] of [[h, twin], [twin, h]]) out.set(a.id, [...(out.get(a.id) ?? []).filter((c) => c.home.id !== b.id), { home: b, sure: true }]);
   }
   return out;
 }

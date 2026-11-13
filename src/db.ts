@@ -88,7 +88,7 @@ export type NewJob = {
   body: string;
 };
 
-// A rental listing the homes task found in a Rightmove search (scripts/collect-homes.ts): what the search
+// A rental listing the homes task found in a Rightmove or OpenRent search (scripts/collect-homes.ts): what the search
 // results say about it. `pricePcm` is the rent a calendar month, worked out from a weekly price.
 export type HomeListing = {
   id: string;
@@ -99,13 +99,13 @@ export type HomeListing = {
   pricePcm: number;
   beds: number | null;
   baths: number | null;
-  /** Rightmove's property type: Flat, Apartment, Terraced, Semi-Detached, Studio... */
+  /** The property type: Flat, Apartment, Terraced, Semi-Detached, Studio... (OpenRent's from its title) */
   type: string;
   agent: string;
   phone: string | null;
   image: string | null;
   summary: string;
-  /** When Rightmove first showed it. */
+  /** When its site first showed it. */
   listedAt: string | null;
   availableFrom: string | null;
 };
@@ -482,7 +482,7 @@ export function saveJobs(task: string, runId: string, jobs: NewJob[]) {
   }
 }
 
-// A listing is stored once, by Rightmove's id. Seen again, it gets the day and what the search says now;
+// A listing is stored once, by its id (Rightmove's, or openrent:<OpenRent's>). Seen again, it gets the day and what the search says now;
 // a new rent goes on the end of `prices` ([{ at, pcm }], oldest first), so a reduction shows. A page
 // fetched this run fills `details`, and the postcode from it. A complete sweep is remembered in state
 // (`swept:<task>`): the listings not seen since it have gone.
