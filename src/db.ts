@@ -747,6 +747,11 @@ export function epcCert(number: string): Certificate | null {
   return row ? JSON.parse(row.cert) : null;
 }
 
+// Every certificate the register lookups have kept, for estimating what a listing without one uses (src/epc.ts).
+export function epcCerts(): Certificate[] {
+  return (use().prepare("SELECT cert FROM epc_certs").all() as { cert: string }[]).map((r) => JSON.parse(r.cert));
+}
+
 export function saveEpcCert(cert: Certificate) {
   use().prepare("INSERT OR REPLACE INTO epc_certs (number, cert) VALUES (?, ?)").run(cert.number, JSON.stringify(cert));
 }

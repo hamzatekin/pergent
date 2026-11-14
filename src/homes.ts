@@ -9,8 +9,8 @@ import { join } from "node:path";
 import { placesOf, timeHomes, type Place } from "./commute.ts";
 import { ceilingOf, dedupe, depositOver, duplicates, nowOf, onMarket, rentMedians, vsArea, vsNow, type Copy, type Medians, type Now } from "./compare.ts";
 import { crimeHomes, crimeText } from "./crime.ts";
-import { allIn, allInText, certHomes, certText, costsOf, type Costs } from "./epc.ts";
-import { getState, listHomes, markNotified, saveHomeReads, setState, unreadHomes, type Commute, type HomeRead, type HomeRow, type UnreadHome } from "./db.ts";
+import { allIn, allInText, certHomes, certText, costsOf, estimatesOf, type Costs, type Estimates } from "./epc.ts";
+import { epcCerts, getState, listHomes, markNotified, saveHomeReads, setState, unreadHomes, type Commute, type HomeRead, type HomeRow, type UnreadHome } from "./db.ts";
 import type { Part, TaskConfig } from "./runner.ts";
 import { scoreConfig, scoreLabel, scoreOf, scoreParts, type ScoreConfig } from "./score.ts";
 import { fetchShops, nearestShop, shopsOf, shopText, type Shop } from "./shops.ts";
@@ -223,7 +223,7 @@ async function charts(dir: string, id: string, urls: string[]): Promise<Found> {
   return found;
 }
 
-function block(ref: string, h: UnreadHome, found: Found, places: Place[], descriptionChars: number, costs: Costs | null, medians: Medians, shops: Shop[] | null): string {
+function block(ref: string, h: UnreadHome, found: Found, places: Place[], descriptionChars: number, costs: Costs | null, estimates: Estimates | null, medians: Medians, shops: Shop[] | null): string {
   const d = h.details;
   const said = (label: string, value: unknown) => (value === null || value === undefined || value === "" ? [] : [`${label}: ${value}`]);
   const features = Object.entries(d.features).map(([k, v]) => `${k} ${v.join(", ")}`).join("; ");
@@ -248,7 +248,7 @@ function block(ref: string, h: UnreadHome, found: Found, places: Place[], descri
     ...said("Its certificate on the EPC register", h.cert?.cert ? certText(h.cert) : null),
     ...said(
       "A month, estimated (energy for this home at today's prices and water, both unless the bills are in the rent; council tax for one person)",
-      costs ? allInText(allIn({ ...h, read: h.bills ? { bills: h.bills } : null }, costs)) : null,
+      costs ? allInText(allIn({ ...h, read: h.bills ? { bills: h.bills } : null }, costs, estimates)) : null,
     ),
     "",
     clip(d.description || h.summary, descriptionChars),
@@ -276,7 +276,10 @@ export async function prepareHomesRead(
   const fetched = await fetchShops(task, config).catch((err: Error) => `failed, ${err.message}`);
   const shops = shopsOf(task, config)?.shops ?? null;
   const costs = costsOf(config);
-  const medians = rentMedians(listHomes(task).filter((h) => h.up), ceilingOf(config));
+  const up = listHomes(task).filter((h) => h.up);
+  const medians = rentMedians(up, ceilingOf(config));
+  // Before a read there is no EPC band to estimate the energy from, but a council tax band can be assumed.
+  const estimates = costs ? estimatesOf(epcCerts(), up) : null;
   const places = placesOf(config);
   const wants = await readFile(join(taskDir, "wants.md"), "utf8");
   await writeFile(join(dir, "wants.md"), wants);
@@ -298,7 +301,7 @@ export async function prepareHomesRead(
       if (found[j].retry) continue;
       const pictures = found[j].charts.filter((c) => c.mediaType.startsWith("image/")).length;
       const ref = `h${blocks.length + 1}`;
-      const text = block(ref, h, found[j], places, descriptionChars, costs, medians, shops);
+      const text = block(ref, h, found[j], places, descriptionChars, costs, estimates, medians, shops);
       const cost = text.length / 2 + found[j].charts.reduce((n, c) => n + c.tokens, 0);
       if (blocks.length >= maxListings || images + pictures > MAX_IMAGES || (blocks.length > 0 && tokens + cost > MAX_TOKENS)) {
         full = true;
@@ -424,7 +427,17 @@ function droppedFrom(h: HomeRow, since: string): number | null {
 }
 
 // What a message compares a listing with (src/compare.ts).
-export type Context = { places: Place[]; costs: Costs | null; medians: Medians; now: Now | null; dupes: Map<string, Copy[]>; scores: ScoreConfig; near: { shops: Shop[]; metres: number } | null };
+export type Context = {
+  places: Place[];
+  costs: Costs | null;
+  /** What fills a listing's energy and council tax band when it has none (src/epc.ts). */
+  estimates: Estimates | null;
+  medians: Medians;
+  now: Now | null;
+  dupes: Map<string, Copy[]>;
+  scores: ScoreConfig;
+  near: { shops: Shop[]; metres: number } | null;
+};
 
 export function message(h: HomeRow, was: number | null, x: Context): string {
   const { places, costs } = x;
@@ -442,7 +455,7 @@ export function message(h: HomeRow, was: number | null, x: Context): string {
   return [
     `<b>${pounds(h.pricePcm)} pcm · ${escapeHtml(titleOf(h))}</b>${was ? ` · was ${pounds(was)}` : ""}`,
     `EPC ${r.epcBand}${r.epcScore ? ` ${r.epcScore}` : ""}${sc ? ` · <b>${scoreLabel(sc)}</b>` : ""}`,
-    costs ? escapeHtml(allInText(allIn(h, costs))) : "",
+    costs ? escapeHtml(allInText(allIn(h, costs, x.estimates))) : "",
     escapeHtml(vsArea(h, x.medians) ?? ""),
     escapeHtml(depositOver(h) ?? ""),
     escapeHtml(h.address),
@@ -479,7 +492,9 @@ export async function notifyHomes(task: string, config: TaskConfig): Promise<str
   const matching = up.filter((h) => !hidden.has(h.id) && matches(h, m, places));
   const scores = scoreConfig(config);
   const near = shopsOf(task, config);
-  const context: Context = { places, costs: costsOf(config), medians: rentMedians(up, ceilingOf(config)), now: nowOf(task, config), dupes, scores, near };
+  const costs = costsOf(config);
+  const estimates = costs ? estimatesOf(epcCerts(), up) : null;
+  const context: Context = { places, costs, estimates, medians: rentMedians(up, ceilingOf(config)), now: nowOf(task, config), dupes, scores, near };
   const score = (h: HomeRow) => scoreOf(h, scores, near)?.score ?? 0;
   const buttons = (url?: string) => [...(url ? [{ text: siteOf(url), url }] : []), ...(n.link ? [{ text: "All matches", url: n.link }] : [])];
   const since = getState(`notify-since:${task}`);

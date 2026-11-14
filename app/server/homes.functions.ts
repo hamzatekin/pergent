@@ -4,8 +4,8 @@ import { setResponseHeader } from "@tanstack/react-start/server";
 import { placesOf, type Place } from "#src/commute.ts";
 import { ceilingOf, depositOver, districtOf, duplicates, nowOf, onMarket, rentMedians, vsArea, vsNow, type Copy, type Medians, type Now } from "#src/compare.ts";
 import { crimeText } from "#src/crime.ts";
-import { allIn, certText, costsOf, type Costs } from "#src/epc.ts";
-import { getState, listHomes, type HomeRow } from "#src/db.ts";
+import { allIn, certText, costsOf, estimatesOf, kindOf, type Costs, type EnergyEstimate, type Estimates } from "#src/epc.ts";
+import { epcCerts, getState, listHomes, type HomeRow } from "#src/db.ts";
 import { commuteTimes, hiddenOf, matches, matchOf, titleOf, type Match } from "#src/homes.ts";
 import { redFlagsOf, scoreConfig, scoreLabel, scoreOf, scoreParts, type Score, type ScoreConfig } from "#src/score.ts";
 import { nearestShop, shopsOf, shopText, type Shop } from "#src/shops.ts";
@@ -125,22 +125,34 @@ const SAID: Record<string, Record<string, string>> = {
   heating: { gas: "Gas heating", electric: "Electric heating", "storage heaters": "Storage heaters", "heat pump": "Heat pump", communal: "Communal heating" },
 };
 
+// What the homes an energy estimate was taken from are heated by.
+const heatedAs = (e: EnergyEstimate) => (e.heating === "electric" ? "electrically heated" : "gas-heated");
+
 // The month's cost (src/epc.ts) as the page says it: what it comes to, then each part, naming what is
 // in the rent and what could not be priced.
-function allInLine(h: HomeRow, costs: Costs): HomeItem["allIn"] {
-  const a = allIn(h, costs);
+function allInLine(h: HomeRow, costs: Costs, estimates: Estimates | null): HomeItem["allIn"] {
+  const a = allIn(h, costs, estimates);
+  const e = a.energyEstimate;
   const parts = [
-    a.billsIn ? "bills in the rent" : a.energy ? `energy ${pounds(a.energy)}` : "",
-    a.taxIn ? "council tax in the rent" : a.councilTax ? `council tax ${h.details?.councilTaxBand?.toUpperCase()} ${pounds(a.councilTax)}` : "",
+    a.billsIn ? "bills in the rent" : a.energy ? `energy ${e ? `about ${pounds(a.energy)} (estimated${e.heating === "not said" ? ", as gas" : ""})` : pounds(a.energy)}` : "",
+    a.taxIn ? "council tax in the rent" : a.councilTax ? `council tax ${a.taxBand}${a.taxAssumed ? " (assumed)" : ""} ${pounds(a.councilTax)}` : "",
     a.water ? `water ${pounds(a.water)}` : "",
     // Why council tax could not be priced: the band, or the council, is not known.
-    a.missing.includes("council tax") ? (h.details?.councilTaxBand ? `council tax band ${h.details.councilTaxBand.toUpperCase()}, council not known` : "council tax band not given") : "",
+    a.missing.includes("council tax") ? (a.taxBand ? `council tax band ${a.taxBand}, council not known` : "council tax band not given") : "",
   ].filter(Boolean);
   const head = a.missing.length ? `About ${pounds(a.total)} a month before ${a.missing.join(" and ")}` : `All in about ${pounds(a.total)} a month`;
+  const kind = kindOf(h.type) ?? "home";
+  const appliances = costs.appliancesKwh.toLocaleString("en-GB");
   const how = [
-    h.cert?.cert ? `EPC register: ${certText(h.cert)}` : "No EPC certificate matched, so no energy figure",
-    `Energy: the certificate's heating and hot water at ${costs.prices} prices, plus ${costs.appliancesKwh.toLocaleString("en-GB")} kWh of electricity`,
-    `Council tax: ${h.cert?.council ?? "council unknown"}, band ${h.details?.councilTaxBand ?? "not given"}${costs.singlePerson ? ", 25% off for one person" : ""}`,
+    h.cert?.cert ? `EPC register: ${certText(h.cert)}` : "No EPC certificate matched",
+    a.billsIn
+      ? "Energy and water: in the rent"
+      : e
+        ? `Energy estimated from ${e.alike.toLocaleString("en-GB")} certificates on the EPC register of ${heatedAs(e)} homes rated ${e.n - e.within} to ${e.n + e.within} (this one ${e.guessed ? `is ${h.read?.epcBand}, taken as ${e.n}` : `is ${e.n}`}), for ${e.sqm} m² (${e.sqmGiven ? "the listing's" : `typical of a ${Math.min(h.beds ?? 0, 3)}${(h.beds ?? 0) >= 3 ? "+" : ""}-bed ${kind} here`}), at ${costs.prices} prices, plus ${appliances} kWh of electricity${e.heating === "not said" ? ". The listing does not say its heating, so it is taken as gas" : ""}`
+        : a.energy !== null
+          ? `Energy: the certificate's heating and hot water at ${costs.prices} prices, plus ${appliances} kWh of electricity`
+          : `Energy: not estimated, since ${a.energyWhyNot ?? "no EPC certificate matched"}`,
+    `Council tax: ${h.cert?.council ?? "council unknown"}, band ${a.taxBand ?? "not given"}${a.taxAssumed ? ` assumed, the commonest of the ${a.taxAssumed.of} ${kind}s listed here that give one (${Math.round(a.taxAssumed.share * 100)}%)` : ""}${costs.singlePerson ? ", 25% off for one person" : ""}`,
   ];
   return { head, parts: parts.join(", "), title: how.join("\n") };
 }
@@ -156,7 +168,7 @@ function nowLine(now: Now, places: Place[]): string {
 }
 
 // What a row compares its listing with (src/compare.ts).
-type Context = { places: Place[]; costs: Costs | null; medians: Medians; now: Now | null; dupes: Map<string, Copy[]>; scores: ScoreConfig; near: { shops: Shop[]; metres: number } | null };
+type Context = { places: Place[]; costs: Costs | null; estimates: Estimates | null; medians: Medians; now: Now | null; dupes: Map<string, Copy[]>; scores: ScoreConfig; near: { shops: Shop[]; metres: number } | null };
 
 function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeItem {
   const { places, costs } = x;
@@ -191,7 +203,7 @@ function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeIt
     ],
     commute: times.filter((c) => c !== work),
     crime: h.crime ? { text: `Crime ${crimeText(h.crime)}`, high: h.crime.level === "high" || h.crime.level === "very high" } : null,
-    allIn: costs ? allInLine(h, costs) : null,
+    allIn: costs ? allInLine(h, costs, x.estimates) : null,
     vsArea: vsArea(h, x.medians),
     vsNow: x.now ? vsNow(h, x.now, places) : null,
     market: onMarket(h),
@@ -231,7 +243,7 @@ export const getHomesPage = createServerFn({ method: "GET" })
     const all = listHomes(TASK);
     const up = all.filter((h) => h.up);
     const scores = scoreConfig(configs.get(TASK));
-    const context: Context = { places, costs, medians: rentMedians(up, ceilingOf(configs.get(TASK))), now, dupes: duplicates(up), scores, near: shopsOf(TASK, configs.get(TASK)) };
+    const context: Context = { places, costs, estimates: costs ? estimatesOf(epcCerts(), up) : null, medians: rentMedians(up, ceilingOf(configs.get(TASK))), now, dupes: duplicates(up), scores, near: shopsOf(TASK, configs.get(TASK)) };
     const hidden = hiddenOf(up, context.dupes);
     const visible = up.filter((h) => !hidden.has(h.id));
     const scored = new Map(up.map((h) => [h.id, scoreOf(h, scores, context.near)]));
@@ -255,10 +267,16 @@ export const getHomesPage = createServerFn({ method: "GET" })
     const first = places.find((p) => p.max !== undefined)?.name ?? "";
     const minutes = (h: HomeRow) => h.commute[first]?.min ?? Infinity;
     // Cheapest all in: those priced in full first, since a missing part makes a listing look cheaper.
-    const cost = (h: HomeRow) => {
-      const a = costs ? allIn(h, costs) : null;
-      return a ? (a.missing.length ? 100_000 : 0) + a.total : h.pricePcm;
-    };
+    // Worked out once a listing, not on every comparison: an estimate filters thousands of certificates.
+    const costOf = new Map(
+      sort === "allin"
+        ? chosen.map((h) => {
+            const a = costs ? allIn(h, costs, context.estimates) : null;
+            return [h.id, a ? (a.missing.length ? 100_000 : 0) + a.total : h.pricePcm];
+          })
+        : [],
+    );
+    const cost = (h: HomeRow) => costOf.get(h.id) ?? h.pricePcm;
     chosen.sort((a, b) =>
       sort === "rent"
         ? a.pricePcm - b.pricePcm
