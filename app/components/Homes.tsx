@@ -223,7 +223,17 @@ function HomeLine({ h, hiddenView }: { h: HomeItem; hiddenView: boolean }) {
             </span>
           </span>
           <span className="home-side">
-            <span className="epc" data-band={h.epc?.band ?? "none"} title={h.epc ? `From the ${h.epc.from === "chart" ? "EPC chart" : "listing's text"}` : "Not read yet, or the listing gives no EPC"}>
+            <span
+              className="epc"
+              data-band={h.epc?.band ?? "none"}
+              title={
+                !h.epc
+                  ? "Not read yet, or the listing gives no EPC"
+                  : h.epc.score
+                    ? `From the ${h.epc.from === "chart" ? "EPC chart" : "listing's text"}`
+                    : "The listing gives only the letter, not the number, and the EPC register cannot tell which certificate at its postcode is this home's; scored as the middle of the band"
+              }
+            >
               {h.epc ? `EPC ${h.epc.band}${h.epc.score ? ` ${h.epc.score}` : ""}` : "EPC ?"}
             </span>
             {h.score && (
