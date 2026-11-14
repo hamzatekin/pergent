@@ -10,7 +10,7 @@ import { placesOf, timeHomes, type Place } from "./commute.ts";
 import { ceilingOf, dedupe, depositOver, duplicates, nowOf, onMarket, rentMedians, vsArea, vsNow, type Copy, type Medians, type Now } from "./compare.ts";
 import { crimeHomes, crimeText } from "./crime.ts";
 import { allIn, allInText, certHomes, certText, costsOf, estimatesOf, type Costs, type Estimates } from "./epc.ts";
-import { epcCerts, getState, listHomes, markNotified, saveHomeReads, setState, unreadHomes, type Commute, type HomeRead, type HomeRow, type UnreadHome } from "./db.ts";
+import { epcCerts, getState, listHomes, markNotified, saveHomeReads, setState, unreadHomes, type Commute, type HomeRead, type HomeRow, type PhotoCheck, type UnreadHome } from "./db.ts";
 import type { Part, TaskConfig } from "./runner.ts";
 import { scoreConfig, scoreLabel, scoreOf, scoreParts, type ScoreConfig } from "./score.ts";
 import { fetchShops, nearestShop, shopsOf, shopText, type Shop } from "./shops.ts";
@@ -148,7 +148,7 @@ const REGISTER = "find-energy-certificate.service.gov.uk";
 // What a chart is, from its first bytes rather than the Content-Type: Rightmove serves at least one PNG as
 // image/jpeg, and the API refuses an image whose bytes are not the type it is sent as. Null for anything
 // the model does not read, such as an agent's HTML page.
-function sniff(b: Buffer): { mediaType: string; ext: string } | null {
+export function sniff(b: Buffer): { mediaType: string; ext: string } | null {
   const head = b.subarray(0, 12).toString("latin1");
   if (head.startsWith("\x89PNG")) return { mediaType: "image/png", ext: "png" };
   if (head.startsWith("\xff\xd8\xff")) return { mediaType: "image/jpeg", ext: "jpg" };
@@ -167,6 +167,15 @@ export function tokensOf(b: Buffer, mediaType: string): number {
     const pages = text.match(/\/Type\s*\/Page(?![a-zA-Z])/g)?.length || Math.max(0, ...[...text.matchAll(/\/Count\s+(\d+)/g)].map((m) => Number(m[1]))) || 10;
     return pages * 2000;
   }
+  const size = imageSize(b, mediaType);
+  if (!size?.[0] || !size?.[1]) return 1600;
+  const [w, h] = size;
+  const s = Math.min(1, 1568 / Math.max(w, h), Math.sqrt(1_150_000 / (w * h)));
+  return Math.ceil((w * s * (h * s)) / 750);
+}
+
+// An image's width and height from a PNG's, GIF's or JPEG's header; null for anything else.
+export function imageSize(b: Buffer, mediaType: string): [number, number] | null {
   let size: [number, number] | null = null;
   if (mediaType === "image/png" && b.length >= 24) size = [b.readUInt32BE(16), b.readUInt32BE(20)];
   else if (mediaType === "image/gif" && b.length >= 10) size = [b.readUInt16LE(6), b.readUInt16LE(8)];
@@ -182,10 +191,7 @@ export function tokensOf(b: Buffer, mediaType: string): number {
       i += 2 + b.readUInt16BE(i + 2);
     }
   }
-  if (!size?.[0] || !size?.[1]) return 1600;
-  const [w, h] = size;
-  const s = Math.min(1, 1568 / Math.max(w, h), Math.sqrt(1_150_000 / (w * h)));
-  return Math.ceil((w * s * (h * s)) / 750);
+  return size;
 }
 
 type Chart = { file: string; mediaType: string; tokens: number };
@@ -418,7 +424,15 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // a changed weight or a new shop can lift a listing's score while it sits on the page, and those are not
 // messaged), at most `maxMessages` a run, and `link`, the page the message's button opens. A match gets a
 // message when it scores the score's `good` or more.
-const notifyConfig = (config: TaskConfig) => ({ newDays: 7, maxMessages: 10, link: "", ...((config.notify ?? {}) as Partial<{ newDays: number; maxMessages: number; link: string }>) });
+// `photosHours`: a new listing with photos waits this long after it was first collected for the photo check
+// (src/photos.ts), which sends the messages it held back; 0 sends without it.
+const notifyConfig = (config: TaskConfig) => ({
+  newDays: 7,
+  maxMessages: 10,
+  link: "",
+  photosHours: 0,
+  ...((config.notify ?? {}) as Partial<{ newDays: number; maxMessages: number; link: string; photosHours: number }>),
+});
 
 // The rent before the last change, when the last change was a drop made at or after `since`.
 function droppedFrom(h: HomeRow, since: string): number | null {
@@ -439,6 +453,26 @@ export type Context = {
   near: { shops: Shop[]; metres: number } | null;
 };
 
+// "Photos: bathroom modern, kitchen dated, radiators; black mould on the bathroom ceiling", and with `note`
+// ". Freshly painted, new carpets."
+export function photosText(p: PhotoCheck, note = true): string {
+  const room = (name: string, v: string) => (v === "not shown" ? `no ${name} photo` : `${name} ${v}`);
+  const said = note && p.note ? `. ${p.note[0].toUpperCase()}${p.note.slice(1).replace(/\.$/, "")}.` : "";
+  return `Photos: ${room("bathroom", p.bathroom)}, ${room("kitchen", p.kitchen)}${p.heating !== "not shown" ? `, ${p.heating}` : ""}${p.problems.length ? `; ${p.problems.join("; ")}` : ""}${said}`;
+}
+
+// A photo's caption holds 1,024 characters (src/telegram.ts), and a longer message goes without its
+// photo. Lines the page also has are given a rank and dropped, lowest first, until the message fits.
+function fit(lines: [string, number][]): string {
+  const kept = lines.filter(([text]) => text);
+  const size = () => kept.map(([text]) => text).join("\n").length;
+  for (const rank of [1, 2, 3, 4]) {
+    if (size() <= 1024) break;
+    for (let i = kept.length - 1; i >= 0; i--) if (kept[i][1] === rank) kept.splice(i, 1);
+  }
+  return kept.map(([text]) => text).join("\n");
+}
+
 export function message(h: HomeRow, was: number | null, x: Context): string {
   const { places, costs } = x;
   const r = h.read!;
@@ -452,25 +486,28 @@ export function message(h: HomeRow, was: number | null, x: Context): string {
     d?.deposit ? `Deposit ${pounds(d.deposit)}` : "",
     shop ? shopText(shop) : "",
   ].filter(Boolean);
-  return [
-    `<b>${pounds(h.pricePcm)} pcm · ${escapeHtml(titleOf(h))}</b>${was ? ` · was ${pounds(was)}` : ""}`,
-    `EPC ${r.epcBand}${r.epcScore ? ` ${r.epcScore}` : ""}${sc ? ` · <b>${scoreLabel(sc)}</b>` : ""}`,
-    costs ? escapeHtml(allInText(allIn(h, costs, x.estimates))) : "",
-    escapeHtml(vsArea(h, x.medians) ?? ""),
-    escapeHtml(depositOver(h) ?? ""),
-    escapeHtml(h.address),
-    commuteTimes(h.commute, places).map((t) => t.text).join(" · "),
-    h.crime ? `Crime ${escapeHtml(crimeText(h.crime))}` : "",
-    r.fitWhy ? `<i>${escapeHtml(r.fitWhy)}</i>` : "",
-    sc ? escapeHtml(scoreParts(sc, true)) : "",
-    x.now ? escapeHtml(vsNow(h, x.now, places) ?? "") : "",
-    facts.join(" · "),
-    escapeHtml(onMarket(h)),
-    ...(x.dupes.get(h.id) ?? []).map((c) => `${c.sure ? "Also" : "Maybe also"} listed by ${escapeHtml(c.home.agent)} at ${pounds(c.home.pricePcm)}`),
-    [h.agent, h.details?.phone ?? h.phone].filter(Boolean).map((x) => escapeHtml(x!)).join(" · "),
-  ]
-    .filter(Boolean)
-    .join("\n");
+  // The photos' problems are in their own line, with the point they cost, so the score's line leaves them out.
+  const flagged = sc?.parts.find((p) => p.label.startsWith("photos show"));
+  const parts = sc ? { ...sc, parts: sc.parts.filter((p) => p !== flagged) } : null;
+  return fit([
+    [`<b>${pounds(h.pricePcm)} pcm · ${escapeHtml(titleOf(h))}</b>${was ? ` · was ${pounds(was)}` : ""}`, 0],
+    [`EPC ${r.epcBand}${r.epcScore ? ` ${r.epcScore}` : ""}${sc ? ` · <b>${scoreLabel(sc)}</b>` : ""}`, 0],
+    [costs ? escapeHtml(allInText(allIn(h, costs, x.estimates))) : "", 0],
+    [escapeHtml(vsArea(h, x.medians) ?? ""), 0],
+    [escapeHtml(depositOver(h) ?? ""), 0],
+    [escapeHtml(h.address), 0],
+    [commuteTimes(h.commute, places).map((t) => t.text).join(" · "), 0],
+    [h.crime ? `Crime ${escapeHtml(crimeText(h.crime))}` : "", 0],
+    [r.fitWhy ? `<i>${escapeHtml(r.fitWhy)}</i>` : "", 0],
+    // The photos' note is on the page; the rooms, heating and problems are what a message needs.
+    [h.photos?.photos ? escapeHtml(`${photosText(h.photos, false)}${flagged ? ` (${String(flagged.points).replace("-", "−")} on the score)` : ""}`) : "", 0],
+    [parts ? escapeHtml(scoreParts(parts, true)) : "", 1],
+    [x.now ? escapeHtml(vsNow(h, x.now, places) ?? "") : "", 2],
+    [facts.join(" · "), 4],
+    [escapeHtml(onMarket(h)), 3],
+    ...(x.dupes.get(h.id) ?? []).map((c): [string, number] => [`${c.sure ? "Also" : "Maybe also"} listed by ${escapeHtml(c.home.agent)} at ${pounds(c.home.pricePcm)}`, 0]),
+    [[h.agent, h.details?.phone ?? h.phone].filter(Boolean).map((x) => escapeHtml(x!)).join(" · "), 0],
+  ]);
 }
 
 // Messages the reader on Telegram about each match worth one (`notifyConfig`), and not hidden, that came up since messages
@@ -481,7 +518,16 @@ export function message(h: HomeRow, was: number | null, x: Context): string {
 // with a bot only records when messages started and says so with how many match now, since the listings
 // already up are on the page. A failed send stops the round; the rest go next run. Returns a line for
 // the run's summary.
-export async function notifyHomes(task: string, config: TaskConfig): Promise<string> {
+// The homes read and the photo check both send messages, in the same server process: one at a time, or
+// both could see the same match as not yet messaged and send it twice.
+let notifying: Promise<unknown> = Promise.resolve();
+export function notifyHomes(task: string, config: TaskConfig): Promise<string> {
+  const run = notifying.then(() => notifyNow(task, config));
+  notifying = run.catch(() => {});
+  return run;
+}
+
+async function notifyNow(task: string, config: TaskConfig): Promise<string> {
   if (!telegramOn()) return "off";
   const n = notifyConfig(config);
   const m = matchOf(config);
@@ -507,7 +553,8 @@ export async function notifyHomes(task: string, config: TaskConfig): Promise<str
     return "turned on";
   }
   const timing = !!process.env.TRAVELTIME_APP_ID && !!process.env.TRAVELTIME_API_KEY;
-  const settled = (h: HomeRow) => !h.stale && (!timing || places.every((p) => p.max === undefined || h.commute[p.name]));
+  const looked = (h: HomeRow) => h.photos !== null || !h.details?.images.length || Date.now() - Date.parse(h.firstSeen) > n.photosHours * 3_600_000;
+  const settled = (h: HomeRow) => !h.stale && (!timing || places.every((p) => p.max === undefined || h.commute[p.name])) && looked(h);
   // Up on its site at most three days before it was first collected: new there too.
   // and first collected in the last `newDays`.
   const fresh = (h: HomeRow) =>

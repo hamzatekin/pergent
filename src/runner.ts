@@ -9,7 +9,9 @@ import { ratePaper } from "./rate.ts";
 import { addPreviewImages } from "./images.ts";
 import { mutedMarkdown } from "./mute.ts";
 import { prepareRead, readSchema, saveReadOutput } from "./jobs.ts";
-import { homesReadSchema, prepareHomesRead, saveHomesRead } from "./homes.ts";
+import { homesReadSchema, notifyHomes, prepareHomesRead, saveHomesRead } from "./homes.ts";
+import { photosSchema, preparePhotos, savePhotos } from "./photos.ts";
+import { telegramOn } from "./telegram.ts";
 import { categoriesOf, judgeSchema, overviewSchema, prepareJudge, prepareOverview, prepareSort, radarOf, saveJudgeOutput, saveOverviewOutput, saveSortOutput, sortSchema } from "./ideas.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -168,6 +170,29 @@ const OUTPUTS: Record<string, Output> = {
     },
     schema: homesReadSchema,
     save: (runId, output, dir, config) => saveHomesRead(runId, output, dir, config),
+  },
+  // The homes listings' photo check (src/photos.ts): the listings are the task named in "homes".
+  photos: {
+    prepare: async (_task, _runId, dir, config) => {
+      const homes = String(config.homes ?? "homes");
+      const homesConfig = (await loadTask(homes)).config;
+      const { listings, waiting, tokens, stored, refused, parts } = await preparePhotos(homes, dir, config, homesConfig);
+      const note = [
+        listings ? `${listings} listings' photos to look at, about ${Math.round(tokens / 1000)}k tokens` : "No photo to look at",
+        waiting && `${waiting} more waiting for the next runs`,
+        stored && `${stored} with no photo that downloads, stored as looked at`,
+        refused && "the image server refused (403 or 429), so the run stopped asking",
+      ].filter(Boolean);
+      // With nothing for the model, save (which sends the messages the check held back) does not run: a
+      // listing whose wait is over, or that turned out to have no photo, is messaged now.
+      if (!listings && telegramOn()) note.push(`messages: ${await notifyHomes(homes, homesConfig).catch((err: Error) => `failed, ${err.message}`)}`);
+      return { go: listings > 0, note: note.join("; "), parts };
+    },
+    schema: photosSchema,
+    save: async (_runId, output, dir, config) => {
+      const homes = String(config.homes ?? "homes");
+      return savePhotos(output, dir, homes, (await loadTask(homes)).config);
+    },
   },
 };
 

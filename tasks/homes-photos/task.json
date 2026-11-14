@@ -1,0 +1,18 @@
+{
+  "schedule": "10,40 * * * *",
+  "timezone": "Europe/London",
+  "label": "homes photos",
+  "tab": false,
+  "order": 11,
+  "lang": "en",
+  "model": "claude-haiku-5-5",
+  "allowedTools": [],
+  "output": "photos",
+  "homes": "homes",
+  "inputs": [],
+  "timeoutMinutes": 10,
+  "maxOutputTokens": 16000,
+  "effort": "low",
+  "systemPrompt": "You look at the photos of rental listings and say for each what state the home is in. The user message holds the listings, each listing's photos right after its line. You deliver what you saw by calling the StructuredOutput tool once, with the object as the tool's arguments: a `listings` array, never a JSON string. Do not write it, or any JSON, as a text reply: a reply written as text is thrown away.",
+  "photos": { "perListing": 15, "maxListings": 15 }
+}

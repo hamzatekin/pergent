@@ -548,7 +548,15 @@ const HOME_COLUMNS = {
   notified_at: "TEXT",
   // When the reader hid it on the Homes page (Not interested); null when shown.
   hidden_at: "TEXT",
+  // What its photos show (src/photos.ts), as JSON (PhotoCheck), and when they were looked at.
+  photos: "TEXT",
+  photos_at: "TEXT",
 };
+
+// What the model saw in a listing's photos (src/photos.ts): the bathroom and the kitchen (modern, fine,
+// dated, or not shown), the heating (radiators, electric heaters, or not shown), what a tenant would want
+// fixed that the photos show, and a short note.
+export type PhotoCheck = { bathroom: string; kitchen: string; heating: string; problems: string[]; note: string; photos: number };
 export type HomeRead = {
   /** A to G, or null when neither the chart nor the text gives it. */
   epcBand: string | null;
@@ -803,6 +811,8 @@ export type HomeRow = HomeListing & {
   cert: HomeCert | null;
   /** Hidden by the reader on the Homes page (Not interested). */
   hidden: boolean;
+  /** What its photos show, once the photo check has looked at them. */
+  photos: PhotoCheck | null;
 };
 
 export function listHomes(task: string): HomeRow[] {
@@ -812,10 +822,11 @@ export function listHomes(task: string): HomeRow[] {
       SELECT id, url, address, postcode, lat, lng, price_pcm AS pricePcm, prices, beds, baths, type, agent, phone, image, summary,
         listed_at AS listedAt, available_from AS availableFrom, details, first_seen AS firstSeen, last_seen AS lastSeen,
         epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, notified_pcm AS notifiedPcm,
-        (read_at IS NOT NULL AND ${STALE}) AS stale, crime, cert, hidden_at IS NOT NULL AS hidden
+        (read_at IS NOT NULL AND ${STALE}) AS stale, crime, cert, hidden_at IS NOT NULL AS hidden, photos
       FROM homes WHERE task = ?
     `)
-    .all(task) as unknown as (Omit<HomeRow, "details" | "prices" | "up" | "read" | "commute" | "crime" | "cert"> & {
+    .all(task) as unknown as (Omit<HomeRow, "details" | "prices" | "up" | "read" | "commute" | "crime" | "cert" | "photos"> & {
+    photos: string | null;
     commute: string | null;
     crime: string | null;
     cert: string | null;
@@ -829,8 +840,9 @@ export function listHomes(task: string): HomeRow[] {
     read: string | null;
     read_at: string | null;
   })[];
-  return rows.map(({ details, prices, epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, crime, cert, ...r }) => ({
+  return rows.map(({ details, prices, epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, crime, cert, photos, ...r }) => ({
     ...r,
+    photos: photos ? JSON.parse(photos) : null,
     commute: JSON.parse(commute ?? "{}"),
     crime: crime ? JSON.parse(crime) : null,
     cert: cert ? JSON.parse(cert) : null,
@@ -843,6 +855,34 @@ export function listHomes(task: string): HomeRow[] {
       ? { ...JSON.parse(read ?? "{}"), epcBand: epc_band, epcScore: epc_score, epcFrom: epc_from ?? "unknown", fit, fitWhy: fit_why ?? "" }
       : null,
   }));
+}
+
+// The listings still up and not hidden with photos that no photo check has looked at, the likely ones
+// first (1 to 3 bedrooms within `maxRent`, as for the read), newest first.
+export function homesToPhotograph(task: string, maxRent: number): { id: string; beds: number | null; type: string; address: string; images: string[] }[] {
+  const swept = getState(`swept:${task}`) ?? "";
+  const rows = use()
+    .prepare(`
+      SELECT id, beds, type, address, json_extract(details, '$.images') AS images FROM homes
+      WHERE task = ? AND details IS NOT NULL AND photos_at IS NULL AND hidden_at IS NULL AND last_seen >= ?
+        AND json_array_length(details, '$.images') > 0
+      ORDER BY (price_pcm <= ? AND beds BETWEEN 1 AND 3) DESC, listed_at DESC, id
+    `)
+    .all(task, swept, maxRent) as { id: string; beds: number | null; type: string; address: string; images: string }[];
+  return rows.map((r) => ({ ...r, images: JSON.parse(r.images) as string[] }));
+}
+
+export function savePhotoChecks(checks: Map<string, PhotoCheck>) {
+  const now = new Date().toISOString();
+  const update = use().prepare("UPDATE homes SET photos = ?, photos_at = ? WHERE id = ?");
+  use().exec("BEGIN");
+  try {
+    for (const [id, check] of checks) update.run(JSON.stringify(check), now, id);
+    use().exec("COMMIT");
+  } catch (err) {
+    use().exec("ROLLBACK");
+    throw err;
+  }
 }
 
 // Hides listings from the Homes page (Not interested), or shows them again. Returns how many it changed.
