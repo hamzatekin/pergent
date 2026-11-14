@@ -174,7 +174,7 @@ function HomeLine({ h, hiddenView }: { h: HomeItem; hiddenView: boolean }) {
             <span className="home-title">
               <span className="home-rent">{h.rent}</span>
               {h.was && <span className="home-was">was {h.was}</span>}
-              <span>{h.title}</span>
+              <span>{[h.title, ...h.size].join(" · ")}</span>
               {h.isNew && (
                 <span className="trend" data-trend="new">
                   New
@@ -182,45 +182,22 @@ function HomeLine({ h, hiddenView }: { h: HomeItem; hiddenView: boolean }) {
               )}
             </span>
             <span className="home-address">{h.address}</span>
-            {h.commute.length > 0 && (
-              <span className="home-commute">
-                {h.commute.map((c, i) => (
-                  <span key={c.name}>
-                    {i > 0 && " · "}
-                    <span data-over={c.over || undefined}>{c.text}</span>
+            {h.key.length > 0 && (
+              <span className="home-key">
+                {h.key.map((k) => (
+                  <span key={k.text} data-bad={k.bad || undefined}>
+                    {k.text}
                   </span>
                 ))}
               </span>
             )}
             {h.allIn && (
               <span className="home-allin" title={h.allIn.title}>
-                {h.allIn.text}
-              </span>
-            )}
-            {h.vsArea && <span className="home-compare">{h.vsArea}</span>}
-            {h.crime && (
-              <span className="home-crime" data-high={h.crime.high || undefined}>
-                {h.crime.text}
-              </span>
-            )}
-            {h.vsNow && <span className="home-compare">{h.vsNow}</span>}
-            {h.fitWhy && <span className="job-why">{h.fitWhy}</span>}
-            {h.score && <span className="home-score">{h.score.parts}</span>}
-            {h.facts.length > 0 && (
-              <span className="job-skills">
-                {h.facts.map((f) => (
-                  <span key={f}>{f}</span>
-                ))}
+                <span className="home-allin-head">{h.allIn.head}</span>
+                {h.allIn.parts && <span>{h.allIn.parts}</span>}
               </span>
             )}
             {h.flags.length > 0 && <span className="home-flags">{h.flags.join(" · ")}</span>}
-            <span className="job-meta">
-              <span>{h.agent}</span>
-              {h.phone && <span>{h.phone}</span>}
-              <span>
-                {h.market}, listed {h.listed}
-              </span>
-            </span>
           </span>
           <span className="home-side">
             <span
@@ -245,9 +222,59 @@ function HomeLine({ h, hiddenView }: { h: HomeItem; hiddenView: boolean }) {
         </a>
         <HideButton id={h.id} hide={!hiddenView} label={hiddenView ? "Unhide" : "Hide"} onDone={() => setMoved(true)} />
       </div>
+      <More h={h} />
       <Also label="Also listed by" copies={h.also.filter((o) => o.sure)} />
       <Also label="Maybe also listed by" copies={h.also.filter((o) => !o.sure)} />
     </li>
+  );
+}
+
+// The rest of what is known about a listing, under the row and outside its link, closed: the model's note,
+// how the score is made up, the other commute places, the crime and the rent against listings like it and
+// the reader's home now, the other facts, and the agent.
+function More({ h }: { h: HomeItem }) {
+  return (
+    <details className="home-more">
+      <summary>
+        <span className="more-more">More</span>
+        <span className="more-less">Less</span>
+      </summary>
+      <div className="home-more-body">
+        {h.fitWhy && <p className="job-why">{h.fitWhy}</p>}
+        {h.score && <p className="home-score">{h.score.parts}</p>}
+        {h.commute.length > 0 && (
+          <p className="home-commute">
+            {h.commute.map((c, i) => (
+              <span key={c.name}>
+                {i > 0 && " · "}
+                <span data-over={c.over || undefined}>{c.text}</span>
+              </span>
+            ))}
+          </p>
+        )}
+        {h.crime && (
+          <p className="home-crime" data-high={h.crime.high || undefined}>
+            {h.crime.text}
+          </p>
+        )}
+        {h.vsArea && <p className="home-compare">{h.vsArea}</p>}
+        {h.vsNow && <p className="home-compare">{h.vsNow}</p>}
+        {h.facts.length > 0 && (
+          <p className="job-skills">
+            {h.facts.map((f) => (
+              <span key={f}>{f}</span>
+            ))}
+          </p>
+        )}
+        <p className="job-meta">
+          <span>{h.agent}</span>
+          {h.phone && <span>{h.phone}</span>}
+          <span>
+            {h.market}, listed {h.listed}
+          </span>
+        </p>
+      </div>
+    </details>
   );
 }
 
