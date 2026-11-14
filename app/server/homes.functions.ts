@@ -30,19 +30,24 @@ export type HomeItem = {
   /** The rent it had before, when it went down. */
   was: string | null;
   title: string;
+  /** "1 bath", "54 m²", after the title. */
+  size: string[];
   address: string;
   area: string | null;
   epc: { band: string; score: number | null; from: string } | null;
   /** Its score out of 10 (src/score.ts): "6.5/10", each part with its points, and whether it is a good score. */
   score: { label: string; parts: string; good: boolean } | null;
   fitWhy: string;
-  /** "Work 38 min (bus 68 + tram)" per commute place, and whether it is over the place's limit. */
+  /** What the row says at a glance, after the address: the first commute place with a limit (work) and its
+   * route, the heating, the crime level and the furnishing; `bad` when over the limit or high crime. */
+  key: { text: string; bad: boolean }[];
+  /** "Centre 19 min (tram)" for each other commute place, and whether it is over the place's limit. */
   commute: { name: string; text: string; over: boolean }[];
   /** "high: 412 a year within 300 m (violence 150, …)", and whether it is high or very high. */
   crime: { text: string; high: boolean } | null;
-  /** "All in about £1,098 a month: energy £145, council tax £109, water £49", with the sums and the
-   * certificate behind it as its tooltip. */
-  allIn: { text: string; title: string } | null;
+  /** "All in about £1,098 a month" and "energy £145, council tax band B £109, water £49", with the sums
+   * and the certificate behind it as its tooltip. */
+  allIn: { head: string; parts: string; title: string } | null;
   /** "£60 under the NG7 2-bed median of £910 (23 listings)". */
   vsArea: string | null;
   /** "Better than now on the EPC (C 72 vs D 66); worse on Work (45 vs 38 min)". */
@@ -126,8 +131,10 @@ function allInLine(h: HomeRow, costs: Costs): HomeItem["allIn"] {
   const a = allIn(h, costs);
   const parts = [
     a.billsIn ? "bills in the rent" : a.energy ? `energy ${pounds(a.energy)}` : "",
-    a.taxIn ? "council tax in the rent" : a.councilTax ? `council tax ${pounds(a.councilTax)}` : "",
+    a.taxIn ? "council tax in the rent" : a.councilTax ? `council tax ${h.details?.councilTaxBand?.toUpperCase()} ${pounds(a.councilTax)}` : "",
     a.water ? `water ${pounds(a.water)}` : "",
+    // Why council tax could not be priced: the band, or the council, is not known.
+    a.missing.includes("council tax") ? (h.details?.councilTaxBand ? `council tax band ${h.details.councilTaxBand.toUpperCase()}, council not known` : "council tax band not given") : "",
   ].filter(Boolean);
   const head = a.missing.length ? `About ${pounds(a.total)} a month before ${a.missing.join(" and ")}` : `All in about ${pounds(a.total)} a month`;
   const how = [
@@ -135,7 +142,7 @@ function allInLine(h: HomeRow, costs: Costs): HomeItem["allIn"] {
     `Energy: the certificate's heating and hot water at ${costs.prices} prices, plus ${costs.appliancesKwh.toLocaleString("en-GB")} kWh of electricity`,
     `Council tax: ${h.cert?.council ?? "council unknown"}, band ${h.details?.councilTaxBand ?? "not given"}${costs.singlePerson ? ", 25% off for one person" : ""}`,
   ];
-  return { text: parts.length ? `${head}: ${parts.join(", ")}` : head, title: how.join("\n") };
+  return { head, parts: parts.join(", "), title: how.join("\n") };
 }
 
 // "your house share: EPC D 66, Work 38 min, Centre 16 min, crime average", for "Compared with …".
@@ -159,6 +166,9 @@ function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeIt
   const was = reducedFrom(h);
   const sqm = d?.sqm ?? r?.sqm ?? null;
   const shop = x.near ? nearestShop(h.lat, h.lng, x.near.shops) : null;
+  const times = commuteTimes(h.commute, places);
+  const work = times.find((c) => c.name === places.find((p) => p.max !== undefined)?.name);
+  const heating = r?.heating ? (SAID.heating[r.heating] ?? (r.heating === "not said" ? "Heating not said" : `${r.heating} heating`)) : null;
   return {
     id: h.id,
     url: h.url,
@@ -166,12 +176,20 @@ function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeIt
     rent: `${pounds(h.pricePcm)} pcm`,
     was: was ? pounds(was) : null,
     title: titleOf(h),
-    address: h.address,
+    size: [...(h.baths ? [`${h.baths} bath${h.baths > 1 ? "s" : ""}`] : []), ...(sqm ? [`${sqm} m²`] : [])],
+    // Every listing is in or around Nottingham: the city and county say nothing.
+    address: h.address.split(",").map((p) => p.trim()).filter((p) => !/^nottingham(shire)?$/i.test(p)).join(", ") || h.address,
     area: areaOf(h),
     epc: r?.epcBand ? { band: r.epcBand, score: r.epcScore, from: r.epcFrom } : null,
     score: sc ? { label: scoreLabel(sc), parts: scoreParts(sc), good: sc.score >= x.scores.good } : null,
     fitWhy: r?.fitWhy ?? "",
-    commute: commuteTimes(h.commute, places),
+    key: [
+      ...(work ? [{ text: work.text, bad: work.over }] : []),
+      ...(heating ? [{ text: heating, bad: false }] : []),
+      ...(h.crime ? [{ text: `Crime ${h.crime.level}`, bad: h.crime.level === "high" || h.crime.level === "very high" }] : []),
+      ...(d?.furnish ? [{ text: d.furnish, bad: false }] : []),
+    ],
+    commute: times.filter((c) => c !== work),
     crime: h.crime ? { text: `Crime ${crimeText(h.crime)}`, high: h.crime.level === "high" || h.crime.level === "very high" } : null,
     allIn: costs ? allInLine(h, costs) : null,
     vsArea: vsArea(h, x.medians),
@@ -183,15 +201,11 @@ function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeIt
     ],
     facts: [
       ...(r?.bills === "some" && r.billsWhat ? [`Includes ${r.billsWhat}`] : said("bills", r?.bills)),
-      ...(d?.furnish ? [d.furnish] : []),
       ...(d?.availableFrom ? [`Available ${d.availableFrom === "Now" ? "now" : d.availableFrom}`] : []),
       ...(d?.deposit ? [`Deposit ${pounds(d.deposit)}`] : []),
-      ...(sqm ? [`${sqm} m²`] : []),
       ...said("livingRoom", r?.livingRoom),
-      ...said("heating", r?.heating),
       ...said("garden", r?.garden),
       ...said("pets", r?.pets),
-      ...(d?.councilTaxBand ? [`Council tax ${d.councilTaxBand}`] : []),
       ...(shop ? [shopText(shop)] : []),
     ],
     flags: [...(depositOver(h) ? [depositOver(h)!] : []), ...redFlagsOf(r?.redFlags ?? [], !!depositOver(h))],

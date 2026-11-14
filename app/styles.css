@@ -1095,9 +1095,45 @@ a.chip:active {
 .home-commute [data-over] {
   @apply text-failed;
 }
-/* What it comes to a month all in (src/epc.ts), with the sums in its tooltip. */
+/* At a glance, under the address (the reader's pick, 2026-11-14): work and its route, the heating, the
+   crime level and the furnishing on one line, what is wrong (over the limit, high crime) in the warning
+   colour; then what it comes to a month all in (src/epc.ts), the sums in its tooltip. */
+.home-key {
+  @apply mt-0.5 flex flex-wrap gap-x-2 text-[12.5px] tabular-nums text-soft;
+}
+/* The dot ends the line it wraps on, never starts the next. */
+.home-key span:not(:last-child)::after {
+  content: "·";
+  @apply ml-2 text-faint;
+}
+.home-key [data-bad] {
+  @apply text-failed;
+}
 .home-allin {
-  @apply text-[12px] tabular-nums text-ink text-pretty;
+  @apply flex flex-wrap gap-x-2 text-[12.5px] tabular-nums text-muted text-pretty;
+}
+.home-allin-head {
+  @apply font-medium text-ink;
+}
+/* The rest of a listing, closed, under the row in its text column (outside its link). */
+.home-more {
+  @apply -mt-1.5 pr-3.5 pb-2.5 pl-[114px] sm:pl-[186px];
+}
+.home-more > summary {
+  @apply w-fit cursor-pointer list-none text-[12px] font-medium text-muted hover:text-ink;
+}
+.home-more > summary::-webkit-details-marker {
+  display: none;
+}
+.home-more[open] > summary {
+  @apply text-ink;
+}
+.home-more:not([open]) .more-less,
+.home-more[open] .more-more {
+  display: none;
+}
+.home-more-body {
+  @apply mt-1.5 flex flex-col gap-1;
 }
 /* The rent against listings like it, and the listing against the reader's home now. */
 .home-compare {
