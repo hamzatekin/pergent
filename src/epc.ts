@@ -160,29 +160,172 @@ export function energyOf(c: Certificate, k: Costs): number | null {
 
 const BAND_SHARE: Record<string, number> = { A: 6 / 9, B: 7 / 9, C: 8 / 9, D: 1, E: 11 / 9, F: 13 / 9, G: 15 / 9, H: 18 / 9 };
 
-export type AllIn = { total: number; rent: number; energy: number | null; councilTax: number | null; water: number; billsIn: boolean; taxIn: boolean; missing: string[] };
+// The middle of each band's numbers, for a listing whose EPC gives only its band.
+const BAND_MIDDLE: Record<string, number> = { A: 96, B: 86, C: 74, D: 61, E: 46, F: 29, G: 10 };
+
+type Rated = { read?: { epcBand?: string | null; epcScore?: number | null } | null; cert: HomeCert | null };
+// A listing's EPC number: the chart's, else the register certificate's when it was matched by the home's
+// address or is the only one at the postcode, and has the same band, else the middle of the band.
+export function epcNumberOf(h: Rated): { n: number; guessed: boolean } | null {
+  const band = h.read?.epcBand;
+  if (!band) return null;
+  if (h.read?.epcScore) return { n: h.read.epcScore, guessed: false };
+  const c = h.cert?.cert;
+  if (c?.score && c.band === band && (h.cert?.how === "address" || h.cert?.how === "only")) return { n: c.score, guessed: false };
+  return BAND_MIDDLE[band] ? { n: BAND_MIDDLE[band], guessed: true } : null;
+}
+
+// What fills a listing's gaps, from what has been collected. Energy, for a listing with no certificate:
+// the median heat for the rooms per m² and for hot water of the certificates the register lookups have
+// kept (thousands, from the listings' own postcodes) of homes heated the same way (electricity, or
+// anything else) with an EPC number near the listing's, for its floor area, or else the median of the
+// listings of its kind (flat or house) with as many bedrooms that give one; priced like a certificate.
+// Council tax, for a listing that gives no band: the commonest band of the listings of its kind in its
+// council that give one (46% of the flats in Nottingham were band A on 2026-11-14, 82% of the houses).
+export type Estimates = {
+  certs: { electric: boolean; score: number; spacePerM2: number; water: number }[];
+  sqm: Map<string, number>;
+  bands: Map<string, { band: string; of: number; share: number }>;
+  /** `alikeOf`'s answers, by heating and EPC number. */
+  memo: Map<string, { spacePerM2: number; water: number; alike: number; within: number } | null>;
+};
+type Sized = { beds?: number | null; type?: string; details: HomeDetails | null; read?: { sqm?: number | null; heating?: string } | null };
+const isFlat = (type = "") => /flat|apartment|maisonette|studio|penthouse|duplex/i.test(type);
+const isHouse = (type = "") => /house|terrace|semi|detached|bungalow|cottage|barn/i.test(type);
+export const kindOf = (type?: string) => (isFlat(type) ? "flat" : isHouse(type) ? "house" : null);
+const sqmOf = (h: Sized) => h.details?.sqm ?? h.read?.sqm ?? null;
+const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+const MIN_ALIKE = 30;
+
+export function estimatesOf(certs: Certificate[], homes: (Sized & { cert: HomeCert | null })[]): Estimates {
+  const sizes = new Map<string, number[]>();
+  const bands = new Map<string, Map<string, number>>();
+  for (const h of homes) {
+    const kind = kindOf(h.type);
+    if (!kind) continue;
+    const s = sqmOf(h);
+    const key = `${Math.min(h.beds ?? 0, 3)} ${kind}`;
+    if (s && s >= 15 && s <= 300) sizes.set(key, [...(sizes.get(key) ?? []), s]);
+    const band = h.details?.councilTaxBand?.toUpperCase();
+    if (band && BAND_SHARE[band] && h.cert?.council) {
+      const by = bands.get(`${kind} ${h.cert.council}`) ?? new Map<string, number>();
+      bands.set(`${kind} ${h.cert.council}`, by.set(band, (by.get(band) ?? 0) + 1));
+    }
+  }
+  return {
+    certs: certs
+      .filter((c) => c.score && c.sqm && c.sqm >= 15 && c.spaceKwh !== null && c.waterKwh !== null)
+      .map((c) => ({ electric: /electric/i.test(c.heating.split("; ")[0]) && !/heat pump/i.test(c.heating.split("; ")[0]), score: c.score!, spacePerM2: c.spaceKwh! / c.sqm!, water: c.waterKwh! })),
+    sqm: new Map([...sizes].filter(([, s]) => s.length >= 5).map(([key, s]) => [key, median(s)])),
+    bands: new Map(
+      [...bands].flatMap(([key, by]) => {
+        const of = [...by.values()].reduce((a, b) => a + b, 0);
+        const [band, n] = [...by].sort((a, b) => b[1] - a[1])[0];
+        return of >= 10 ? [[key, { band, of, share: n / of }]] : [];
+      }),
+    ),
+    memo: new Map(),
+  };
+}
+
+/** How a listing's energy was estimated. A home whose heating is not said is priced as gas: weighting gas and
+ * electric by how common each is at its EPC number was no closer (on 113 such listings with a certificate,
+ * 2026-11-14: 11% off at the median against 9%, a third of them electric and those 15% under). */
+export type EnergyEstimate = { n: number; guessed: boolean; heating: "gas" | "electric" | "not said"; alike: number; within: number; sqm: number; sqmGiven: boolean };
+
+// The median heat a m² for the rooms and hot water of the certificates heated one way (electric or not)
+// within 2 of an EPC number, else 4, else 6, once 30 are alike; kept per number, since a page sorting by
+// the month's cost asks for many listings with the same number.
+function alikeOf(e: Estimates, electric: boolean, n: number): { spacePerM2: number; water: number; alike: number; within: number } | null {
+  const key = `${electric} ${n}`;
+  if (e.memo.has(key)) return e.memo.get(key) ?? null;
+  let found: ReturnType<typeof alikeOf> = null;
+  for (const within of [2, 4, 6]) {
+    const alike = e.certs.filter((c) => c.electric === electric && Math.abs(c.score - n) <= within);
+    if (alike.length < MIN_ALIKE) continue;
+    found = { spacePerM2: median(alike.map((c) => c.spacePerM2)), water: median(alike.map((c) => c.water)), alike: alike.length, within };
+    break;
+  }
+  e.memo.set(key, found);
+  return found;
+}
+
+// A listing's energy a month from `Estimates`, with what it was worked out from, or why there is none.
+function estimateEnergy(h: Sized & Rated, k: Costs, e: Estimates): { pounds: number; how: EnergyEstimate } | { why: string } {
+  const epc = epcNumberOf(h);
+  if (!epc) return { why: "no EPC band was read" };
+  const kind = kindOf(h.type);
+  // A floor area under 15 m² or over 300 is a misread (a room's size, a block's), so the typical one is taken.
+  const given = sqmOf(h);
+  const own = given && given >= 15 && given <= 300 ? given : null;
+  const sqm = own ?? (kind ? e.sqm.get(`${Math.min(h.beds ?? 0, 3)} ${kind}`) : undefined);
+  if (!sqm) return { why: kind ? "no floor area given, and too few like it give one" : "no floor area given, and its type is not a flat or a house" };
+  const said = h.read?.heating ?? "not said";
+  const electric = said === "electric" || said === "storage heaters";
+  const a = alikeOf(e, electric, epc.n);
+  if (!a) return { why: `fewer than ${MIN_ALIKE} certificates on the register within 6 of its EPC number` };
+  const pounds = energyOf(
+    {
+      heating: electric ? "Electric storage heaters" : said === "heat pump" ? "Air source heat pump" : "Boiler and radiators, mains gas",
+      hotWater: electric ? "Electric immersion" : "From main system",
+      spaceKwh: a.spacePerM2 * sqm,
+      waterKwh: a.water,
+    } as Certificate,
+    k,
+  );
+  if (pounds === null) return { why: "its heating could not be priced" };
+  const heating = said === "not said" ? "not said" : electric ? "electric" : "gas";
+  return { pounds, how: { n: epc.n, guessed: epc.guessed, heating, alike: a.alike, within: a.within, sqm: Math.round(sqm), sqmGiven: own !== null } };
+}
+
+export type AllIn = {
+  total: number;
+  rent: number;
+  energy: number | null;
+  /** How the energy was estimated, when no certificate gave it. */
+  energyEstimate: EnergyEstimate | null;
+  /** Why the energy could not be estimated, when it could not. */
+  energyWhyNot: string | null;
+  councilTax: number | null;
+  /** The band council tax was priced at, and whether it was assumed (the listing gives none). */
+  taxBand: string | null;
+  taxAssumed: { of: number; share: number } | null;
+  water: number;
+  billsIn: boolean;
+  taxIn: boolean;
+  missing: string[];
+};
 
 // What the home costs a month: the rent, energy (none when the bills are all in the rent), council tax
-// (none when included) and water. `missing` names what could not be priced: no certificate matched, or
-// no council tax band given.
-export function allIn(h: { pricePcm: number; details: HomeDetails | null; cert: HomeCert | null; read?: { bills?: string } | null }, k: Costs): AllIn {
+// (none when included) and water. With `e`, a listing with no certificate gets its energy estimated and
+// one with no band the commonest band of its kind in its council. `missing` names what could not be priced.
+export function allIn(h: Sized & Rated & { pricePcm: number; read?: { bills?: string } | null }, k: Costs, e?: Estimates | null): AllIn {
   const billsIn = h.read?.bills === "all";
   const missing: string[] = [];
   let energy: number | null = 0;
+  let energyEstimate: EnergyEstimate | null = null;
+  let energyWhyNot: string | null = null;
   if (!billsIn) {
     energy = h.cert?.cert ? energyOf(h.cert.cert, k) : null;
+    const estimate = energy === null && e ? estimateEnergy(h, k, e) : null;
+    if (estimate && "why" in estimate) energyWhyNot = estimate.why;
+    else if (estimate) [energy, energyEstimate] = [estimate.pounds, estimate.how];
     if (energy === null) missing.push("energy");
   }
   let councilTax: number | null = 0;
+  const given = h.details?.councilTaxBand?.toUpperCase();
+  let taxBand: string | null = given && BAND_SHARE[given] ? given : null;
+  let taxAssumed: AllIn["taxAssumed"] = null;
   if (!h.details?.councilTaxIncluded) {
-    const band = h.details?.councilTaxBand?.toUpperCase();
+    const commonest = !taxBand && e && h.cert?.council ? e.bands.get(`${kindOf(h.type)} ${h.cert.council}`) : undefined;
+    if (commonest) [taxBand, taxAssumed] = [commonest.band, { of: commonest.of, share: commonest.share }];
     const bandD = h.cert?.council ? k.councilTaxBandD[h.cert.council] : undefined;
-    councilTax = band && BAND_SHARE[band] && bandD ? Math.round((bandD * BAND_SHARE[band] * (k.singlePerson ? 0.75 : 1)) / 12) : null;
+    councilTax = taxBand && bandD ? Math.round((bandD * BAND_SHARE[taxBand] * (k.singlePerson ? 0.75 : 1)) / 12) : null;
     if (councilTax === null) missing.push("council tax");
   }
   const water = billsIn ? 0 : k.waterMonthly;
   const taxIn = !!h.details?.councilTaxIncluded;
-  return { total: h.pricePcm + (energy ?? 0) + (councilTax ?? 0) + water, rent: h.pricePcm, energy, councilTax, water, billsIn, taxIn, missing };
+  return { total: h.pricePcm + (energy ?? 0) + (councilTax ?? 0) + water, rent: h.pricePcm, energy, energyEstimate, energyWhyNot, councilTax, taxBand, taxAssumed, water, billsIn, taxIn, missing };
 }
 
 const pounds = (n: number) => `£${n.toLocaleString("en-GB")}`;
@@ -192,8 +335,8 @@ const pounds = (n: number) => `£${n.toLocaleString("en-GB")}`;
 export function allInText(a: AllIn): string {
   const parts = [
     `rent ${pounds(a.rent)}`,
-    a.billsIn ? "bills in the rent" : a.energy ? `energy ${pounds(a.energy)}` : "",
-    a.taxIn ? "council tax in the rent" : a.councilTax ? `council tax ${pounds(a.councilTax)}` : "",
+    a.billsIn ? "bills in the rent" : a.energy ? `energy ${a.energyEstimate ? `about ${pounds(a.energy)}, estimated from the EPC${a.energyEstimate.heating === "not said" ? ", heating taken as gas" : ""}` : pounds(a.energy)}` : "",
+    a.taxIn ? "council tax in the rent" : a.councilTax ? `council tax ${pounds(a.councilTax)}${a.taxAssumed ? `, band ${a.taxBand} assumed` : ""}` : "",
     a.water ? `water ${pounds(a.water)}` : "",
   ].filter(Boolean);
   const head = a.missing.length ? `About ${pounds(a.total)} a month before ${a.missing.join(" and ")}` : `About ${pounds(a.total)} a month all in`;

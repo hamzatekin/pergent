@@ -8,6 +8,7 @@
 // Unread listings have no score. Changing a weight re-scores every listing at once: nothing is stored.
 import { depositOver } from "./compare.ts";
 import type { HomeRow } from "./db.ts";
+import { epcNumberOf } from "./epc.ts";
 import type { TaskConfig } from "./runner.ts";
 import { nearestShop, shopText, type Shop } from "./shops.ts";
 
@@ -47,20 +48,6 @@ export const scoreConfig = (config: TaskConfig | undefined): ScoreConfig => {
   return s;
 };
 
-// The middle of each band's numbers, for a listing whose EPC gives only its band.
-const BAND_MIDDLE: Record<string, number> = { A: 96, B: 86, C: 74, D: 61, E: 46, F: 29, G: 10 };
-
-// The EPC's number: the chart's, else the register certificate's when it was matched by the home's address
-// or is the only one at the postcode, and has the same band (src/epc.ts), else the middle of the band.
-function epcNumber(h: HomeRow): { n: number; guessed: boolean } | null {
-  const band = h.read?.epcBand;
-  if (!band) return null;
-  if (h.read?.epcScore) return { n: h.read.epcScore, guessed: false };
-  const c = h.cert?.cert;
-  if (c?.score && c.band === band && (h.cert?.how === "address" || h.cert?.how === "only")) return { n: c.score, guessed: false };
-  return BAND_MIDDLE[band] ? { n: BAND_MIDDLE[band], guessed: true } : null;
-}
-
 // Red flags that make a listing no home for the reader at all.
 // The flag names the dealbreaker itself: "near student halls" or "box room in the attic" is not one.
 const DEALBREAKER = /students? only|for students|student (let|accommodation|property)|room in a shared|shared house|house ?share|\bhmo\b|\blodgers?\b|short[- ]?let|holiday let|\bstudio\b|\bbedsit\b/i;
@@ -84,7 +71,7 @@ export function scoreOf(h: HomeRow, s: ScoreConfig, near: { shops: Shop[]; metre
   else if (beds >= 2) add(`${beds} beds`, s.beds.two);
   else if (r.livingRoom === "separate") add("1 bed with a separate lounge", s.beds.oneWithLounge);
   else add(`1 bed, ${r.livingRoom === "open plan" ? "open-plan lounge" : "lounge not said"}`, s.beds.one);
-  const epc = epcNumber(h);
+  const epc = epcNumberOf(h);
   const share = epc ? Math.min(1, Math.max(0, (epc.n - s.epc.zero) / (s.epc.full - s.epc.zero))) : 0;
   add(epc ? `EPC ${r.epcBand}${epc.guessed ? " (no number)" : ` ${epc.n}`}` : "EPC unknown", Math.round(share * s.epc.points * 10) / 10);
   for (const [place, steps] of Object.entries(s.commute)) {
