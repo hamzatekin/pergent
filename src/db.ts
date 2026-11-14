@@ -546,6 +546,8 @@ const HOME_COLUMNS = {
   // The rent at which a Telegram message went out for the listing (src/homes.ts notifyHomes), and when.
   notified_pcm: "INTEGER",
   notified_at: "TEXT",
+  // When the reader hid it on the Homes page (Not interested); null when shown.
+  hidden_at: "TEXT",
 };
 export type HomeRead = {
   /** A to G, or null when neither the chart nor the text gives it. */
@@ -656,7 +658,7 @@ export type UnreadHome = HomeListing & { postcode: string | null; details: HomeD
 // fit, so it is read again (the old read shows until then).
 const STALE = "(read_pcm IS NOT price_pcm OR commute_at > read_at OR crime_at > read_at)";
 
-// The listings whose page has been fetched and that no read has seen, or whose rent, commute times or
+// The listings not hidden whose page has been fetched and that no read has seen, or whose rent, commute times or
 // crime level changed since the read (both go into the fit), still up (seen in the last complete sweep or since), the
 // likely ones first (1 to 3 bedrooms within `maxRent`), newest first. A re-read listing keeps its old
 // read until the new one replaces it.
@@ -666,7 +668,7 @@ export function unreadHomes(task: string, maxRent: number): UnreadHome[] {
     .prepare(`
       SELECT id, url, address, postcode, lat, lng, price_pcm AS pricePcm, beds, baths, type, agent, phone, image, summary,
         listed_at AS listedAt, available_from AS availableFrom, details, commute, crime, cert, json_extract(read, '$.bills') AS bills
-      FROM homes WHERE task = ? AND details IS NOT NULL AND (read_at IS NULL OR ${STALE}) AND last_seen >= ?
+      FROM homes WHERE task = ? AND details IS NOT NULL AND (read_at IS NULL OR ${STALE}) AND last_seen >= ? AND hidden_at IS NULL
       ORDER BY (price_pcm <= ? AND beds BETWEEN 1 AND 3) DESC, listed_at DESC, id
     `)
     .all(task, swept, maxRent) as unknown as (Omit<UnreadHome, "details" | "commute" | "crime" | "cert"> & { details: string; commute: string | null; crime: string | null; cert: string | null })[];
@@ -794,6 +796,8 @@ export type HomeRow = HomeListing & {
   stale: boolean;
   crime: CrimeNear | null;
   cert: HomeCert | null;
+  /** Hidden by the reader on the Homes page (Not interested). */
+  hidden: boolean;
 };
 
 export function listHomes(task: string): HomeRow[] {
@@ -803,7 +807,7 @@ export function listHomes(task: string): HomeRow[] {
       SELECT id, url, address, postcode, lat, lng, price_pcm AS pricePcm, prices, beds, baths, type, agent, phone, image, summary,
         listed_at AS listedAt, available_from AS availableFrom, details, first_seen AS firstSeen, last_seen AS lastSeen,
         epc_band, epc_score, epc_from, fit, fit_why, read, read_at, commute, notified_pcm AS notifiedPcm,
-        (read_at IS NOT NULL AND ${STALE}) AS stale, crime, cert
+        (read_at IS NOT NULL AND ${STALE}) AS stale, crime, cert, hidden_at IS NOT NULL AS hidden
       FROM homes WHERE task = ?
     `)
     .all(task) as unknown as (Omit<HomeRow, "details" | "prices" | "up" | "read" | "commute" | "crime" | "cert"> & {
@@ -826,6 +830,7 @@ export function listHomes(task: string): HomeRow[] {
     crime: crime ? JSON.parse(crime) : null,
     cert: cert ? JSON.parse(cert) : null,
     stale: !!r.stale,
+    hidden: !!r.hidden,
     details: details ? JSON.parse(details) : null,
     prices: JSON.parse(prices),
     up: r.lastSeen >= swept,
@@ -833,6 +838,13 @@ export function listHomes(task: string): HomeRow[] {
       ? { ...JSON.parse(read ?? "{}"), epcBand: epc_band, epcScore: epc_score, epcFrom: epc_from ?? "unknown", fit, fitWhy: fit_why ?? "" }
       : null,
   }));
+}
+
+// Hides listings from the Homes page (Not interested), or shows them again. Returns how many it changed.
+export function hideHomes(task: string, ids: string[], hidden: boolean): number {
+  const update = use().prepare("UPDATE homes SET hidden_at = ? WHERE task = ? AND id = ?");
+  const at = hidden ? new Date().toISOString() : null;
+  return ids.reduce((n, id) => n + Number(update.run(at, task, id).changes), 0);
 }
 
 export function saveHomeReads(runId: string, reads: Map<string, HomeRead>) {

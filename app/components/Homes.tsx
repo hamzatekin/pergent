@@ -1,4 +1,5 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation, useRouter } from "@tanstack/react-router";
+import { useState } from "react";
 import type { Beds, Epc, HomeItem, HomesPage, Sort } from "../server/homes.functions.ts";
 import { Shell } from "./Shell.tsx";
 
@@ -23,10 +24,12 @@ const SORT: [Sort, string][] = [
 
 // The rental search (tasks/homes): what matches the reader by default, or every listing up now, with
 // chips for the bedrooms, the EPC, the postcode district and the things Rightmove cannot filter on,
-// then the listings, best fit first, each linking to its listing on Rightmove or OpenRent.
+// then the listings, best fit first, each linking to its listing on Rightmove or OpenRent, with a Hide
+// button for one the reader is not interested in (the Hidden chip lists those, to undo).
 export function HomesBoard({ data }: { data: HomesPage }) {
   const s = data.search;
   const all = s.view === "all";
+  const hiddenView = s.view === "hidden";
   const m = data.match;
   const toggle = (key: "bills" | "fit" | "fresh" | "reduced" | "safer") => ({ ...s, [key]: s[key] ? undefined : true, more: undefined });
   const header = (
@@ -51,12 +54,17 @@ export function HomesBoard({ data }: { data: HomesPage }) {
         {data.now && ` Compared with ${data.now}.`}
       </p>
       <nav className="feed-chips">
-        <Link to="/homes" search={{ ...s, view: undefined, epc: undefined, more: undefined }} className="chip" data-active={!all}>
+        <Link to="/homes" search={{ ...s, view: undefined, epc: undefined, more: undefined }} className="chip" data-active={!s.view}>
           Matches <span className="chip-count">{data.matching}</span>
         </Link>
         <Link to="/homes" search={{ ...s, view: "all", more: undefined }} className="chip" data-active={all}>
           All <span className="chip-count">{data.up}</span>
         </Link>
+        {(data.hidden > 0 || hiddenView) && (
+          <Link to="/homes" search={{ ...s, view: "hidden", more: undefined }} className="chip" data-active={hiddenView}>
+            Hidden <span className="chip-count">{data.hidden}</span>
+          </Link>
+        )}
         <span className="chips-gap" />
         {SORT.map(([key, label]) => (
           <Link key={key} to="/homes" search={{ ...s, sort: key === "fit" ? undefined : key }} className="chip" data-active={(s.sort ?? "fit") === key}>
@@ -73,7 +81,7 @@ export function HomesBoard({ data }: { data: HomesPage }) {
             {label} <span className="chip-count">{data.counts.beds[key]}</span>
           </Link>
         ))}
-        {all && (
+        {s.view && (
           <>
             <span className="chips-gap" />
             <Link to="/homes" search={{ ...s, epc: undefined, more: undefined }} className="chip" data-active={!s.epc}>
@@ -119,11 +127,18 @@ export function HomesBoard({ data }: { data: HomesPage }) {
       {data.homes.length ? (
         <ol className="homes">
           {data.homes.map((h) => (
-            <HomeLine key={h.id} h={h} />
+            // Keyed by the view too: a row folded on one list must not stay folded on the other.
+            <HomeLine key={`${s.view ?? ""}:${h.id}`} h={h} hiddenView={hiddenView} />
           ))}
         </ol>
       ) : (
-        <p className="callout">{data.up ? "No listing matches these filters." : "Nothing collected yet. The collector runs every hour from 07:20."}</p>
+        <p className="callout">
+          {hiddenView && !data.hidden
+            ? "Nothing hidden. A listing you hide leaves the lists and shows here, to put back."
+            : data.up || hiddenView
+              ? "No listing matches these filters."
+              : "Nothing collected yet. The collector runs every hour from 07:20."}
+        </p>
       )}
       {data.shown > data.homes.length && (
         <p className="note more">
@@ -137,74 +152,89 @@ export function HomesBoard({ data }: { data: HomesPage }) {
   );
 }
 
-function HomeLine({ h }: { h: HomeItem }) {
+function HomeLine({ h, hiddenView }: { h: HomeItem; hiddenView: boolean }) {
+  // Hidden just now (or, on the Hidden list, put back): the row folds into one line with an Undo until
+  // the list loads again.
+  const [moved, setMoved] = useState(false);
+  if (moved)
+    return (
+      <li className="home-moved">
+        <span>
+          {hiddenView ? "Back in the list" : "Hidden"}: {h.rent}, {h.title}, {h.address}
+        </span>
+        <HideButton id={h.id} hide={hiddenView} label="Undo" onDone={() => setMoved(false)} />
+      </li>
+    );
   return (
     <li>
-      <a href={h.url} target="_blank" rel="noopener noreferrer" className="home-row">
-        {h.image ? <img className="home-img" src={h.image} alt="" loading="lazy" width={160} height={107} /> : <span className="home-img" />}
-        <span className="home-main">
-          <span className="home-title">
-            <span className="home-rent">{h.rent}</span>
-            {h.was && <span className="home-was">was {h.was}</span>}
-            <span>{h.title}</span>
-            {h.isNew && (
-              <span className="trend" data-trend="new">
-                New
+      <div className="home-wrap">
+        <a href={h.url} target="_blank" rel="noopener noreferrer" className="home-row">
+          {h.image ? <img className="home-img" src={h.image} alt="" loading="lazy" width={160} height={107} /> : <span className="home-img" />}
+          <span className="home-main">
+            <span className="home-title">
+              <span className="home-rent">{h.rent}</span>
+              {h.was && <span className="home-was">was {h.was}</span>}
+              <span>{h.title}</span>
+              {h.isNew && (
+                <span className="trend" data-trend="new">
+                  New
+                </span>
+              )}
+            </span>
+            <span className="home-address">{h.address}</span>
+            {h.commute.length > 0 && (
+              <span className="home-commute">
+                {h.commute.map((c, i) => (
+                  <span key={c.name}>
+                    {i > 0 && " · "}
+                    <span data-over={c.over || undefined}>{c.text}</span>
+                  </span>
+                ))}
+              </span>
+            )}
+            {h.allIn && (
+              <span className="home-allin" title={h.allIn.title}>
+                {h.allIn.text}
+              </span>
+            )}
+            {h.vsArea && <span className="home-compare">{h.vsArea}</span>}
+            {h.crime && (
+              <span className="home-crime" data-high={h.crime.high || undefined}>
+                {h.crime.text}
+              </span>
+            )}
+            {h.vsNow && <span className="home-compare">{h.vsNow}</span>}
+            {h.fitWhy && <span className="job-why">{h.fitWhy}</span>}
+            {h.score && <span className="home-score">{h.score.parts}</span>}
+            {h.facts.length > 0 && (
+              <span className="job-skills">
+                {h.facts.map((f) => (
+                  <span key={f}>{f}</span>
+                ))}
+              </span>
+            )}
+            {h.flags.length > 0 && <span className="home-flags">{h.flags.join(" · ")}</span>}
+            <span className="job-meta">
+              <span>{h.agent}</span>
+              {h.phone && <span>{h.phone}</span>}
+              <span>
+                {h.market}, listed {h.listed}
+              </span>
+            </span>
+          </span>
+          <span className="home-side">
+            <span className="epc" data-band={h.epc?.band ?? "none"} title={h.epc ? `From the ${h.epc.from === "chart" ? "EPC chart" : "listing's text"}` : "Not read yet, or the listing gives no EPC"}>
+              {h.epc ? `EPC ${h.epc.band}${h.epc.score ? ` ${h.epc.score}` : ""}` : "EPC ?"}
+            </span>
+            {h.score && (
+              <span className="fit" data-good={h.score.good || undefined} title={h.score.parts}>
+                {h.score.label}
               </span>
             )}
           </span>
-          <span className="home-address">{h.address}</span>
-          {h.commute.length > 0 && (
-            <span className="home-commute">
-              {h.commute.map((c, i) => (
-                <span key={c.name}>
-                  {i > 0 && " · "}
-                  <span data-over={c.over || undefined}>{c.text}</span>
-                </span>
-              ))}
-            </span>
-          )}
-          {h.allIn && (
-            <span className="home-allin" title={h.allIn.title}>
-              {h.allIn.text}
-            </span>
-          )}
-          {h.vsArea && <span className="home-compare">{h.vsArea}</span>}
-          {h.crime && (
-            <span className="home-crime" data-high={h.crime.high || undefined}>
-              {h.crime.text}
-            </span>
-          )}
-          {h.vsNow && <span className="home-compare">{h.vsNow}</span>}
-          {h.fitWhy && <span className="job-why">{h.fitWhy}</span>}
-          {h.score && <span className="home-score">{h.score.parts}</span>}
-          {h.facts.length > 0 && (
-            <span className="job-skills">
-              {h.facts.map((f) => (
-                <span key={f}>{f}</span>
-              ))}
-            </span>
-          )}
-          {h.flags.length > 0 && <span className="home-flags">{h.flags.join(" · ")}</span>}
-          <span className="job-meta">
-            <span>{h.agent}</span>
-            {h.phone && <span>{h.phone}</span>}
-            <span>
-              {h.market}, listed {h.listed}
-            </span>
-          </span>
-        </span>
-        <span className="home-side">
-          <span className="epc" data-band={h.epc?.band ?? "none"} title={h.epc ? `From the ${h.epc.from === "chart" ? "EPC chart" : "listing's text"}` : "Not read yet, or the listing gives no EPC"}>
-            {h.epc ? `EPC ${h.epc.band}${h.epc.score ? ` ${h.epc.score}` : ""}` : "EPC ?"}
-          </span>
-          {h.score && (
-            <span className="fit" data-good={h.score.good || undefined} title={h.score.parts}>
-              {h.score.label}
-            </span>
-          )}
-        </span>
-      </a>
+        </a>
+        <HideButton id={h.id} hide={!hiddenView} label={hiddenView ? "Unhide" : "Hide"} onDone={() => setMoved(true)} />
+      </div>
       <Also label="Also listed by" copies={h.also.filter((o) => o.sure)} />
       <Also label="Maybe also listed by" copies={h.also.filter((o) => !o.sure)} />
     </li>
@@ -227,5 +257,47 @@ function Also({ label, copies }: { label: string; copies: HomeItem["also"] }) {
         </span>
       ))}
     </p>
+  );
+}
+
+// Hide (not interested) or put back a listing, posting to /admin/homes. With the script it posts in
+// place and the row folds (`onDone`); without it the form posts and the server sends this page back.
+function HideButton({ id, hide, label, onDone }: { id: string; hide: boolean; label: string; onDone: () => void }) {
+  const router = useRouter();
+  const back = useLocation({ select: (l) => l.href });
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  return (
+    <form
+      method="post"
+      action="/admin/homes"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const body = new FormData(e.currentTarget);
+        setState("busy");
+        try {
+          const res = await fetch("/admin/homes", { method: "POST", body, headers: { accept: "application/json" } });
+          if (!((await res.json()) as { ok: boolean }).ok) throw new Error("not changed");
+          setState("idle");
+          // A list preloaded before this (a chip hovered) would still have the row in its old place.
+          router.clearCache();
+          onDone();
+        } catch {
+          setState("failed");
+        }
+      }}
+    >
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="action" value={hide ? "hide" : "show"} />
+      <input type="hidden" name="back" value={back} />
+      <button
+        type="submit"
+        className="home-hide"
+        disabled={state === "busy"}
+        data-failed={state === "failed" || undefined}
+        title={state === "failed" ? "Not changed, try again" : hide ? "Not interested: take it off the lists" : "Put it back on the lists"}
+      >
+        {state === "failed" ? "Retry" : label}
+      </button>
+    </form>
   );
 }

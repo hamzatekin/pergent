@@ -9,11 +9,11 @@ const flag = (v: unknown) => (v === true || v === "true" ? true : undefined);
 const oneOf = <T extends string>(values: T[], v: unknown) => (values.includes(String(v) as T) ? (String(v) as T) : undefined);
 
 // /homes is the rental search (tasks/homes): the listings that match what the reader is after, or
-// every one with ?view=all; ?beds=, ?epc=, ?area= (a postcode district), ?bills, ?fit, ?fresh, ?reduced
+// every one with ?view=all, or those the reader hid with ?view=hidden; ?beds=, ?epc=, ?area= (a postcode district), ?bills, ?fit, ?fresh, ?reduced
 // and ?safer (crime average or lower) filter them, ?sort=rent|allin|near|new orders them, ?more lifts the cap on how many are listed.
 export const Route = createFileRoute("/homes")({
   validateSearch: (search: Record<string, unknown>): HomesSearch => ({
-    view: search.view === "all" ? "all" : undefined,
+    view: search.view === "all" || search.view === "hidden" ? search.view : undefined,
     beds: oneOf(BEDS, search.beds),
     epc: oneOf(EPC, search.epc),
     area: typeof search.area === "string" && /^NG\d{1,2}$/i.test(search.area) ? search.area.toUpperCase() : undefined,

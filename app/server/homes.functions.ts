@@ -6,7 +6,7 @@ import { ceilingOf, depositOver, districtOf, duplicates, nowOf, onMarket, rentMe
 import { crimeText } from "#src/crime.ts";
 import { allIn, certText, costsOf, type Costs } from "#src/epc.ts";
 import { getState, listHomes, type HomeRow } from "#src/db.ts";
-import { commuteTimes, matches, matchOf, titleOf, type Match } from "#src/homes.ts";
+import { commuteTimes, hiddenOf, matches, matchOf, titleOf, type Match } from "#src/homes.ts";
 import { redFlagsOf, scoreConfig, scoreLabel, scoreOf, scoreParts, type Score, type ScoreConfig } from "#src/score.ts";
 import { nearestShop, shopsOf, shopText, type Shop } from "#src/shops.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
@@ -20,7 +20,7 @@ const LIMIT = 100;
 export type Beds = "0" | "1" | "2" | "3";
 export type Epc = "any" | "good" | "unknown" | "poor";
 export type Sort = "fit" | "rent" | "allin" | "near" | "new";
-export type HomesSearch = { view?: "all"; beds?: Beds; epc?: Epc; area?: string; bills?: true; fit?: true; fresh?: true; reduced?: true; safer?: true; sort?: Sort; more?: true };
+export type HomesSearch = { view?: "all" | "hidden"; beds?: Beds; epc?: Epc; area?: string; bills?: true; fit?: true; fresh?: true; reduced?: true; safer?: true; sort?: Sort; more?: true };
 
 export type HomeItem = {
   id: string;
@@ -70,9 +70,11 @@ export type HomesPage = {
   match: Match;
   /** The commute limits, "40 minutes to Work". */
   limits: string[];
-  /** Listings up now, and those that match. */
+  /** Listings up now, and those that match, leaving out the hidden ones. */
   up: number;
   matching: number;
+  /** Listings up now that the reader hid (Not interested), with the sure copies of one. */
+  hidden: number;
   /** A good score (task.json's score.good), for the chip. */
   good: number;
   /** Up and with a page fetched but not read by the model yet: no EPC or score for them. */
@@ -200,7 +202,8 @@ function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeIt
   };
 }
 
-// The listings up now, the matches by default (?view=all for every one), filtered by the chips and
+// The listings up now, the matches by default (?view=all for every one, ?view=hidden for those the reader
+// hid, src/homes.ts hiddenOf; the other two leave those out), filtered by the chips and
 // sorted by score (unread last), rent or newest. The chips' counts are over the view, before the chips.
 export const getHomesPage = createServerFn({ method: "GET" })
   .validator((data: HomesSearch) => data)
@@ -215,9 +218,11 @@ export const getHomesPage = createServerFn({ method: "GET" })
     const up = all.filter((h) => h.up);
     const scores = scoreConfig(configs.get(TASK));
     const context: Context = { places, costs, medians: rentMedians(up, ceilingOf(configs.get(TASK))), now, dupes: duplicates(up), scores, near: shopsOf(TASK, configs.get(TASK)) };
+    const hidden = hiddenOf(up, context.dupes);
+    const visible = up.filter((h) => !hidden.has(h.id));
     const scored = new Map(up.map((h) => [h.id, scoreOf(h, scores, context.near)]));
     const score = (h: HomeRow) => scored.get(h.id)?.score ?? -1;
-    const inView = data.view === "all" ? up : up.filter((h) => matches(h, m, places));
+    const inView = data.view === "hidden" ? up.filter((h) => hidden.has(h.id)) : data.view === "all" ? visible : visible.filter((h) => matches(h, m, places));
     const area = data.area?.toUpperCase();
     const chosen = inView.filter(
       (h) =>
@@ -274,9 +279,11 @@ export const getHomesPage = createServerFn({ method: "GET" })
       match: m,
       good: scores.good,
       limits: places.filter((p) => p.max !== undefined).map((p) => `${p.max} minutes to ${p.name}`),
-      up: up.length,
-      matching: up.filter((h) => matches(h, m, places)).length,
-      unread: up.filter((h) => h.details && !h.read).length,
+      up: visible.length,
+      matching: visible.filter((h) => matches(h, m, places)).length,
+      hidden: hidden.size,
+      // A listing hidden directly is never read (src/db.ts unreadHomes).
+      unread: up.filter((h) => h.details && !h.read && !h.hidden).length,
       noPage: up.filter((h) => !h.details).length,
       shown: shown.length,
       folded: chosen.length - shown.length,

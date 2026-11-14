@@ -51,6 +51,18 @@ export function matches(h: HomeRow, m: Match, places: Place[]): boolean {
   return h.pricePcm <= rent && beds >= m.minBeds && beds <= m.maxBeds && !!band && band <= m.epc && near;
 }
 
+// The listings the reader hid on the Homes page (Not interested), with every sure copy of one
+// (src/compare.ts duplicates): hiding a row hides the home whichever agent lists it, a copy that turns up
+// later too (the copies up when it was hidden are marked themselves, app/routes/admin/homes.ts). Hidden ones leave the page's lists and get no message, not even when the rent drops.
+export function hiddenOf(homes: HomeRow[], dupes: Map<string, Copy[]>): Set<string> {
+  const out = new Set<string>();
+  for (const h of homes.filter((h) => h.hidden)) {
+    out.add(h.id);
+    for (const c of dupes.get(h.id) ?? []) if (c.sure) out.add(c.home.id);
+  }
+  return out;
+}
+
 // The site a listing is on, for a link's text.
 export const siteOf = (url: string) => (/openrent\.co\.uk/.test(url) ? "OpenRent" : "Rightmove");
 
@@ -448,7 +460,7 @@ export function message(h: HomeRow, was: number | null, x: Context): string {
     .join("\n");
 }
 
-// Messages the reader on Telegram about each match worth one (`notifyConfig`) that came up since messages
+// Messages the reader on Telegram about each match worth one (`notifyConfig`), and not hidden, that came up since messages
 // were turned on (new to the table and to its site: a widened search brings old listings in as new), or
 // got cheaper since, once per rent: again only when the rent goes down. A listing whose read is about to
 // be redone (another rent, new commute times) or that is not timed to every place with a limit yet waits
@@ -462,8 +474,9 @@ export async function notifyHomes(task: string, config: TaskConfig): Promise<str
   const m = matchOf(config);
   const places = placesOf(config);
   const up = listHomes(task).filter((h) => h.up);
-  const matching = up.filter((h) => matches(h, m, places));
   const dupes = duplicates(up);
+  const hidden = hiddenOf(up, dupes);
+  const matching = up.filter((h) => !hidden.has(h.id) && matches(h, m, places));
   const scores = scoreConfig(config);
   const near = shopsOf(task, config);
   const context: Context = { places, costs: costsOf(config), medians: rentMedians(up, ceilingOf(config)), now: nowOf(task, config), dupes, scores, near };
