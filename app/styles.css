@@ -790,6 +790,7 @@ a.chip {
 .prose a.src,
 .prose a.mute,
 .prose .save,
+.home-hide,
 a.chip {
   transition-property: color, background-color, box-shadow, scale;
   transition-duration: 150ms;
@@ -803,6 +804,7 @@ a.chip {
 .prose a.src:active,
 .prose a.mute:active,
 .prose .save:not(:disabled):active,
+.home-hide:not(:disabled):active,
 a.chip:active {
   scale: 0.96;
 }
@@ -814,6 +816,7 @@ a.chip:active {
   .prose a.src:active,
   .prose a.mute:active,
   .prose .save:active,
+  .home-hide:active,
   a.chip:active {
     scale: none;
   }
@@ -1103,6 +1106,27 @@ a.chip:active {
 /* How the score out of 10 is made up (src/score.ts), each part with its points. */
 .home-score {
   @apply text-[11.5px] tabular-nums text-faint text-pretty;
+}
+/* Hide (not interested) in the row's bottom-right corner, outside its link: under the badges from sm
+   up, at the end of the badges' line on a phone. */
+.home-wrap {
+  @apply relative;
+}
+.home-wrap > form {
+  @apply absolute right-2 bottom-2;
+}
+.home-hide {
+  @apply cursor-pointer rounded-md px-1.5 py-0.5 text-[12px] font-medium text-faint hover:bg-inset hover:text-ink disabled:cursor-default disabled:opacity-60;
+}
+.home-hide[data-failed] {
+  @apply text-failed;
+}
+/* A row just hidden (or put back), folded into one line with its Undo. */
+.home-moved {
+  @apply flex items-center justify-between gap-3 py-1.5 pr-2 pl-3.5 text-[12px] text-muted;
+}
+.home-moved > span {
+  @apply min-w-0 truncate;
 }
 /* The same home from other agents, under the row (outside its link). */
 .home-also {

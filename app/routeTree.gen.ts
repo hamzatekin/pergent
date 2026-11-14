@@ -14,6 +14,7 @@ import { Route as HomesRouteImport } from './routes/homes'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as LayoutRouteImport } from './routes/layout'
 import { Route as AdminAuthedRouteImport } from './routes/admin/_authed'
+import { Route as AdminHomesRouteImport } from './routes/admin/homes'
 import { Route as AdminLoginRouteImport } from './routes/admin/login'
 import { Route as AdminLogoutRouteImport } from './routes/admin/logout'
 import { Route as AdminMutesRouteImport } from './routes/admin/mutes'
@@ -62,6 +63,11 @@ const LayoutRoute = LayoutRouteImport.update({
 const AdminAuthedRoute = AdminAuthedRouteImport.update({
   id: '/admin/_authed',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminHomesRoute = AdminHomesRouteImport.update({
+  id: '/admin/homes',
+  path: '/admin/homes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminLoginRoute = AdminLoginRouteImport.update({
@@ -196,6 +202,7 @@ export interface FileRoutesByFullPath {
   '/jobs': typeof JobsRoute
   '/layout': typeof LayoutRoute
   '/admin': typeof AdminAuthedRouteWithChildren
+  '/admin/homes': typeof AdminHomesRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/logout': typeof AdminLogoutRoute
   '/admin/mutes': typeof AdminMutesRouteWithChildren
@@ -226,6 +233,7 @@ export interface FileRoutesByTo {
   '/homes': typeof HomesRoute
   '/jobs': typeof JobsRoute
   '/layout': typeof LayoutRoute
+  '/admin/homes': typeof AdminHomesRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/logout': typeof AdminLogoutRoute
   '/admin/mutes': typeof AdminMutesRouteWithChildren
@@ -258,6 +266,7 @@ export interface FileRoutesById {
   '/jobs': typeof JobsRoute
   '/layout': typeof LayoutRoute
   '/admin/_authed': typeof AdminAuthedRouteWithChildren
+  '/admin/homes': typeof AdminHomesRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/logout': typeof AdminLogoutRoute
   '/admin/mutes': typeof AdminMutesRouteWithChildren
@@ -291,6 +300,7 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/layout'
     | '/admin'
+    | '/admin/homes'
     | '/admin/login'
     | '/admin/logout'
     | '/admin/mutes'
@@ -321,6 +331,7 @@ export interface FileRouteTypes {
     | '/homes'
     | '/jobs'
     | '/layout'
+    | '/admin/homes'
     | '/admin/login'
     | '/admin/logout'
     | '/admin/mutes'
@@ -352,6 +363,7 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/layout'
     | '/admin/_authed'
+    | '/admin/homes'
     | '/admin/login'
     | '/admin/logout'
     | '/admin/mutes'
@@ -384,6 +396,7 @@ export interface RootRouteChildren {
   JobsRoute: typeof JobsRoute
   LayoutRoute: typeof LayoutRoute
   AdminAuthedRoute: typeof AdminAuthedRouteWithChildren
+  AdminHomesRoute: typeof AdminHomesRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AdminLogoutRoute: typeof AdminLogoutRoute
   AdminMutesRoute: typeof AdminMutesRouteWithChildren
@@ -437,6 +450,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminAuthedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/homes': {
+      id: '/admin/homes'
+      path: '/admin/homes'
+      fullPath: '/admin/homes'
+      preLoaderRoute: typeof AdminHomesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/login': {
@@ -685,6 +705,7 @@ const rootRouteChildren: RootRouteChildren = {
   JobsRoute: JobsRoute,
   LayoutRoute: LayoutRoute,
   AdminAuthedRoute: AdminAuthedRouteWithChildren,
+  AdminHomesRoute: AdminHomesRoute,
   AdminLoginRoute: AdminLoginRoute,
   AdminLogoutRoute: AdminLogoutRoute,
   AdminMutesRoute: AdminMutesRouteWithChildren,
