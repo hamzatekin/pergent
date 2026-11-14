@@ -8,7 +8,7 @@
 // Unread listings have no score. Changing a weight re-scores every listing at once: nothing is stored.
 import { depositOver } from "./compare.ts";
 import type { HomeRow } from "./db.ts";
-import { epcNumberOf } from "./epc.ts";
+import { epcNumberOf, heatingOf } from "./epc.ts";
 import type { TaskConfig } from "./runner.ts";
 import { nearestShop, shopText, type Shop } from "./shops.ts";
 
@@ -84,7 +84,8 @@ export function scoreOf(h: HomeRow, s: ScoreConfig, near: { shops: Shop[]; metre
     add(`${place} ${t.min ?? "over 90"} min`, step?.[1] ?? 0);
   }
   add(h.crime ? `crime ${h.crime.level}` : "crime not known", (h.crime && s.crime[h.crime.level]) || 0);
-  add(HEATING[r.heating] ?? r.heating, s.heating[r.heating] ?? 0);
+  const { heating, fromPhotos } = heatingOf(h);
+  add(`${HEATING[heating] ?? heating}${fromPhotos ? " (from the photos)" : ""}`, s.heating[heating] ?? 0);
   const extras: string[] = [];
   const shop = near ? nearestShop(h.lat, h.lng, near.shops) : null;
   if (shop && near && shop.metres <= near.metres) extras.push(shopText(shop));
@@ -101,6 +102,8 @@ export function scoreOf(h: HomeRow, s: ScoreConfig, near: { shops: Shop[]; metre
   const flags = [...(depositOver(h) ? ["deposit over the legal cap"] : []), ...redFlagsOf(r.redFlags, !!depositOver(h))];
   const dealbreaker = flags.find((f) => DEALBREAKER.test(f)) ?? null;
   for (const f of flags) if (!(studio && /studio|bedsit/i.test(f))) add(f, f === dealbreaker ? 0 : s.redFlag);
+  // What the photos show needing a fix (src/photos.ts) is one red flag, however many there are.
+  if (h.photos?.problems.length) add(`photos show ${h.photos.problems.join(", ")}`, s.redFlag);
   // To one decimal, so the EPC number shows: a C 69 and a C 80 in the same place differ by 0.6.
   let score = Math.round(Math.min(10, Math.max(0, parts.reduce((t, p) => t + p.points, 0))) * 10) / 10;
   let cap: string | null = null;

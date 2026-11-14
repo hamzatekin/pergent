@@ -4,7 +4,7 @@ import { setResponseHeader } from "@tanstack/react-start/server";
 import { placesOf, type Place } from "#src/commute.ts";
 import { ceilingOf, depositOver, districtOf, duplicates, nowOf, onMarket, rentMedians, vsArea, vsNow, type Copy, type Medians, type Now } from "#src/compare.ts";
 import { crimeText } from "#src/crime.ts";
-import { allIn, certText, costsOf, estimatesOf, kindOf, type Costs, type EnergyEstimate, type Estimates } from "#src/epc.ts";
+import { allIn, certText, costsOf, estimatesOf, heatingOf, kindOf, type Costs, type EnergyEstimate, type Estimates } from "#src/epc.ts";
 import { epcCerts, getState, listHomes, type HomeRow } from "#src/db.ts";
 import { commuteTimes, hiddenOf, matches, matchOf, titleOf, type Match } from "#src/homes.ts";
 import { redFlagsOf, scoreConfig, scoreLabel, scoreOf, scoreParts, type Score, type ScoreConfig } from "#src/score.ts";
@@ -39,7 +39,8 @@ export type HomeItem = {
   score: { label: string; parts: string; good: boolean } | null;
   fitWhy: string;
   /** What the row says at a glance, after the address: the first commute place with a limit (work) and its
-   * route, the heating, the crime level and the furnishing; `bad` when over the limit or high crime. */
+   * route, the heating, the crime level, the furnishing, and the bathroom and kitchen as the photos show
+   * them; `bad` when over the limit or high crime. */
   key: { text: string; bad: boolean }[];
   /** "Centre 19 min (tram)" for each other commute place, and whether it is over the place's limit. */
   commute: { name: string; text: string; over: boolean }[];
@@ -58,7 +59,10 @@ export type HomeItem = {
    * row, maybe ones keep their own row and are named here too. */
   also: { agent: string; rent: string; url: string; sure: boolean }[];
   facts: string[];
+  /** The red flags: the deposit over the cap, the read's, and what the photos show needing a fix. */
   flags: string[];
+  /** The photo check's note on the state of the home, once its photos were looked at. */
+  photos: string | null;
   agent: string;
   phone: string | null;
   listed: string;
@@ -170,6 +174,9 @@ function nowLine(now: Now, places: Place[]): string {
 // What a row compares its listing with (src/compare.ts).
 type Context = { places: Place[]; costs: Costs | null; estimates: Estimates | null; medians: Medians; now: Now | null; dupes: Map<string, Copy[]>; scores: ScoreConfig; near: { shops: Shop[]; metres: number } | null };
 
+// The bathroom or the kitchen as the photo check saw it (src/photos.ts): "Bathroom modern", "No kitchen photo".
+const room = (name: string, seen: string) => ({ text: seen === "not shown" ? `No ${name.toLowerCase()} photo` : `${name} ${seen}`, bad: false });
+
 function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeItem {
   const { places, costs } = x;
   const d = h.details;
@@ -180,7 +187,14 @@ function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeIt
   const shop = x.near ? nearestShop(h.lat, h.lng, x.near.shops) : null;
   const times = commuteTimes(h.commute, places);
   const work = times.find((c) => c.name === places.find((p) => p.max !== undefined)?.name);
-  const heating = r?.heating ? (SAID.heating[r.heating] ?? (r.heating === "not said" ? "Heating not said" : `${r.heating} heating`)) : null;
+  const heat = heatingOf(h);
+  const heating = r?.heating
+    ? heat.fromPhotos
+      ? heat.heating === "gas"
+        ? "Radiators, likely gas"
+        : "Electric heaters"
+      : (SAID.heating[heat.heating] ?? (heat.heating === "not said" ? "Heating not said" : `${heat.heating} heating`))
+    : null;
   return {
     id: h.id,
     url: h.url,
@@ -200,6 +214,7 @@ function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeIt
       ...(heating ? [{ text: heating, bad: false }] : []),
       ...(h.crime ? [{ text: `Crime ${h.crime.level}`, bad: h.crime.level === "high" || h.crime.level === "very high" }] : []),
       ...(d?.furnish ? [{ text: d.furnish, bad: false }] : []),
+      ...(h.photos?.photos ? [room("Bathroom", h.photos.bathroom), room("Kitchen", h.photos.kitchen)] : []),
     ],
     commute: times.filter((c) => c !== work),
     crime: h.crime ? { text: `Crime ${crimeText(h.crime)}`, high: h.crime.level === "high" || h.crime.level === "very high" } : null,
@@ -220,7 +235,8 @@ function item(h: HomeRow, x: Context, also: HomeRow[], sc: Score | null): HomeIt
       ...said("pets", r?.pets),
       ...(shop ? [shopText(shop)] : []),
     ],
-    flags: [...(depositOver(h) ? [depositOver(h)!] : []), ...redFlagsOf(r?.redFlags ?? [], !!depositOver(h))],
+    flags: [...(depositOver(h) ? [depositOver(h)!] : []), ...redFlagsOf(r?.redFlags ?? [], !!depositOver(h)), ...(h.photos?.problems.map((p) => `Photos: ${p}`) ?? [])],
+    photos: h.photos?.photos ? h.photos.note || null : null,
     agent: h.agent,
     phone: d?.phone ?? h.phone,
     listed: formatDay(h.listedAt ?? h.firstSeen, "Europe/London"),

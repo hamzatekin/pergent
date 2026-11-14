@@ -241,6 +241,7 @@ function More({ h }: { h: HomeItem }) {
       </summary>
       <div className="home-more-body">
         {h.fitWhy && <p className="job-why">{h.fitWhy}</p>}
+        {h.photos && <p className="home-compare">Photos: {h.photos}</p>}
         {h.score && <p className="home-score">{h.score.parts}</p>}
         {h.commute.length > 0 && (
           <p className="home-commute">

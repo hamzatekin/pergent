@@ -8,7 +8,7 @@
 // energy; council tax is the council's 2026/27 average Band D (parishes included) for the listing's band;
 // water is a flat average. The register's own cost figures are left alone, since each certificate prices
 // fuel as of the year it was made.
-import { CERT_VERSION, epcCert, epcPostcode, homesToCertify, saveEpcCert, saveEpcPostcode, saveHomeCert, type Certificate, type EpcEntry, type HomeCert, type HomeDetails } from "./db.ts";
+import { CERT_VERSION, epcCert, epcPostcode, homesToCertify, saveEpcCert, saveEpcPostcode, saveHomeCert, type Certificate, type EpcEntry, type HomeCert, type HomeDetails, type PhotoCheck } from "./db.ts";
 import type { TaskConfig } from "./runner.ts";
 
 const API = "https://api.get-energy-performance-data.communities.gov.uk/api";
@@ -175,6 +175,17 @@ export function epcNumberOf(h: Rated): { n: number; guessed: boolean } | null {
   return BAND_MIDDLE[band] ? { n: BAND_MIDDLE[band], guessed: true } : null;
 }
 
+// A listing's heating: what the read took from its text, else what its photos show when the text says
+// nothing (src/photos.ts): radiators with pipes are taken as gas central heating, which most homes here
+// have, and wall or storage heaters as electric. `fromPhotos` when it came from the photos.
+export function heatingOf(h: { read?: { heating?: string } | null; photos?: PhotoCheck | null }): { heating: string; fromPhotos: boolean } {
+  const said = h.read?.heating ?? "not said";
+  if (said !== "not said") return { heating: said, fromPhotos: false };
+  if (h.photos?.heating === "radiators") return { heating: "gas", fromPhotos: true };
+  if (h.photos?.heating === "electric heaters") return { heating: "electric", fromPhotos: true };
+  return { heating: "not said", fromPhotos: false };
+}
+
 // What fills a listing's gaps, from what has been collected. Energy, for a listing with no certificate:
 // the median heat for the rooms per m² and for hot water of the certificates the register lookups have
 // kept (thousands, from the listings' own postcodes) of homes heated the same way (electricity, or
@@ -189,7 +200,7 @@ export type Estimates = {
   /** `alikeOf`'s answers, by heating and EPC number. */
   memo: Map<string, { spacePerM2: number; water: number; alike: number; within: number } | null>;
 };
-type Sized = { beds?: number | null; type?: string; details: HomeDetails | null; read?: { sqm?: number | null; heating?: string } | null };
+type Sized = { beds?: number | null; type?: string; details: HomeDetails | null; read?: { sqm?: number | null; heating?: string } | null; photos?: PhotoCheck | null };
 const isFlat = (type = "") => /flat|apartment|maisonette|studio|penthouse|duplex/i.test(type);
 const isHouse = (type = "") => /house|terrace|semi|detached|bungalow|cottage|barn/i.test(type);
 export const kindOf = (type?: string) => (isFlat(type) ? "flat" : isHouse(type) ? "house" : null);
@@ -260,7 +271,7 @@ function estimateEnergy(h: Sized & Rated, k: Costs, e: Estimates): { pounds: num
   const own = given && given >= 15 && given <= 300 ? given : null;
   const sqm = own ?? (kind ? e.sqm.get(`${Math.min(h.beds ?? 0, 3)} ${kind}`) : undefined);
   if (!sqm) return { why: kind ? "no floor area given, and too few like it give one" : "no floor area given, and its type is not a flat or a house" };
-  const said = h.read?.heating ?? "not said";
+  const said = heatingOf(h).heating;
   const electric = said === "electric" || said === "storage heaters";
   const a = alikeOf(e, electric, epc.n);
   if (!a) return { why: `fewer than ${MIN_ALIKE} certificates on the register within 6 of its EPC number` };

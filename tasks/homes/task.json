@@ -16,7 +16,7 @@
   "systemPrompt": "You read rental listings and say for each what it offers and how well it fits one reader. The user message holds the reader's wants and the listings, each listing's EPC chart images right after its text. You deliver the reading by calling the StructuredOutput tool once, with the object as the tool's arguments: a `homes` array, never a JSON string. Do not write the reading, or any JSON, as a text reply: a reading written as text is thrown away.",
   "read": { "maxListings": 40, "descriptionChars": 2500 },
   "match": { "rent": 850, "rentWithBills": 1000, "minBeds": 1, "maxBeds": 3, "epc": "C" },
-  "notify": { "maxMessages": 10, "link": "https://pergent.hamzatekin.dev/homes" },
+  "notify": { "maxMessages": 10, "link": "https://pergent.hamzatekin.dev/homes", "photosHours": 3 },
   "score": {
     "beds": { "two": 2, "oneWithLounge": 2, "one": 1.5 },
     "epc": { "zero": 55, "full": 92, "points": 2 },
