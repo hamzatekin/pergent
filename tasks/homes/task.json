@@ -19,7 +19,7 @@
   "notify": { "maxMessages": 10, "link": "https://pergent.hamzatekin.dev/homes" },
   "score": {
     "beds": { "two": 2, "oneWithLounge": 2, "one": 1.5 },
-    "epc": { "A": 2, "B": 1.5, "C": 1 },
+    "epc": { "zero": 55, "full": 92, "points": 2 },
     "commute": { "Work": [[25, 1.5], [32, 1], [40, 0.5]], "Centre": [[15, 1], [25, 0.5]] },
     "crime": { "very low": 1.5, "low": 1, "average": 0.5 },
     "heating": { "gas": 1, "heat pump": 1, "communal": 0.5, "not said": 0.5 },

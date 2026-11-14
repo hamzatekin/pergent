@@ -13,7 +13,9 @@ import { nearestShop, shopText, type Shop } from "./shops.ts";
 
 export type ScoreConfig = {
   beds: { two: number; oneWithLounge: number; one: number };
-  epc: Record<string, number>;
+  /** The EPC by its number (1 to 100) rather than its band: nothing up to `zero`, `points` from `full`, in a
+   * straight line between, so a low C (69) scores about as a high D (68) and a high C (80) more. */
+  epc: { zero: number; full: number; points: number };
   /** Per commute place, [most minutes, points] steps. The first place is the one a direct trip counts for. */
   commute: Record<string, [number, number][]>;
   crime: Record<string, number>;
@@ -28,7 +30,7 @@ export type ScoreConfig = {
 
 const DEFAULTS: ScoreConfig = {
   beds: { two: 2, oneWithLounge: 2, one: 1.5 },
-  epc: { A: 2, B: 1.5, C: 1 },
+  epc: { zero: 55, full: 92, points: 2 },
   commute: {},
   crime: { "very low": 1.5, low: 1, average: 0.5 },
   heating: { gas: 1, "heat pump": 1, communal: 0.5, "not said": 0.5 },
@@ -38,7 +40,26 @@ const DEFAULTS: ScoreConfig = {
   good: 6,
 };
 
-export const scoreConfig = (config: TaskConfig | undefined): ScoreConfig => ({ ...DEFAULTS, ...((config?.score ?? {}) as Partial<ScoreConfig>) });
+export const scoreConfig = (config: TaskConfig | undefined): ScoreConfig => {
+  const s: ScoreConfig = { ...DEFAULTS, ...((config?.score ?? {}) as Partial<ScoreConfig>) };
+  // The points by band this replaced ({ A: 2, B: 1.5, C: 1 }) would give every listing NaN.
+  if (typeof s.epc.zero !== "number" || typeof s.epc.full !== "number" || typeof s.epc.points !== "number") s.epc = DEFAULTS.epc;
+  return s;
+};
+
+// The middle of each band's numbers, for a listing whose EPC gives only its band.
+const BAND_MIDDLE: Record<string, number> = { A: 96, B: 86, C: 74, D: 61, E: 46, F: 29, G: 10 };
+
+// The EPC's number: the chart's, else the register certificate's when it was matched by the home's address
+// or is the only one at the postcode, and has the same band (src/epc.ts), else the middle of the band.
+function epcNumber(h: HomeRow): { n: number; guessed: boolean } | null {
+  const band = h.read?.epcBand;
+  if (!band) return null;
+  if (h.read?.epcScore) return { n: h.read.epcScore, guessed: false };
+  const c = h.cert?.cert;
+  if (c?.score && c.band === band && (h.cert?.how === "address" || h.cert?.how === "only")) return { n: c.score, guessed: false };
+  return BAND_MIDDLE[band] ? { n: BAND_MIDDLE[band], guessed: true } : null;
+}
 
 // Red flags that make a listing no home for the reader at all.
 // The flag names the dealbreaker itself: "near student halls" or "box room in the attic" is not one.
@@ -63,7 +84,9 @@ export function scoreOf(h: HomeRow, s: ScoreConfig, near: { shops: Shop[]; metre
   else if (beds >= 2) add(`${beds} beds`, s.beds.two);
   else if (r.livingRoom === "separate") add("1 bed with a separate lounge", s.beds.oneWithLounge);
   else add(`1 bed, ${r.livingRoom === "open plan" ? "open-plan lounge" : "lounge not said"}`, s.beds.one);
-  add(r.epcBand ? `EPC ${r.epcBand}` : "EPC unknown", (r.epcBand && s.epc[r.epcBand]) || 0);
+  const epc = epcNumber(h);
+  const share = epc ? Math.min(1, Math.max(0, (epc.n - s.epc.zero) / (s.epc.full - s.epc.zero))) : 0;
+  add(epc ? `EPC ${r.epcBand}${epc.guessed ? " (no number)" : ` ${epc.n}`}` : "EPC unknown", Math.round(share * s.epc.points * 10) / 10);
   for (const [place, steps] of Object.entries(s.commute)) {
     const t = h.commute[place];
     if (!t) {
@@ -91,7 +114,8 @@ export function scoreOf(h: HomeRow, s: ScoreConfig, near: { shops: Shop[]; metre
   const flags = [...(depositOver(h) ? ["deposit over the legal cap"] : []), ...redFlagsOf(r.redFlags, !!depositOver(h))];
   const dealbreaker = flags.find((f) => DEALBREAKER.test(f)) ?? null;
   for (const f of flags) if (!(studio && /studio|bedsit/i.test(f))) add(f, f === dealbreaker ? 0 : s.redFlag);
-  let score = Math.round(Math.min(10, Math.max(0, parts.reduce((t, p) => t + p.points, 0))) * 2) / 2;
+  // To one decimal, so the EPC number shows: a C 69 and a C 80 in the same place differ by 0.6.
+  let score = Math.round(Math.min(10, Math.max(0, parts.reduce((t, p) => t + p.points, 0))) * 10) / 10;
   let cap: string | null = null;
   if ((studio || dealbreaker) && score > 1) {
     cap = studio ? "a studio" : dealbreaker;
