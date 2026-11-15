@@ -1,0 +1,79 @@
+{
+  "schedule": "50 2,8,14,20 * * *",
+  "timezone": "Europe/London",
+  "label": "uk-tr b2b",
+  "radarLabel": "UK–TR B2B",
+  "tab": false,
+  "order": 9,
+  "lang": "en",
+  "model": "claude-haiku-5-5",
+  "allowedTools": [],
+  "output": "sort",
+  "inputs": ["problems.md", "posts.md"],
+  "mute": true,
+  "timeoutMinutes": 15,
+  "maxOutputTokens": 32000,
+  "effort": "low",
+  "systemPrompt": "You sort what businesses post about trade between the UK and Turkey into a list of the problems they raise. The user message holds the problems so far, the posts and the editor's brief. You deliver the sort by calling the StructuredOutput tool once, with the sort object as the tool's arguments: `problems` and `posts` arrays, never JSON strings. Do not write the sort, or any JSON, as a text reply: a sort written as text is thrown away.",
+  "before": "node ../../../scripts/collect-posts.ts",
+  "categories": [
+    "Finding suppliers & manufacturers",
+    "Samples, quality & production",
+    "Customs, duties & origin",
+    "Shipping & logistics",
+    "Payments & invoicing",
+    "Rules & certificates",
+    "Language & trust",
+    "Selling into the UK or Turkey",
+    "Other"
+  ],
+  "sort": {
+    "maxPosts": 150,
+    "bodyChars": 700,
+    "fields": {
+      "name": "The problem in the words of the people who have it, at most 12 words, in English even when the post is in Turkish, like \"Turkish manufacturers won't take small first orders\" or \"Duty charged because the origin statement was wrong\". Not a company's name.",
+      "summary": "One sentence: who has it (a UK brand, importer or online seller, a Turkish exporter), what they do today, what it costs them.",
+      "recurring": "The post says it happens with every order, shipment or supplier, keeps happening, or is how they always have to work; or it is a job post for a recurring chore.",
+      "cost": "Money or time the post names for it, short, like \"£2,000 in duty\" or \"three weeks waiting for samples\". Not a job post's budget, which is already known. \"\" when it names none.",
+      "workaround": "What they do about it today, short, like \"a sourcing agent\", \"WhatsApp and Google Translate\", \"the freight forwarder does it\", \"flew to Istanbul\". \"\" when the post doesn't say."
+    }
+  },
+  "collect": {
+    "hours": 24,
+    "budgetSeconds": 210,
+    "reddit": {
+      "words": ["Turkey", "Turkish", "Türkiye", "Turkiye", "Istanbul", "İstanbul", "Izmir", "İzmir", "Bursa", "Denizli", "Gaziantep", "Kayseri"],
+      "subs": ["ihracat"],
+      "search": [
+        { "sub": "AmazonFBA" },
+        { "sub": "dropship" },
+        { "sub": "streetwearstartup" },
+        { "sub": "Manufacturing" },
+        { "sub": "FreightForwarding" },
+        { "sub": "logistics" },
+        { "sub": "supplychain" },
+        { "sub": "procurement" },
+        { "sub": "importexport" },
+        { "sub": "startups" }
+      ]
+    },
+    "freelancer": {
+      "queries": ["turkey", "turkish", "istanbul"],
+      "currencies": ["USD", "GBP"],
+      "perQuery": 20
+    }
+  },
+  "filter": {
+    "threshold": 0.6,
+    "about": "post or job post about business between the UK (or another English-speaking country) and Turkey",
+    "kinds": {
+      "pain": "Describes a problem in buying from, making in, shipping from, paying or selling to Turkey or Turkish firms (or UK firms, for a Turkish business): finding a reliable supplier or manufacturer, samples and quality, customs, duties and paperwork, shipping, payments, certificates and rules, language, a deal gone wrong.",
+      "chore-job": "A job post paying someone to do a business chore that involves Turkey: finding or vetting Turkish suppliers, talking to them in Turkish, translating trade documents, chasing orders, handling customs or shipping paperwork.",
+      "question": "Asks how to do business with Turkey or Turkish firms, or with the UK from Turkey: where to find a manufacturer, how to import, ship, pay or comply, saying what they need.",
+      "build-job": "A job post for one-off work: a website, app, design, marketing, content, backlinks, a sales agent on commission, translating a book or a website, a salaried role.",
+      "promo": "Promotes the poster's own factory, sourcing agency, logistics firm or service, a survey, or an ad.",
+      "other": "Anything else: news, politics, travel, food, Turkish lessons, the bird turkey or Christmas dinner, Turkey named only in passing with nothing about doing business there, chatter, off topic."
+    },
+    "drop": ["build-job", "promo", "other"]
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "schedule": "50 4,10,16,22 * * *",
+  "timezone": "Europe/London",
+  "label": "uk-tr b2c",
+  "radarLabel": "UK–TR B2C",
+  "tab": false,
+  "order": 10,
+  "lang": "en",
+  "model": "claude-haiku-5-5",
+  "allowedTools": [],
+  "output": "sort",
+  "inputs": ["problems.md", "posts.md"],
+  "mute": true,
+  "timeoutMinutes": 15,
+  "maxOutputTokens": 48000,
+  "effort": "low",
+  "systemPrompt": "You sort what people say about going to Turkey for treatment, holidays or a home into a list of the problems they raise. The user message holds the problems so far, the posts and the editor's brief. You deliver the sort by calling the StructuredOutput tool once, with the sort object as the tool's arguments: `problems` and `posts` arrays, never JSON strings. Do not write the sort, or any JSON, as a text reply: a sort written as text is thrown away.",
+  "before": "node ../../../scripts/collect-posts.ts",
+  "categories": [
+    "Teeth",
+    "Hair transplants",
+    "Cosmetic & weight-loss surgery",
+    "Other treatment",
+    "Aftercare back home",
+    "Holidays & hotels",
+    "Getting around, money & scams",
+    "Property & moving",
+    "Shopping & sending things",
+    "Other"
+  ],
+  "sort": {
+    "maxPosts": 150,
+    "bodyChars": 600,
+    "fields": {
+      "name": "The problem in the words of the people who have it, at most 12 words, in English even when the post is in Turkish, like \"Can't tell which Turkish dental clinics are safe\" or \"No UK dentist will fix crowns done in Turkey\". Not a clinic's or company's name.",
+      "summary": "One sentence: who has it (patients, holidaymakers, buyers, people moving there), what they do today, what it costs them.",
+      "recurring": "The post says it keeps happening, happened on every trip, or that many people they know had the same.",
+      "cost": "Money or time the post names for it, short, like \"£4,000 for veneers\" or \"three extra nights\". \"\" when it names none.",
+      "workaround": "What they do about it today, short, like \"Facebook groups\", \"a UK agency booked it\", \"paid a UK dentist to redo it\", \"Google reviews\". \"\" when the post doesn't say."
+    }
+  },
+  "collect": {
+    "hours": 24,
+    "budgetSeconds": 210,
+    "reddit": {
+      "words": [
+        "Turkey",
+        "Turkish",
+        "Türkiye",
+        "Turkiye",
+        "Istanbul",
+        "İstanbul",
+        "Antalya",
+        "Izmir",
+        "İzmir",
+        "Bodrum",
+        "Fethiye",
+        "Marmaris",
+        "Dalaman",
+        "Alanya",
+        "Belek",
+        "Kusadasi",
+        "Kuşadası",
+        "Oludeniz",
+        "Ölüdeniz",
+        "Cappadocia"
+      ],
+      "subs": ["Turkey", "istanbul", "Antalya", "Fethiye", "Bodrum", "TurkeyExpats", "MedicalTourism", "DentalTourism"],
+      "search": [
+        { "sub": "HairTransplants" },
+        { "sub": "tressless" },
+        { "sub": "cosmeticsurgery" },
+        { "sub": "PlasticSurgery" },
+        { "sub": "gastricsleeve" },
+        { "sub": "askdentists" },
+        { "sub": "travel" },
+        { "sub": "solotravel" },
+        { "sub": "TravelNoPics" },
+        { "sub": "expats" },
+        { "sub": "IWantOut" },
+        { "sub": "AskUK" },
+        { "sub": "CasualUK" },
+        { "sub": "unitedkingdom" },
+        { "sub": "LegalAdviceUK" },
+        { "sub": "UKPersonalFinance" }
+      ],
+      "comments": [
+        { "sub": "HairTransplants", "query": "Turkey" },
+        { "sub": "cosmeticsurgery", "query": "Turkey" },
+        { "sub": "gastricsleeve", "query": "Turkey" },
+        { "sub": "AskUK", "query": "Turkey teeth" }
+      ]
+    },
+    "youtube": {
+      "queries": ["turkey teeth", "hair transplant turkey", "gastric sleeve turkey", "all inclusive turkey"],
+      "videos": 5,
+      "comments": 100,
+      "days": 90
+    }
+  },
+  "filter": {
+    "threshold": 0.6,
+    "about": "post or comment about going to Turkey as a customer: treatment, a holiday, a property, moving there, or buying from it",
+    "kinds": {
+      "complaint": "Says what went wrong or was hard for a visitor or customer in Turkey or with a Turkish business: a clinic, dentist or surgeon, a hotel, transfer, tour or flight, prices and scams, money and cards, paperwork, a property, aftercare or fixing the work back home, getting a refund or complaining.",
+      "question": "Asks how to choose, plan, compare or arrange something in Turkey as a visitor, patient, buyer or newcomer (a clinic, a hotel, an area, a transfer, a property, a residence permit), saying what they need or worry about.",
+      "praise": "A good experience or a recommendation with nothing they struggled with.",
+      "promo": "Promotes a clinic, hotel, agency, facilitator or the poster's own service ('DM me', a discount, a price list), or an ad.",
+      "other": "Anything else: news, politics, Turkish people's own everyday life, photos, food, history, the bird turkey or Christmas dinner, Turkey named only in passing, chatter, off topic."
+    },
+    "drop": ["praise", "promo", "other"]
+  }
+}

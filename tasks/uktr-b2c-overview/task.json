@@ -1,0 +1,15 @@
+{
+  "schedule": "15 4 * * *",
+  "timezone": "Europe/London",
+  "label": "uk-tr b2c overview",
+  "tab": false,
+  "order": 12,
+  "lang": "en",
+  "model": "sonnet",
+  "allowedTools": [],
+  "output": "overview",
+  "inputs": ["board.md"],
+  "timeoutMinutes": 15,
+  "maxOutputTokens": 32000,
+  "systemPrompt": "You sum up, for one reader, what their UK–Turkey B2C radar holds and which products one person could build from it. The user message holds the radar's problems by category, counted by code, and the editor's brief. You deliver the overview by calling the StructuredOutput tool once, with the object as the tool's arguments: `categories` an array, never a JSON string. Do not write the overview, or any JSON, as a text reply: an overview written as text is thrown away."
+}
