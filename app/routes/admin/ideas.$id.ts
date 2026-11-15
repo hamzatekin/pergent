@@ -3,11 +3,13 @@ import { askJudge, getProblem, mergeProblem, setProblemStatus } from "#src/db.ts
 import { judgeOf } from "#src/ideas.ts";
 import { listTasks } from "#src/runner.ts";
 import { startRun } from "#src/scheduler.ts";
+import { ideasPath } from "../../ideas-view.ts";
 import { guardPost, seeOther } from "../../server/admin.ts";
 
 // The Ideas problem page's buttons: Star and Unstar, Kill and Reopen, Judge again (asks the judge run,
 // tasks/ideas-judge, to take this problem first, and starts it), and Merge into another problem. Each
-// goes back to the problem's page (a merge to the problem it went into).
+// goes back to the problem's page (a merge to the problem it went into), or to the board when the form
+// says so (`back`: the brief's "I'm testing this").
 export const Route = createFileRoute("/admin/ideas/$id")({
   server: {
     handlers: {
@@ -36,7 +38,7 @@ export const Route = createFileRoute("/admin/ideas/$id")({
           mergeProblem(problem.id, into.id);
           return seeOther(`/ideas/${into.id}`);
         } else return new Response("unknown action", { status: 400 });
-        return seeOther(`/ideas/${problem.id}`);
+        return seeOther(form.get("back") ? ideasPath(form) : `/ideas/${problem.id}`);
       },
     },
   },

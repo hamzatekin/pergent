@@ -1179,14 +1179,18 @@ export function mentionFacts(task: string): { problemId: number; postId: string;
   `).all(task) as ReturnType<typeof mentionFacts>;
 }
 
-// How far a radar's sort has got: posts kept, sorted, raising a problem, and problems.
-export function radarTotals(task: string): { posts: number; sorted: number; raising: number; problems: number } {
+// A radar's counts: every post collected, those Jev kept (`posts`), the kept ones posted in the last 7
+// days, how many the sort has seen and how many raised a problem, and its problems.
+export function radarTotals(task: string): { collected: number; posts: number; recent: number; sorted: number; raising: number; problems: number } {
+  const week = new Date(Date.now() - 7 * 86_400_000).toISOString();
   return use().prepare(`
-    SELECT (SELECT COUNT(*) FROM posts WHERE task = ? AND kept = 1) AS posts,
+    SELECT (SELECT COUNT(*) FROM posts WHERE task = ?) AS collected,
+           (SELECT COUNT(*) FROM posts WHERE task = ? AND kept = 1) AS posts,
+           (SELECT COUNT(*) FROM posts WHERE task = ? AND kept = 1 AND posted_at > ?) AS recent,
            (SELECT COUNT(*) FROM mentions m JOIN posts p ON p.id = m.post_id WHERE p.task = ?) AS sorted,
            (SELECT COUNT(*) FROM mentions m JOIN posts p ON p.id = m.post_id WHERE p.task = ? AND m.problem_id IS NOT NULL) AS raising,
            (SELECT COUNT(*) FROM problems WHERE task = ? AND status != 'merged') AS problems
-  `).get(task, task, task, task) as { posts: number; sorted: number; raising: number; problems: number };
+  `).get(task, task, task, week, task, task, task) as { collected: number; posts: number; recent: number; sorted: number; raising: number; problems: number };
 }
 
 // A radar's overview (src/ideas.ts): the whole board summed up, and per category what one person could
