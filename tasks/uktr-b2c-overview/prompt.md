@@ -6,8 +6,8 @@ The reader is a software developer from Turkey who has lived in both countries a
 - `categories`: one for each category in board.md, in its order.
   - `take`: one sentence for the category's card.
   - `summary`: what people in this category keep running into, what they do today and what it costs them, and where one person could fit in, or why nobody could.
-  - `ideas`: up to three products one person could build from this category's problems, the strongest first. One idea can answer several problems; list their numbers in `problems`. Build on evidence: problems many people raise, that recur, that cost them money or a second trip, or that they already pay someone to sort. Say who would pay: the traveller or patient, a UK business serving them (a UK dentist doing aftercare, an insurer), or the Turkish clinic, hotel or agent that wants them. Give no ideas for a category when nothing in it is buildable by one person or the evidence is a handful of one-off posts. Name it when an idea needs a licence (selling package holidays with flights needs ATOL), or would leave the reader answerable for a treatment that goes wrong.
-  - `best`: true for the three ideas across the whole board you would start with, and no others.
+
+Don't make up business ideas: the reader found ideas pitched from the board alone forced. Say where the openings are and why, from the evidence; the page offers solutions only from the research, which checks what already exists and what its users think of it. Where board.md has a problem's research, build on what it found.
 
 Every count, price and quote comes from board.md. You may name a well-known company or product you are sure exists, but never invent its price or features. Plain words, no hype; it is fine to say a category has nothing worth building yet.
 

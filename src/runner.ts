@@ -12,7 +12,7 @@ import { prepareRead, readSchema, saveReadOutput } from "./jobs.ts";
 import { homesReadSchema, notifyHomes, prepareHomesRead, saveHomesRead } from "./homes.ts";
 import { photosSchema, preparePhotos, savePhotos } from "./photos.ts";
 import { telegramOn } from "./telegram.ts";
-import { categoriesOf, judgeSchema, overviewSchema, prepareJudge, prepareOverview, prepareSort, radarOf, saveJudgeOutput, saveOverviewOutput, saveSortOutput, sortSchema } from "./ideas.ts";
+import { categoriesOf, judgeSchema, overviewSchema, prepareJudge, prepareOverview, prepareResearch, prepareSort, radarOf, researchSchema, saveJudgeOutput, saveOverviewOutput, saveResearchOutput, saveSortOutput, sortSchema } from "./ideas.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const TASKS_DIR = join(ROOT, "tasks");
@@ -57,7 +57,7 @@ export type TaskConfig = {
   layout?: string;
   /** false keeps the task out of the sidebar and the reading pages: it writes no paper (the ideas radar). */
   tab?: boolean;
-  /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort", "judge" and "overview", the job tracker's "read", the homes task's "homes"). */
+  /** What the run hands back instead of a paper, by name from OUTPUTS below (the ideas radar's "sort", "judge", "research" and "overview", the job tracker's "read", the homes task's "homes"). */
   output?: string;
   [extra: string]: unknown;
 };
@@ -142,6 +142,14 @@ const OUTPUTS: Record<string, Output> = {
     },
     schema: judgeSchema,
     save: (runId, output, dir) => saveJudgeOutput(runId, output, dir),
+  },
+  research: {
+    prepare: async (task, _runId, dir, config) => {
+      const { problems } = await prepareResearch(radarOf(task), dir, config, listMutes(radarOf(task)));
+      return { go: problems > 0, note: problems ? `${problems} problems to research` : "Nothing to research" };
+    },
+    schema: researchSchema,
+    save: (runId, output, dir) => saveResearchOutput(runId, output, dir),
   },
   overview: {
     prepare: async (task, _runId, dir) => {

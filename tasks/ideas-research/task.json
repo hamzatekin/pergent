@@ -1,0 +1,16 @@
+{
+  "schedule": "0 3 * * *",
+  "timezone": "Europe/London",
+  "label": "ideas research",
+  "tab": false,
+  "order": 6,
+  "lang": "en",
+  "model": "sonnet",
+  "allowedTools": ["WebSearch", "WebFetch"],
+  "output": "research",
+  "inputs": ["research.md"],
+  "timeoutMinutes": 30,
+  "maxOutputTokens": 32000,
+  "systemPrompt": "You research, for one reader, problems small business owners raise, the way a careful founder would before building anything: the ways to solve each one, the products that already do, what their users like and dislike, whether one person should compete, and only then a better solution. The user message holds the problems with their verdicts and the posts behind them, and the editor's brief. Search and open pages on the web as the brief says. You deliver the research by calling the StructuredOutput tool once, with the object as the tool's arguments: `research` an array, never a JSON string. Do not write the research, or any JSON, as a text reply: research written as text is thrown away.",
+  "research": {"maxProblems": 3, "mentionsEach": 10, "bodyChars": 400}
+}

@@ -17,8 +17,9 @@ export type PostRow = { id: string; source: string; community: string; author: s
 // A problem of a radar (src/ideas.ts): what several posts complain about, named in the owners'
 // words. `task` is the radar it belongs to, the task that collects and sorts its posts (ideas, gym).
 // `status` is open, starred, killed (hidden, its posts still land on it) or merged (into
-// `merged_into`, which has its mentions now). `judgeAsked` is set by the page's Judge again.
-export type ProblemRow = { id: number; task: string; name: string; category: string; summary: string; status: string; mergedInto: number | null; createdAt: string; judgeAsked: string | null };
+// `merged_into`, which has its mentions now). `judgeAsked` is set by the page's Judge again,
+// `researchAsked` by its Research this.
+export type ProblemRow = { id: number; task: string; name: string; category: string; summary: string; status: string; mergedInto: number | null; createdAt: string; judgeAsked: string | null; researchAsked: string | null };
 // One judgement of a problem (src/ideas.ts): the verdict code derived from the model's scores.
 export type Score = { score: number; why: string };
 export type VerdictRow = {
@@ -33,6 +34,23 @@ export type VerdictRow = {
   test: string;
   /** The problem's mentions when it was judged, to tell when it has grown enough to judge again. */
   mentions: number;
+  createdAt: string;
+};
+// One research of a problem (src/ideas.ts, tasks/ideas-research): three ways to solve it, the products
+// that already do, what their reviewers like and dislike, whether one person should compete, and if so
+// a better solution. `verdict` is the problem's verdict when it was researched ("none" before any), so
+// a changed verdict has it researched again.
+export type ResearchApproach = { name: string; how: string; exists: string };
+export type ResearchProduct = { name: string; url: string; price: string; who: string; share: string; does: string; liked: string; disliked: string; reviews: string[] };
+export type ResearchRow = {
+  id: number;
+  problemId: number;
+  verdict: string;
+  approaches: ResearchApproach[];
+  products: ResearchProduct[];
+  worth: boolean;
+  worthWhy: string;
+  better: { name: string; pitch: string; edge: string; first: string } | null;
   createdAt: string;
 };
 // What the sort made of one post: the problem it raises (none when it raises none, or `note` says why
@@ -232,6 +250,19 @@ export function openDb(runsDir: string): DatabaseSync {
       run_id      TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS verdicts_by_problem ON verdicts (problem_id, id);
+    CREATE TABLE IF NOT EXISTS research (
+      id          INTEGER PRIMARY KEY,
+      problem_id  INTEGER NOT NULL,
+      verdict     TEXT NOT NULL,
+      approaches  TEXT NOT NULL,
+      products    TEXT NOT NULL,
+      worth       INTEGER NOT NULL,
+      worth_why   TEXT NOT NULL DEFAULT '',
+      better      TEXT,
+      created_at  TEXT NOT NULL,
+      run_id      TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS research_by_problem ON research (problem_id, id);
     CREATE TABLE IF NOT EXISTS overviews (
       id         INTEGER PRIMARY KEY,
       task       TEXT NOT NULL,
@@ -321,6 +352,7 @@ export function openDb(runsDir: string): DatabaseSync {
   if (!columns.some((c) => c.name === "paper")) db.exec("ALTER TABLE runs ADD COLUMN paper TEXT");
   const problemColumns = db.prepare("PRAGMA table_info(problems)").all() as { name: string }[];
   if (!problemColumns.some((c) => c.name === "judge_asked")) db.exec("ALTER TABLE problems ADD COLUMN judge_asked TEXT");
+  if (!problemColumns.some((c) => c.name === "research_asked")) db.exec("ALTER TABLE problems ADD COLUMN research_asked TEXT");
   // A second radar (gym) came after the first; what was there before is the ideas radar's.
   if (!problemColumns.some((c) => c.name === "task")) db.exec("ALTER TABLE problems ADD COLUMN task TEXT NOT NULL DEFAULT 'ideas'");
   // What the model read from an advert's text (src/jobs.ts), on the advert's row; read_at is empty until then.
@@ -1054,7 +1086,7 @@ export function unsortedPosts(task: string, limit: number): { posts: PostRow[]; 
 }
 
 // Every problem a post can still go to (not merged away), oldest first.
-const PROBLEM_COLUMNS = "id, task, name, category, summary, status, merged_into AS mergedInto, created_at AS createdAt, judge_asked AS judgeAsked";
+const PROBLEM_COLUMNS = "id, task, name, category, summary, status, merged_into AS mergedInto, created_at AS createdAt, judge_asked AS judgeAsked, research_asked AS researchAsked";
 
 export function listProblems(task: string): ProblemRow[] {
   return use().prepare(`SELECT ${PROBLEM_COLUMNS} FROM problems WHERE task = ? AND status != 'merged' ORDER BY id`).all(task) as ProblemRow[];
@@ -1071,6 +1103,11 @@ export function setProblemStatus(id: number, status: "open" | "starred" | "kille
 // Judge again: the judge run takes asked problems first, whatever their evidence.
 export function askJudge(id: number, asked = true) {
   use().prepare("UPDATE problems SET judge_asked = ? WHERE id = ?").run(asked ? new Date().toISOString() : null, id);
+}
+
+// Research this: the research run takes asked problems first, whatever their verdict.
+export function askResearch(id: number, asked = true) {
+  use().prepare("UPDATE problems SET research_asked = ? WHERE id = ?").run(asked ? new Date().toISOString() : null, id);
 }
 
 // Two problems that are one: `from`'s mentions move to `into`, and `from` stays as merged, so a sort
@@ -1101,6 +1138,37 @@ export function latestVerdicts(): Map<number, VerdictRow> {
 // A problem's verdicts, newest first.
 export function problemVerdicts(problemId: number): VerdictRow[] {
   return (use().prepare(`SELECT ${VERDICT_COLUMNS} FROM verdicts WHERE problem_id = ? ORDER BY id DESC`).all(problemId) as VerdictDbRow[]).map(toVerdict);
+}
+
+type ResearchDbRow = Omit<ResearchRow, "approaches" | "products" | "worth" | "better"> & { approaches: string; products: string; worth: number; better: string | null };
+const RESEARCH_COLUMNS = "id, problem_id AS problemId, verdict, approaches, products, worth, worth_why AS worthWhy, better, created_at AS createdAt";
+const toResearch = (r: ResearchDbRow): ResearchRow => ({ ...r, approaches: JSON.parse(r.approaches), products: JSON.parse(r.products), worth: r.worth === 1, better: r.better ? JSON.parse(r.better) : null });
+
+// Every problem's newest research.
+export function latestResearch(): Map<number, ResearchRow> {
+  const rows = use().prepare(`SELECT ${RESEARCH_COLUMNS} FROM research WHERE id IN (SELECT MAX(id) FROM research GROUP BY problem_id)`).all() as ResearchDbRow[];
+  return new Map(rows.map((r) => [r.problemId, toResearch(r)]));
+}
+
+// Stores a research run's answers and clears each problem's Research this.
+export function saveResearch(runId: string, rows: Omit<ResearchRow, "id" | "createdAt">[]) {
+  const db = use();
+  const now = new Date().toISOString();
+  db.exec("BEGIN");
+  try {
+    const add = db.prepare(`
+      INSERT INTO research (problem_id, verdict, approaches, products, worth, worth_why, better, created_at, run_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const r of rows) {
+      add.run(r.problemId, r.verdict, JSON.stringify(r.approaches), JSON.stringify(r.products), r.worth ? 1 : 0, r.worthWhy, r.better ? JSON.stringify(r.better) : null, now, runId);
+      db.prepare("UPDATE problems SET research_asked = NULL WHERE id = ?").run(r.problemId);
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
 }
 
 export function saveVerdicts(runId: string, verdicts: Omit<VerdictRow, "id" | "createdAt">[]) {

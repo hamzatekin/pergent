@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { askJudge, getProblem, mergeProblem, setProblemStatus } from "#src/db.ts";
-import { judgeOf } from "#src/ideas.ts";
+import { askJudge, askResearch, getProblem, mergeProblem, setProblemStatus } from "#src/db.ts";
+import { judgeOf, researchOf } from "#src/ideas.ts";
 import { listTasks } from "#src/runner.ts";
 import { startRun } from "#src/scheduler.ts";
 import { ideasPath } from "../../ideas-view.ts";
 import { guardPost, seeOther } from "../../server/admin.ts";
 
 // The Ideas problem page's buttons: Star and Unstar, Kill and Reopen, Judge again (asks the judge run,
-// tasks/ideas-judge, to take this problem first, and starts it), and Merge into another problem. Each
+// tasks/ideas-judge, to take this problem first, and starts it), Research this (the same for the
+// research run, tasks/ideas-research), and Merge into another problem. Each
 // goes back to the problem's page (a merge to the problem it went into), or to the board when the form
 // says so (`back`: the brief's "I'm testing this").
 export const Route = createFileRoute("/admin/ideas/$id")({
@@ -29,6 +30,11 @@ export const Route = createFileRoute("/admin/ideas/$id")({
           askJudge(problem.id);
           const judge = judgeOf(problem.task);
           if ((await listTasks()).includes(judge)) startRun(judge);
+          await new Promise((done) => setTimeout(done, 300)); // let the run's row land before the redirect
+        } else if (action === "research") {
+          askResearch(problem.id);
+          const research = researchOf(problem.task);
+          if ((await listTasks()).includes(research)) startRun(research);
           await new Promise((done) => setTimeout(done, 300)); // let the run's row land before the redirect
         } else if (action === "merge") {
           const into = getProblem(Number(form.get("into")));

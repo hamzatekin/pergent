@@ -6,8 +6,8 @@ The reader is a software developer based in the UK who builds mobile apps (React
 - `categories`: one for each category in board.md, in its order.
   - `take`: one sentence for the category's card.
   - `summary`: what people in this category keep running into, what they do today and what it costs them, and where one person could fit in, or why nobody could.
-  - `ideas`: up to three apps one person could build from this category's problems, the strongest first. One idea can answer several problems; list their numbers in `problems`. Build on evidence: problems many people raise, that recur, that made them leave or switch app, or that they would pay to have fixed. Give no ideas for a category when nothing in it is buildable by one person (it needs a gym chain's own systems, hardware, or data no app can get) or the evidence is a handful of one-off reviews. A complaint about one big app's bug, price or account is a reason people would switch, not an app by itself: an idea needs to be better for a group of people in a way the big apps won't follow quickly.
-  - `best`: true for the three ideas across the whole board you would start with, and no others.
+
+Don't make up business ideas: the reader found ideas pitched from the board alone forced. Say where the openings are and why, from the evidence; the page offers solutions only from the research, which checks what already exists and what its users think of it. Where board.md has a problem's research, build on what it found.
 
 Every count, price and quote comes from board.md. You may name a well-known app you are sure exists, but never invent its price or features. Plain words, no hype; it is fine to say a category has nothing worth building yet.
 

@@ -1,7 +1,7 @@
 import { Link, useRouter } from "@tanstack/react-router";
 import { type FormEvent, type MouseEvent, useEffect, useState } from "react";
 import { IDEAS_VIEWS, ideasViewCookie } from "../ideas-view.ts";
-import type { Ask, BestBet, BoardColumn, IdeasPage, IdeaView, OverviewState, ProblemItem, ProblemPage } from "../server/ideas.functions.ts";
+import type { Ask, BestBet, BoardColumn, IdeasPage, OverviewState, ProblemItem, ProblemPage, ResearchView } from "../server/ideas.functions.ts";
 import { Shell } from "./Shell.tsx";
 import { Sources } from "./Sources.tsx";
 
@@ -174,17 +174,7 @@ function Brief({ data }: { data: IdeasPage }) {
           </details>
         )}
       </section>
-      {data.best && <Bet bet={data.best} query={data.query} />}
-      {data.category && data.category.ideas.length > 0 && (
-        <>
-          <h3 className="overview-h ideas-h">The overview's ideas for {data.category.name}</h3>
-          <div className="overview ideas">
-            {data.category.ideas.map((idea) => (
-              <Idea key={idea.name} idea={idea} />
-            ))}
-          </div>
-        </>
-      )}
+      {data.best && <Bet bet={data.best} query={data.query} researches={data.researches} />}
       <h3 className="overview-h ideas-h">{b.show === "top" && data.best ? "Next best" : label}</h3>
       <nav className="feed-chips" aria-label="Which problems">
         {b.shows
@@ -216,6 +206,7 @@ function Funnel({ data }: { data: IdeasPage }) {
           [`${f.worth + f.watch}`, "worth a look", `${f.worth} worth testing, ${f.watch} watch, ${f.pass} passed`] as [string, string, string],
         ]
       : []),
+    ...(f.researched ? [[count(f.researched), "researched", `${f.better} worth competing`] as [string, string, string]] : []),
   ];
   return (
     <ol className="funnel" aria-label="From posts to verdicts">
@@ -230,20 +221,28 @@ function Funnel({ data }: { data: IdeasPage }) {
   );
 }
 
-const BET_TAG: Record<BestBet["why"], string> = { overview: "Best bet · the overview's pick", judged: "Best bet · the best judged", people: "Raised by the most people" };
+const BET_TAG: Record<BestBet["why"], string> = {
+  researched: "Best bet · researched",
+  judged: "Next to research · the best judged",
+  rejected: "Closest · researched, not worth competing",
+  people: "Raised by the most people",
+};
 
-// The problem to start with: what to build, the counts behind it, the six answers with the weak one
-// marked, what people said, and the first step.
-function Bet({ bet, query }: { bet: BestBet; query: IdeasPage["query"] }) {
+// The problem to start with: the better solution when the research found one, the counts behind it,
+// the six answers with the weak one marked, what people said, what the research found, and the first
+// step.
+function Bet({ bet, query, researches }: { bet: BestBet; query: IdeasPage["query"]; researches: boolean }) {
   const p = bet.problem;
-  const first = bet.idea?.first || p.test;
+  const r = bet.research;
+  const better = r?.better;
+  const first = better?.first || p.test;
   return (
     <section className="bet">
-      <p className="bet-tag">{BET_TAG[bet.why]}</p>
+      <p className="bet-tag">{bet.why === "judged" && !researches ? "The best judged" : BET_TAG[bet.why]}</p>
       <div className="bet-head">
         <h2 className="bet-name">
           <Link to="/ideas/$id" params={{ id: String(p.id) }}>
-            {bet.idea?.name ?? p.name}
+            {better?.name ?? p.name}
           </Link>
         </h2>
         <span className="badges">
@@ -251,9 +250,9 @@ function Bet({ bet, query }: { bet: BestBet; query: IdeasPage["query"] }) {
           <TrendBadge trend={p.trend} />
         </span>
       </div>
-      <p className="bet-pitch">{bet.idea?.pitch ?? p.summary}</p>
+      <p className="bet-pitch">{better?.pitch ?? p.summary}</p>
       <p className="bet-from">
-        {bet.idea && (
+        {better && (
           <>
             From{" "}
             <Link to="/ideas/$id" params={{ id: String(p.id) }}>
@@ -300,16 +299,28 @@ function Bet({ bet, query }: { bet: BestBet; query: IdeasPage["query"] }) {
           ))}
         </div>
       )}
-      {first && (
-        <div className="verdict-test">
-          <h4>{bet.idea?.first ? "First step" : "Smallest test"}</h4>
-          <p>{first}</p>
+      {better?.edge && (
+        <p className="bet-risk">
+          <strong>Why it beats what exists</strong> {better.edge}
+        </p>
+      )}
+      {r && !r.worth && (
+        <p className="bet-risk">
+          <strong>Researched {r.day}: not worth competing.</strong> {r.worthWhy}
+        </p>
+      )}
+      {!r && researches && p.verdict && <p className="bet-risk">Not researched yet: the nightly research takes the problems judged Worth testing or Watch.</p>}
+      {r && r.products.length > 0 && (
+        <div className="verdict-part">
+          <h4>What exists, and what its users say</h4>
+          <Products products={r.products} compact />
         </div>
       )}
-      {bet.idea?.risk && (
-        <p className="bet-risk">
-          <strong>Risk</strong> {bet.idea.risk}
-        </p>
+      {first && (
+        <div className="verdict-test">
+          <h4>{better?.first ? "First step" : "Smallest test"}</h4>
+          <p>{first}</p>
+        </div>
       )}
       <div className="problem-actions">
         {p.status !== "starred" && (
@@ -784,50 +795,6 @@ function Foot({ data }: { data: IdeasPage }) {
   );
 }
 
-// One business the overview thinks one person could build, with the problems it answers.
-function Idea({ idea }: { idea: IdeaView }) {
-  return (
-    <article className="idea">
-      <header className="idea-head">
-        <h4 className="idea-name">{idea.name}</h4>
-        {idea.best && <span className="best-badge">Start here</span>}
-      </header>
-      <p className="idea-pitch">{idea.pitch}</p>
-      <dl className="idea-facts">
-        {idea.why && (
-          <div>
-            <dt>Why it could work</dt>
-            <dd>{idea.why}</dd>
-          </div>
-        )}
-        {idea.risk && (
-          <div>
-            <dt>Risk</dt>
-            <dd>{idea.risk}</dd>
-          </div>
-        )}
-        {idea.first && (
-          <div>
-            <dt>First step</dt>
-            <dd>{idea.first}</dd>
-          </div>
-        )}
-      </dl>
-      {idea.problems.length > 0 && (
-        <ul className="idea-from" aria-label="The problems it answers">
-          {idea.problems.map((p) => (
-            <li key={p.id}>
-              <Link to="/ideas/$id" params={{ id: String(p.id) }}>
-                {p.name}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </article>
-  );
-}
-
 // When the overview was written, Refresh, and what became of the last run that wrote none. While one is
 // being written the page asks the server again every 5s, so it appears without a reload.
 function OverviewFoot({ state, radar, category, view }: { state: OverviewState; radar: string; category?: string; view?: string }) {
@@ -899,6 +866,7 @@ export function ProblemView({ data }: { data: ProblemPage }) {
         <p className="problem-lede">{p.summary}</p>
         <Actions data={data} />
         <VerdictCard data={data} />
+        <ResearchCard data={data} />
         <div className="problem-facts">
           <dl className="stats">
             {facts.map(([k, v, wide]) => (
@@ -945,7 +913,8 @@ export function ProblemView({ data }: { data: ProblemPage }) {
   );
 }
 
-// Star, Kill, Judge again and Merge: plain forms posting to /admin/ideas/<id>, which redirects back.
+// Star, Kill, Judge again, Research this and Merge: plain forms posting to /admin/ideas/<id>, which
+// redirects back.
 function Actions({ data }: { data: ProblemPage }) {
   const { problem: p } = data;
   const action = `/admin/ideas/${p.id}`;
@@ -962,6 +931,8 @@ function Actions({ data }: { data: ProblemPage }) {
       {p.status === "starred" ? button("reopen", "Unstar") : p.status !== "killed" && button("star", "★ Star")}
       {p.status === "killed" ? button("reopen", "Reopen") : button("kill", "Kill")}
       {data.canJudge && button("judge", data.judging ? "Judging…" : data.asked ? "Asked, judging next run" : data.verdict ? "Judge again" : "Judge now", false, data.asked)}
+      {data.canResearch &&
+        button("research", data.researching ? "Researching…" : data.researchAsked ? "Asked, researching next run" : data.research ? "Research again" : "Research this", false, data.researchAsked)}
       {data.mergeTargets.length > 0 && (
         <form method="post" action={action} className="merge">
           <input type="hidden" name="action" value="merge" />
@@ -1054,6 +1025,129 @@ function VerdictCard({ data }: { data: ProblemPage }) {
         </div>
       )}
     </section>
+  );
+}
+
+// The research: whether one person should compete and why, the better solution when there is one, the
+// three ways to solve it, and the products that already do with what their users like and dislike.
+function ResearchCard({ data }: { data: ProblemPage }) {
+  useRefreshWhile(data.researching);
+  const r = data.research;
+  if (!r)
+    return data.canResearch ? (
+      <p className="callout">
+        {data.researching
+          ? "Researching now: it shows here when the run is done."
+          : data.researchAsked
+          ? "Research asked: the next research run takes it."
+          : "Not researched yet. The nightly research takes the problems judged Worth testing or Watch, or press Research this."}
+      </p>
+    ) : null;
+  return (
+    <section className="verdict-card research-card">
+      <header className="verdict-top">
+        <span className="verdict" data-verdict={r.worth ? "worth" : undefined}>
+          {r.worth ? "Worth competing" : "Not worth competing"}
+        </span>
+        <span className="note">
+          researched {r.day}
+          {r.madeAt && `, ${r.madeAt}`}
+        </span>
+      </header>
+      <p className="verdict-reason">{r.worthWhy}</p>
+      {r.better && (
+        <div className="research-better">
+          <h4>The better solution</h4>
+          <p className="research-better-name">{r.better.name}</p>
+          <p>{r.better.pitch}</p>
+          {r.better.edge && (
+            <p className="bet-risk">
+              <strong>Why it beats what exists</strong> {r.better.edge}
+            </p>
+          )}
+          {r.better.first && (
+            <div className="verdict-test">
+              <h4>First step</h4>
+              <p>{r.better.first}</p>
+            </div>
+          )}
+        </div>
+      )}
+      {r.approaches.length > 0 && (
+        <div className="verdict-part">
+          <h4>Three ways to solve it</h4>
+          <ol className="approaches">
+            {r.approaches.map((a) => (
+              <li key={a.name}>
+                <strong>{a.name}</strong> {a.how} <span className="approach-exists">{a.exists}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {r.products.length > 0 && (
+        <div className="verdict-part">
+          <h4>What exists, and what its users say</h4>
+          <Products products={r.products} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+};
+
+// The products the research found: price and size, what users like and dislike, and (in full) who it is
+// for, what it does and the review pages read.
+function Products({ products, compact }: { products: ResearchView["products"]; compact?: boolean }) {
+  return (
+    <ul className="products">
+      {products.map((x) => (
+        <li key={x.name} className="product">
+          <p className="product-head">
+            {x.url ? (
+              <a href={x.url} target="_blank" rel="noreferrer">
+                {x.name} ↗
+              </a>
+            ) : (
+              <strong>{x.name}</strong>
+            )}
+            {x.price && <span className="product-price">{x.price}</span>}
+          </p>
+          {!compact && x.who && <ProductLine k="For" v={x.who} />}
+          {!compact && x.does && <ProductLine k="Does" v={x.does} />}
+          {x.share && <ProductLine k="Size" v={x.share} />}
+          {x.liked && <ProductLine k="Liked" v={x.liked} />}
+          {x.disliked && <ProductLine k="Disliked" v={x.disliked} />}
+          {!compact && x.reviews.length > 0 && (
+            <p className="product-reviews">
+              {x.reviews.map((u) => (
+                <a key={u} href={u} target="_blank" rel="noreferrer">
+                  {hostOf(u)} ↗
+                </a>
+              ))}
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ProductLine({ k, v }: { k: string; v: string }) {
+  return (
+    <p className="product-line">
+      <span className="product-k" data-k={k.toLowerCase()}>
+        {k}
+      </span>{" "}
+      {v}
+    </p>
   );
 }
 
