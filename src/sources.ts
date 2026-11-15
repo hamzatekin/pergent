@@ -108,7 +108,7 @@ function newsletterGroup(cfg: any): SourceGroup | undefined {
   };
 }
 
-// A radar's sources (scripts/collect-posts.ts): the ideas radar's and the gym radar's.
+// A radar's sources (scripts/collect-posts.ts): the ideas radar's, the gym radar's and the UK-Turkey ones'.
 function collectGroups(cfg: any): SourceGroup[] {
   const groups: SourceGroup[] = [];
   const subs = (cfg?.reddit?.subs ?? []) as string[];
@@ -127,12 +127,20 @@ function collectGroups(cfg: any): SourceGroup[] {
     });
   for (const k of (cfg?.khoros ?? []) as { host: string; name?: string }[])
     groups.push({ title: k.name ?? k.host, note: `Its boards, the last ${cfg.forumDays ?? 14} days.`, links: [{ label: k.host, href: `https://${k.host}` }] });
-  const searches = [...((cfg?.reddit?.search ?? []) as { sub: string; query: string }[]).map((s) => ({ ...s, what: "posts" })), ...((cfg?.reddit?.comments ?? []) as { sub: string; query: string }[]).map((s) => ({ ...s, what: "comments" }))];
+  // A post search without words of its own takes reddit.words (collect-posts.ts).
+  const words = (cfg?.reddit?.words ?? []) as string[];
+  const searches = [
+    ...((cfg?.reddit?.search ?? []) as { sub: string; query?: string | string[] }[]).map((s) => ({ sub: s.sub, own: s.query === undefined ? null : [s.query].flat(), what: "posts" })),
+    ...((cfg?.reddit?.comments ?? []) as { sub: string; query: string }[]).map((s) => ({ sub: s.sub, own: [s.query], what: "comments" })),
+  ];
   if (searches.length)
     groups.push({
       title: plural(new Set(searches.map((s) => s.sub)).size, "subreddit searched", "subreddits searched"),
-      note: "The new posts and comments that match the words, through Arctic Shift.",
-      links: searches.map((s) => ({ label: `r/${s.sub} ${s.what} "${s.query}"`, href: `https://www.reddit.com/r/${s.sub}/search/?q=${encodeURIComponent(s.query)}` })),
+      note: `The new posts and comments that match the words, through Arctic Shift.${searches.some((s) => !s.own) && words.length ? ` Posts with no words named here match any of ${words.join(", ")}.` : ""}`,
+      links: searches.map((s) => ({
+        label: s.own ? `r/${s.sub} ${s.what} "${s.own.join('", "')}"` : `r/${s.sub} ${s.what}`,
+        href: `https://www.reddit.com/r/${s.sub}/search/?q=${encodeURIComponent((s.own ?? words).join(" OR "))}`,
+      })),
     });
   const st = cfg?.stores;
   const apps = (st?.apps ?? []) as { name: string; apple?: number; play?: string }[];

@@ -1,5 +1,6 @@
 // Collects posts for a radar: what small business owners post, and what they pay others to do by hand,
-// for the ideas radar; what people say about gym and fitness apps for the gym radar. Every post not seen
+// for the ideas radar; what people say about gym and fitness apps for the gym radar; what UK firms and
+// people say about buying from, selling to and travelling to Turkey for the two UK-Turkey radars. Every post not seen
 // before goes to posts.json in the current directory with the kind Jev gives it, and the runner saves
 // the file to the database's posts table, which keeps them all, under the task that collected it.
 // Keyless sources, under $TASK_DIR/task.json's "collect":
@@ -8,8 +9,10 @@
 //                page, removed and deleted posts left out. Reddit's own RSS ends on 2026-11-13 and its
 //                logged-out JSON answers 403. Arctic Shift lags Reddit by an hour or two, which the
 //                window covers, and refuses requests that come too fast (see arctic()). `search`,
-//                `[{ sub, query }]`, keeps only the posts of a big subreddit that name the word, or its
-//                plural, as a whole word (r/Fitness about an app): every post is fetched and matched here,
+//                `[{ sub, query? }]`, keeps only the posts of a big subreddit that name the word, or its
+//                plural, as a whole word (r/Fitness about an app); `query` can be a list of words, any
+//                of which will do, and an entry without one takes `reddit.words` (Turkey, Turkish,
+//                Istanbul… for the UK-Turkey radars): every post is fetched and matched here,
 //                since Arctic Shift's full-text search over a big subreddit answers 422 "Timeout" more
 //                often than not. `comments`, the same shape, is its comments that do, through Arctic
 //                Shift's comment search (a subreddit's every comment would be thousands a day): in the
@@ -173,11 +176,13 @@ async function arctic<T = ArcticPost>(params: URLSearchParams, what: "posts" | "
   }
 }
 
-// Oldest first, a page at a time from the newest post of the page before; with `word`, only the posts
-// that name it (or its plural) as a whole word.
-async function reddit(sub: string, word?: string): Promise<Post[]> {
+// Oldest first, a page at a time from the newest post of the page before; with `words`, only the posts
+// that name one of them (or its plural) as a whole word. A word's edge is any letter, not only ASCII ones
+// as \b's is, so "İstanbul" and "Türkiye" match too.
+async function reddit(sub: string, words?: string[]): Promise<Post[]> {
   const posts: Post[] = [];
-  const names = word && new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}s?\\b`, "i");
+  const escaped = words?.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const names = escaped && new RegExp(`(?<![\\p{L}\\p{N}_])(?:${escaped})s?(?![\\p{L}\\p{N}_])`, "iu");
   let after = Math.floor(since / 1000);
   for (let page = 0; page < 10 && Date.now() < deadline; page++) {
     const items = await arctic(new URLSearchParams({ subreddit: sub, after: String(after), sort: "asc", limit: "100" }));
@@ -457,12 +462,13 @@ const jobs: [string, () => Promise<Post[]>][] = [
   ...(youtubeKey ? ((yt.queries ?? []) as string[]).map((q): [string, () => Promise<Post[]>] => [`YouTube "${q}"`, () => youtube(q)]) : []),
 ];
 if (!youtubeKey && yt.queries?.length) say("youtube: skipped, no YOUTUBE_API_KEY");
-type Search = { sub: string; query: string };
+type Search = { sub: string; query?: string | string[] };
+const wordsOf = (s: Search): string[] => (s.query === undefined ? (collect.reddit?.words ?? []) : [s.query].flat());
 await Promise.all([
   (async () => {
     for (const sub of (collect.reddit?.subs ?? []) as string[]) await fetchFrom(`r/${sub}`, () => reddit(sub));
-    for (const s of (collect.reddit?.search ?? []) as Search[]) await fetchFrom(`r/${s.sub} "${s.query}"`, () => reddit(s.sub, s.query));
-    for (const s of (collect.reddit?.comments ?? []) as Search[]) await fetchFrom(`r/${s.sub} comments "${s.query}"`, () => redditComments(s.sub, s.query));
+    for (const s of (collect.reddit?.search ?? []) as Search[]) await fetchFrom(`r/${s.sub} ${s.query === undefined ? "naming the words" : `"${wordsOf(s).join('", "')}"`}`, () => reddit(s.sub, wordsOf(s)));
+    for (const s of (collect.reddit?.comments ?? []) as { sub: string; query: string }[]) await fetchFrom(`r/${s.sub} comments "${s.query}"`, () => redditComments(s.sub, s.query));
   })(),
   ...Array.from({ length: 6 }, async () => {
     for (let job = jobs.shift(); job; job = jobs.shift()) await fetchFrom(...job);

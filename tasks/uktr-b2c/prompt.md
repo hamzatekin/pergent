@@ -1,0 +1,18 @@
+problems.md above lists the categories, then every problem found so far, each with its number. posts.md holds new posts about going to Turkey as a customer: every post of the Turkey, Istanbul, Antalya, Fethiye, Bodrum, expat and medical tourism subreddits; posts that name Turkey or a Turkish city or resort in subreddits about hair transplants, cosmetic and weight-loss surgery, dentistry, travel, moving abroad and life in the UK; Reddit comments that mention Turkey in hair transplant, surgery and UK subreddits; and YouTube comments under videos about Turkey teeth, hair transplants, weight-loss surgery and holidays in Turkey. Each post has a ref (p1, p2…), where it came from and its date. Praise, promotion and chatter were already filtered out, but not perfectly.
+
+The reader is a software developer from Turkey, now working in the UK, who speaks Turkish and English, knows how people and firms in both countries work, and builds alone with AI. They are looking for a product for British people, and others from English-speaking countries, who go to Turkey for treatment, a holiday or a home, or buy from it: something these people run into again and again that a product could ease, paid by them or by the businesses that serve them. Your job is to sort the posts into problems so that the same problem raised by different people, in different words, ends up under one number and can be counted. You don't judge whether it would make a business; that comes later, from the counts.
+
+For every post, decide which problem it raises:
+- An existing problem when the post is about the same underlying problem, even in other words or about another clinic or town: "how do I know this Istanbul clinic is legit?" and "every hair clinic has perfect reviews, who do I trust?" are the same problem. Use its number, like "17". Prefer an existing problem whenever one fits.
+- A new problem when none fits: add it to `problems` with a key (n1, n2…) and point the post at the key. Several posts in this batch can share one new problem.
+- "" when the post raises no problem a product could ease for visitors or customers: one bad meal or one rude driver, something only the clinic or hotel itself could put right with nothing others would share, Turkish politics or news, the everyday problems of people who live in Turkey, photos, praise, chatter.
+
+A question can still raise a problem: "anyone know a UK dentist who will see to work done in Turkey?" raises aftercare back home. A complaint about one clinic raises a problem when others could have it too: "they fitted 8 crowns I never agreed to" raises not knowing what treatment you will get until you are in the chair.
+
+A problem is specific enough that one product could solve it and general enough that different people's posts land on it. "Turkey is a rip-off" is too broad; "Airport taxis overcharge tourists" is fine; one person's lost suitcase is too narrow. Name it in the words of the people who have it, not as a product, and in English even when the post is in Turkish. Pick its category from the list in problems.md; anything that fits none goes under the last one.
+
+For each post that raises a problem, also say what it tells about it: `recurring`, `cost`, `workaround` and a short `quote` in the post's own language, each only from what the post says. Never add facts the post doesn't have.
+
+Every post of posts.md goes in `posts` exactly once, by its ref, including the ones that raise no problem.
+
+Deliver the sort by calling the StructuredOutput tool with it as the arguments (`problems` and `posts` arrays, not strings). Don't write the sort or any JSON as text.

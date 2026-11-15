@@ -385,7 +385,7 @@ export function ProblemView({ data }: { data: ProblemPage }) {
     ["People", p.people],
     ["Mentions", p.mentions],
     ["Sources", p.sources.join(", ")],
-    ...(p.task === "ideas" ? [["Paid jobs", p.jobs || "none"] as [string, string | number]] : []),
+    ...(p.task === "ideas" || p.jobs ? [["Paid jobs", p.jobs || "none"] as [string, string | number]] : []),
     ["Say it recurs", p.recurring],
     ["Name a cost", p.costed],
     ["Have a workaround", p.workarounds],
