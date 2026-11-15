@@ -300,13 +300,19 @@ export function verdictOf(hardNo: string, scores: Record<string, Score>): Verdic
 // Enough evidence to judge: 4 mentions from 3 people, or a paid job and 2 more posts.
 export const judgeBar = (s: ProblemStats) => (s.mentions >= 4 && s.people >= 3) || (s.jobs >= 1 && s.mentions >= 3);
 
+// Whether a never-show phrase hides a problem: matched on its name only. A summary names the platforms
+// people happen to use ("on Shopify or Etsy"), and matching it hid a problem 75 people raised; a problem
+// about a muted product is named after it. Posts are matched whole, before the sort (prepareSort).
+export const problemMuted = (p: { name: string }, muted: string[]) => muted.some((m) => mentions(p.name, m));
+
 // The problems the next judge run takes, asked ones first, then those with the most people: open or
-// starred, not muted, over the bar, and never judged, grown by half since, or judged 30 days ago.
+// starred, not muted, over the bar, and never judged, grown by half since, or judged 30 days ago. Judge
+// again goes through whatever the problem's state: the reader asked for it.
 export function toJudge(task: string, max: number, muted: string[], now = Date.now()): { p: ProblemRow; s: ProblemStats; last?: VerdictRow }[] {
   const stats = problemStats(task, now);
   const verdicts = latestVerdicts();
   return listProblems(task)
-    .filter((p) => p.status !== "killed" && stats.has(p.id) && !muted.some((m) => mentions(`${p.name}\n${p.summary}`, m)))
+    .filter((p) => stats.has(p.id) && (p.judgeAsked || (p.status !== "killed" && !problemMuted(p, muted))))
     .map((p) => ({ p, s: stats.get(p.id)!, last: verdicts.get(p.id) }))
     .filter(({ p, s, last }) => p.judgeAsked || (judgeBar(s) && (!last || s.mentions >= last.mentions * 1.5 || now - Date.parse(last.createdAt) > 30 * 86_400_000)))
     .sort((a, b) => Number(!!b.p.judgeAsked) - Number(!!a.p.judgeAsked) || b.s.people - a.s.people)
@@ -438,7 +444,7 @@ export function toResearch(task: string, max: number, muted: string[], now = Dat
   const looked = (v?: VerdictRow) => v?.verdict === "worth" || v?.verdict === "watch";
   // Research this goes through whatever the problem's state: the reader asked for it.
   return listProblems(task)
-    .filter((p) => stats.has(p.id) && (p.researchAsked || (p.status !== "killed" && !muted.some((m) => mentions(`${p.name}\n${p.summary}`, m)))))
+    .filter((p) => stats.has(p.id) && (p.researchAsked || (p.status !== "killed" && !problemMuted(p, muted))))
     .map((p) => ({ p, s: stats.get(p.id)!, v: verdicts.get(p.id), r: research.get(p.id) }))
     .filter(({ p, v, r }) => p.researchAsked || (looked(v) && (!r || r.verdict !== v!.verdict)))
     .sort((a, b) => Number(!!b.p.researchAsked) - Number(!!a.p.researchAsked) || Number(b.v?.verdict === "worth") - Number(a.v?.verdict === "worth") || fitOf(b.v) - fitOf(a.v) || b.s.people - a.s.people)
@@ -612,7 +618,7 @@ export async function prepareOverview(radar: string, dir: string, radarConfig: T
     if (f.workaround && s.workarounds.size < 4) s.workarounds.add(f.workaround);
   }
   const rows = listProblems(radar)
-    .filter((p) => p.status !== "killed" && stats.has(p.id) && !muted.some((m) => mentions(`${p.name}\n${p.summary}`, m)))
+    .filter((p) => p.status !== "killed" && stats.has(p.id) && !problemMuted(p, muted))
     .map((p) => ({ p, s: stats.get(p.id)!, v: verdicts.get(p.id) }));
   const shown = (r: (typeof rows)[number]) => r.s.people > 1 || !!r.v || r.p.status === "starred";
   // Starred first, then by verdict as the page orders them: worth testing, watch, not judged, pass.
