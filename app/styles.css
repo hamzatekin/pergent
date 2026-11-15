@@ -1205,37 +1205,8 @@ a.chip:active {
 .epc[data-band="G"] {
   @apply bg-[#e9153b] text-white;
 }
-/* The Ideas pages (components/Ideas.tsx): a category's problems as one list, each row its name, summary
-   and counts with its trend and 8 weeks of mentions on the right; a problem's page with its counts and
-   every post that raised it. */
-.problems {
-  @apply overflow-hidden rounded-xl bg-surface shadow-border;
-}
-.problems li {
-  @apply border-b border-line last:border-0;
-}
-.problem-row {
-  @apply flex items-start justify-between gap-4 px-3.5 py-2.5 hover:bg-bg;
-}
-.problem-main {
-  @apply flex min-w-0 flex-col gap-0.5;
-}
-.problem-name {
-  @apply text-[13.5px] font-medium text-ink text-pretty;
-}
-.problem-summary {
-  @apply text-[13px] text-soft text-pretty md:line-clamp-1;
-}
-.problem-meta {
-  @apply flex flex-wrap gap-x-2 text-[12px] text-muted;
-}
-.problem-meta span + span::before {
-  content: "·";
-  @apply mr-2 text-faint;
-}
-.problem-side {
-  @apply flex shrink-0 flex-col items-end gap-1.5 pt-0.5;
-}
+/* The Ideas pages (components/Ideas.tsx): a radar's board in one of three views (below), and a problem's
+   page with its counts and every post that raised it. */
 .trend {
   @apply rounded-full bg-inset px-2 text-[11.5px] font-medium leading-[19px] text-soft;
 }
@@ -1248,37 +1219,16 @@ a.chip:active {
 .trend[data-trend="fading"] {
   @apply text-faint;
 }
-/* The Ideas home and a category: the overview card (its summary, the ideas to start with, when it was
-   written and Refresh), the category cards, and a category's ideas, each with the problems it answers. */
+/* The overview's ideas for a category, each with the problems it answers, and the line under every view
+   with when the overview was written and Refresh. */
 .overview {
   @apply rounded-xl bg-surface p-4 shadow-border md:px-5;
-}
-.overview-summary {
-  @apply max-w-[72ch] text-[15px] leading-[1.6] text-ink text-pretty;
-}
-.overview-empty {
-  @apply text-[13.5px] leading-[1.55] text-soft text-pretty;
 }
 .overview-h {
   @apply mb-2 mt-4 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted;
 }
 .ideas-h {
   @apply mt-6 px-1;
-}
-.best {
-  @apply grid gap-2 md:grid-cols-3;
-}
-.best-idea {
-  @apply flex h-full flex-col gap-1 rounded-lg bg-bg px-3 py-2.5 shadow-border transition-[box-shadow] duration-150 ease-out hover:shadow-border-hover;
-}
-.best-name {
-  @apply text-[13.5px] font-medium text-ink text-pretty;
-}
-.best-pitch {
-  @apply text-[13px] leading-[1.5] text-soft text-pretty;
-}
-.best-cat {
-  @apply mt-auto pt-1 text-[12px] text-muted;
 }
 .overview-foot {
   @apply mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line pt-3;
@@ -1288,27 +1238,6 @@ a.chip:active {
 }
 .overview-foot .note[data-old] {
   @apply text-warn;
-}
-.cats {
-  @apply grid gap-3 md:grid-cols-2 xl:grid-cols-3;
-}
-.cat {
-  @apply flex h-full flex-col gap-1 rounded-xl bg-surface px-4 py-3 shadow-border transition-[box-shadow] duration-150 ease-out hover:shadow-border-hover;
-}
-.cat-name {
-  @apply text-[14px] font-medium text-ink;
-}
-.cat-take {
-  @apply text-[13px] leading-[1.5] text-soft text-pretty;
-}
-.cat-foot {
-  @apply mt-auto flex items-baseline justify-between gap-3 pt-1.5;
-}
-.cat-worth {
-  @apply font-medium text-good;
-}
-.cat-ideas {
-  @apply shrink-0 text-[12px] font-medium text-accent;
 }
 .ideas {
   @apply flex flex-col divide-y divide-line;
@@ -1349,6 +1278,439 @@ a.chip:active {
 }
 .ideas-foot {
   @apply mt-8;
+}
+.ideas-foot .overview-foot {
+  @apply mb-4 mt-0 border-0 pt-0;
+}
+.overview-what {
+  @apply text-[13px] font-medium text-soft;
+}
+/* The Ideas views (app/ideas-view.ts): the radars and the view switch on one row, then the brief (a
+   sentence on the board, the funnel, the lead problem, a ranked table, what is coming up), the map (an
+   SVG chart, the picked problem beside it, the four quadrants) or the board (a column per stage). */
+.ideas-bar {
+  @apply mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2;
+}
+.ideas-bar .feed-chips {
+  @apply mb-0;
+}
+.views-wrap {
+  @apply flex items-center gap-2;
+}
+.views {
+  @apply flex items-center gap-0.5 rounded-md p-0.5 shadow-border;
+}
+.view {
+  @apply rounded-[5px] px-2.5 py-0.5 text-[13px] font-medium leading-[20px] text-muted hover:text-ink;
+  transition-property: color, background-color, box-shadow, scale;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.view:active {
+  scale: 0.96;
+}
+/* Link marks a link whose search is a subset of the page's as current, so the brief's (no ?view=) would
+   always be; the view shown is marked by data-on instead. */
+.view[data-on] {
+  @apply bg-surface text-ink shadow-border;
+}
+.view-default {
+  @apply text-[12.5px] text-muted;
+}
+.answer {
+  @apply mb-4 rounded-xl bg-surface p-4 shadow-border md:px-5;
+}
+.answer-head {
+  @apply max-w-[60ch] text-[19px] font-semibold leading-[1.35] text-ink text-balance;
+}
+.answer-sub {
+  @apply mt-1 max-w-[72ch] text-[14px] leading-[1.55] text-soft text-pretty;
+}
+.funnel {
+  @apply mt-4 grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))];
+}
+.funnel li {
+  @apply flex flex-col rounded-lg bg-bg px-3 py-2 shadow-border;
+}
+.funnel-n {
+  @apply text-[18px] font-semibold tabular-nums text-ink;
+}
+.funnel-label {
+  @apply text-[12.5px] font-medium text-soft;
+}
+.funnel-hint {
+  @apply text-[11.5px] leading-[1.4] text-muted;
+}
+.answer-more {
+  @apply mt-3 text-[13.5px];
+}
+.answer-more summary {
+  @apply cursor-pointer font-medium text-muted hover:text-ink;
+}
+.answer-more p {
+  @apply mt-2 max-w-[72ch] leading-[1.6] text-soft text-pretty;
+}
+.bet {
+  @apply rounded-xl bg-surface p-4 shadow-border md:p-5;
+}
+.bet-tag {
+  @apply text-[11px] font-semibold uppercase tracking-[0.04em] text-accent;
+}
+.bet-head {
+  @apply mt-1 flex flex-wrap items-start justify-between gap-x-3 gap-y-1;
+}
+.bet-name {
+  @apply text-[18px] font-semibold leading-[1.35] text-ink text-pretty;
+}
+.bet-name a:hover,
+.sel-name a:hover {
+  @apply underline decoration-black/20 underline-offset-[3px];
+}
+.bet-pitch {
+  @apply mt-1 max-w-[72ch] text-[14.5px] leading-[1.55] text-ink text-pretty;
+}
+.bet-from {
+  @apply mt-1 text-[12.5px] text-muted;
+}
+.bet-from a {
+  @apply text-soft underline decoration-black/20 underline-offset-[3px] hover:text-ink;
+}
+.bet-stats {
+  @apply mt-4 flex flex-wrap gap-x-8 gap-y-3;
+}
+.bet-stats dt {
+  @apply text-[11.5px] text-muted;
+}
+.bet-stats dd {
+  @apply mt-0.5 flex h-6 items-end text-[18px] font-semibold leading-none tabular-nums text-ink;
+}
+.asks {
+  @apply mt-4 flex flex-col divide-y divide-line border-y border-line;
+}
+.asks li {
+  @apply grid grid-cols-[8.5rem_auto_1.25rem] items-center gap-x-3 gap-y-0.5 py-1.5 md:grid-cols-[9rem_auto_1.25rem_minmax(0,1fr)];
+}
+.ask-label {
+  @apply text-[13px] font-medium text-soft;
+}
+.ask-bar {
+  @apply flex gap-0.5;
+}
+.ask-bar span {
+  @apply h-2 w-4 rounded-[2px] bg-line;
+}
+.ask-bar span[data-on] {
+  @apply bg-accent;
+}
+.asks li[data-weak] .ask-bar span[data-on] {
+  @apply bg-warn;
+}
+.asks li[data-weak] .ask-label {
+  @apply font-semibold text-[#8a5a00];
+}
+.ask-score {
+  @apply text-[13px] font-semibold tabular-nums text-ink;
+}
+.ask-why {
+  @apply col-span-3 line-clamp-2 text-[12.5px] leading-[1.5] text-muted md:col-span-1;
+}
+.asks[data-compact] li {
+  @apply grid-cols-[5.5rem_auto_1rem] py-1;
+}
+.bet-quotes {
+  @apply mt-4 grid gap-2 md:grid-cols-2;
+}
+.bet-quote {
+  @apply rounded-lg bg-bg px-3 py-2.5;
+}
+.bet-quote p {
+  @apply text-[13.5px] leading-[1.55] text-ink text-pretty;
+}
+.bet-quote footer {
+  @apply mt-1 text-[12px] text-muted;
+}
+.bet-quote a {
+  @apply text-soft hover:text-ink;
+}
+.bet-risk {
+  @apply mt-3 max-w-[72ch] text-[13px] leading-[1.55] text-soft text-pretty;
+}
+.bet-risk strong {
+  @apply mr-1 font-medium text-ink;
+}
+.bet .problem-actions {
+  @apply mt-4;
+}
+.table-wrap {
+  @apply overflow-x-auto rounded-xl bg-surface shadow-border;
+}
+.ptable {
+  @apply w-full min-w-[640px] border-collapse text-[13px];
+}
+.ptable th {
+  @apply border-b border-line px-3 py-2 text-left text-[11.5px] font-medium whitespace-nowrap text-muted;
+}
+.ptable td {
+  @apply border-b border-line px-3 py-2 align-top text-soft;
+}
+.ptable tbody tr:last-child td {
+  @apply border-0;
+}
+.ptable tbody tr:hover {
+  @apply bg-bg;
+}
+.ptable .num {
+  @apply text-right tabular-nums;
+}
+.ptable .rank {
+  @apply text-muted;
+}
+.ptable-name {
+  @apply font-medium text-ink text-pretty decoration-black/20 underline-offset-[3px] hover:underline;
+}
+.ptable-meta {
+  @apply mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted;
+}
+.ptable .weak {
+  @apply text-[12.5px] text-soft;
+}
+.ptable .when {
+  @apply whitespace-nowrap text-muted;
+}
+.fit {
+  @apply inline-flex items-center gap-2 whitespace-nowrap tabular-nums text-ink;
+}
+.fit-track {
+  fill: var(--color-line);
+}
+.fit-on {
+  fill: var(--color-accent);
+}
+.coming {
+  @apply mt-6 grid gap-3 md:grid-cols-2;
+}
+.coming section {
+  @apply rounded-xl bg-surface p-4 shadow-border;
+}
+.coming .overview-h {
+  @apply mt-0;
+}
+.mini {
+  @apply flex flex-col divide-y divide-line;
+}
+.mini li {
+  @apply flex items-baseline justify-between gap-3 py-1.5 text-[13px];
+}
+.mini a {
+  @apply min-w-0 text-ink text-pretty decoration-black/20 underline-offset-[3px] hover:underline;
+}
+.mini span {
+  @apply shrink-0 text-[12px] whitespace-nowrap text-muted;
+}
+.map-head {
+  @apply mb-3 flex flex-wrap items-center justify-between gap-2;
+}
+.map-lede {
+  @apply text-[13.5px] text-soft text-pretty;
+}
+.map-lede strong {
+  @apply font-medium text-ink;
+}
+.map-grid {
+  @apply grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_20rem];
+}
+.map {
+  @apply rounded-xl bg-surface p-2 shadow-border;
+}
+.map svg {
+  @apply block h-auto w-full;
+}
+.map-build {
+  fill: var(--color-accent);
+  fill-opacity: 0.06;
+}
+.map-split {
+  stroke: var(--color-faint);
+  stroke-dasharray: 3 4;
+}
+.map-axis {
+  stroke: var(--color-line);
+}
+.map-tick,
+.map-axis-label {
+  fill: var(--color-muted);
+  font-size: 11px;
+}
+.map-quad {
+  fill: var(--color-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.map-dot {
+  fill: var(--color-faint);
+  fill-opacity: 0.55;
+  stroke: white;
+  stroke-width: 1;
+  cursor: pointer;
+  transition: fill-opacity 150ms var(--ease-out);
+}
+.map-dot[data-verdict="watch"] {
+  fill: var(--color-warn);
+}
+.map-dot[data-verdict="worth"] {
+  fill: var(--color-good);
+}
+a:hover > .map-dot,
+a:focus-visible > .map-dot {
+  fill-opacity: 0.85;
+}
+.map-dot[data-selected] {
+  fill: var(--color-accent);
+  fill-opacity: 0.9;
+  stroke: var(--color-ink);
+  stroke-width: 1.5;
+}
+.map-name {
+  fill: var(--color-ink);
+  font-size: 12px;
+  font-weight: 500;
+  paint-order: stroke;
+  stroke: white;
+  stroke-width: 3px;
+}
+.map-side {
+  @apply rounded-xl bg-surface p-4 shadow-border;
+}
+.sel {
+  @apply flex flex-col items-start gap-2;
+}
+.sel-name {
+  @apply text-[15px] font-semibold leading-[1.4] text-ink text-pretty;
+}
+.sel-meta {
+  @apply text-[12.5px] text-muted;
+}
+.sel .asks {
+  @apply mt-1 w-full;
+}
+.sel-weak {
+  @apply text-[12.5px] leading-[1.5] text-soft text-pretty;
+}
+.sel-weak strong {
+  @apply mr-1 font-medium text-ink;
+}
+.sel .verdict-test {
+  @apply mt-0 w-full;
+}
+.quads {
+  @apply mt-3 grid gap-3 md:grid-cols-2;
+}
+.quad {
+  @apply rounded-xl bg-surface p-4 shadow-border;
+}
+/* The quadrants sit as they do on the chart from md up; on a phone, Build here comes first. */
+.quad[data-quad="thin"] {
+  @apply md:order-1;
+}
+.quad[data-quad="build"] {
+  @apply md:order-2;
+}
+.quad[data-quad="skip"] {
+  @apply md:order-3;
+}
+.quad[data-quad="hard"] {
+  @apply md:order-4;
+}
+.quad h3 {
+  @apply text-[13.5px] font-semibold text-ink;
+}
+.quad[data-quad="build"] h3 {
+  @apply text-accent;
+}
+.quad-hint {
+  @apply mt-0.5 text-[12.5px] text-muted text-pretty;
+}
+.quad ul {
+  @apply mt-2 flex flex-col divide-y divide-line;
+}
+.quad li {
+  @apply flex items-baseline justify-between gap-3 py-1.5 text-[13px];
+}
+.quad a {
+  @apply min-w-0 text-soft text-pretty hover:text-ink;
+}
+.quad a[aria-current] {
+  @apply font-medium text-accent;
+}
+.quad li span {
+  @apply text-[12px] tabular-nums text-muted;
+}
+.board-week {
+  @apply mb-3 text-[13.5px] text-soft;
+}
+.kanban {
+  @apply -mx-4 flex gap-3 overflow-x-auto px-4 pb-2 md:mx-0 md:grid md:overflow-visible md:px-0;
+}
+.kanban[data-columns="4"] {
+  @apply md:grid-cols-2 xl:grid-cols-4;
+}
+.kanban[data-columns="3"] {
+  @apply md:grid-cols-3;
+}
+.lane {
+  @apply flex w-[17rem] shrink-0 flex-col gap-2 rounded-xl bg-sidebar/70 p-2.5 md:w-auto;
+}
+.lane-head {
+  @apply flex items-baseline justify-between gap-2 px-1;
+}
+.lane-head h3 {
+  @apply text-[13px] font-semibold text-ink;
+}
+.lane-hint {
+  @apply -mt-1.5 px-1 text-[12px] text-muted;
+}
+.cards {
+  @apply flex flex-col gap-2;
+}
+.kcard {
+  @apply flex flex-col gap-1 rounded-lg bg-surface px-3 py-2.5 shadow-border transition-[box-shadow] duration-150 ease-out hover:shadow-border-hover;
+}
+.kcard-name {
+  @apply text-[13.5px] font-medium leading-[1.4] text-ink text-pretty;
+}
+.kcard-cat {
+  @apply text-[12px] text-muted;
+}
+.kcard-meta {
+  @apply flex flex-wrap gap-x-1.5 text-[12px] text-muted;
+}
+.kcard-meta span + span::before {
+  content: "·";
+  @apply mr-1.5 text-faint;
+}
+.kcard-weak {
+  @apply text-[12px] text-soft;
+}
+.kcard-foot {
+  @apply mt-1 flex items-end justify-between gap-2;
+}
+.lane-empty {
+  @apply rounded-lg border border-dashed border-black/10 px-3 py-4 text-[12.5px] leading-[1.5] text-muted;
+}
+.lane-more,
+.note-link {
+  @apply px-1 text-[12.5px] text-muted hover:text-ink;
+}
+.lane-passed {
+  @apply mt-4 rounded-xl bg-surface p-4 shadow-border;
+}
+.lane-passed .overview-h {
+  @apply mt-0;
+}
+.lane-passed .note-link {
+  @apply mt-2 inline-block px-0;
 }
 a.stamp {
   @apply hover:text-ink;

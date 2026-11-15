@@ -25,6 +25,7 @@ import { Route as ApiStatusRouteImport } from './routes/api/status'
 import { Route as ApiTasksRouteImport } from './routes/api/tasks'
 import { Route as IdeasIndexRouteImport } from './routes/ideas.index'
 import { Route as IdeasIdRouteImport } from './routes/ideas.$id'
+import { Route as IdeasDefaultRouteImport } from './routes/ideas.default'
 import { Route as NewslettersChar123FeedChar125RouteImport } from './routes/newsletters.{-$feed}'
 import { Route as AdminAuthedIndexRouteImport } from './routes/admin/_authed/index'
 import { Route as AdminIdeasIdRouteImport } from './routes/admin/ideas.$id'
@@ -120,6 +121,11 @@ const IdeasIdRoute = IdeasIdRouteImport.update({
   path: '/ideas/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IdeasDefaultRoute = IdeasDefaultRouteImport.update({
+  id: '/ideas/default',
+  path: '/ideas/default',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NewslettersChar123FeedChar125Route =
   NewslettersChar123FeedChar125RouteImport.update({
     id: '/newsletters/{-$feed}',
@@ -212,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/api/status': typeof ApiStatusRoute
   '/api/tasks': typeof ApiTasksRouteWithChildren
   '/ideas/$id': typeof IdeasIdRoute
+  '/ideas/default': typeof IdeasDefaultRoute
   '/newsletters/{-$feed}': typeof NewslettersChar123FeedChar125Route
   '/ideas/': typeof IdeasIndexRoute
   '/admin/ideas/$id': typeof AdminIdeasIdRoute
@@ -243,6 +250,7 @@ export interface FileRoutesByTo {
   '/api/status': typeof ApiStatusRoute
   '/api/tasks': typeof ApiTasksRouteWithChildren
   '/ideas/$id': typeof IdeasIdRoute
+  '/ideas/default': typeof IdeasDefaultRoute
   '/newsletters/{-$feed}': typeof NewslettersChar123FeedChar125Route
   '/ideas': typeof IdeasIndexRoute
   '/admin/ideas/$id': typeof AdminIdeasIdRoute
@@ -276,6 +284,7 @@ export interface FileRoutesById {
   '/api/status': typeof ApiStatusRoute
   '/api/tasks': typeof ApiTasksRouteWithChildren
   '/ideas/$id': typeof IdeasIdRoute
+  '/ideas/default': typeof IdeasDefaultRoute
   '/newsletters/{-$feed}': typeof NewslettersChar123FeedChar125Route
   '/ideas/': typeof IdeasIndexRoute
   '/admin/ideas/$id': typeof AdminIdeasIdRoute
@@ -310,6 +319,7 @@ export interface FileRouteTypes {
     | '/api/status'
     | '/api/tasks'
     | '/ideas/$id'
+    | '/ideas/default'
     | '/newsletters/{-$feed}'
     | '/ideas/'
     | '/admin/ideas/$id'
@@ -341,6 +351,7 @@ export interface FileRouteTypes {
     | '/api/status'
     | '/api/tasks'
     | '/ideas/$id'
+    | '/ideas/default'
     | '/newsletters/{-$feed}'
     | '/ideas'
     | '/admin/ideas/$id'
@@ -373,6 +384,7 @@ export interface FileRouteTypes {
     | '/api/status'
     | '/api/tasks'
     | '/ideas/$id'
+    | '/ideas/default'
     | '/newsletters/{-$feed}'
     | '/ideas/'
     | '/admin/ideas/$id'
@@ -406,6 +418,7 @@ export interface RootRouteChildren {
   ApiStatusRoute: typeof ApiStatusRoute
   ApiTasksRoute: typeof ApiTasksRouteWithChildren
   IdeasIdRoute: typeof IdeasIdRoute
+  IdeasDefaultRoute: typeof IdeasDefaultRoute
   NewslettersChar123FeedChar125Route: typeof NewslettersChar123FeedChar125Route
   IdeasIndexRoute: typeof IdeasIndexRoute
   AdminIdeasIdRoute: typeof AdminIdeasIdRoute
@@ -527,6 +540,13 @@ declare module '@tanstack/react-router' {
       path: '/ideas/$id'
       fullPath: '/ideas/$id'
       preLoaderRoute: typeof IdeasIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ideas/default': {
+      id: '/ideas/default'
+      path: '/ideas/default'
+      fullPath: '/ideas/default'
+      preLoaderRoute: typeof IdeasDefaultRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/newsletters/{-$feed}': {
@@ -715,6 +735,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiStatusRoute: ApiStatusRoute,
   ApiTasksRoute: ApiTasksRouteWithChildren,
   IdeasIdRoute: IdeasIdRoute,
+  IdeasDefaultRoute: IdeasDefaultRoute,
   NewslettersChar123FeedChar125Route: NewslettersChar123FeedChar125Route,
   IdeasIndexRoute: IdeasIndexRoute,
   AdminIdeasIdRoute: AdminIdeasIdRoute,

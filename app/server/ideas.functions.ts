@@ -1,12 +1,13 @@
 import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { setResponseHeader } from "@tanstack/react-start/server";
+import { getCookie, setResponseHeader } from "@tanstack/react-start/server";
 import { getProblem, getRun, latestOverview, latestVerdicts, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type OverviewRow, type ProblemRow, type VerdictRow } from "#src/db.ts";
-import { QUESTIONS, RADAR, VERDICTS, categoriesOf, judgeBar, judgeOf, overviewOf, problemStats, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
+import { QUESTIONS, RADAR, VERDICTS, categoriesOf, judgeBar, judgeOf, overviewOf, problemStats, toJudge, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
 import { mentions } from "#src/mute.ts";
 import { listRuns, listTasks, loadTask, type TaskConfig } from "#src/runner.ts";
 import { isRunning, isWaiting } from "#src/scheduler.ts";
 import { taskSources, type TaskSources } from "#src/sources.ts";
+import { type IdeasView, ideasViewCookieName, isIdeasView } from "../ideas-view.ts";
 import { PASSWORD, loggedIn } from "./admin.ts";
 import { ago, formatDate, formatDay } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
@@ -24,6 +25,20 @@ async function radars(): Promise<{ task: string; label: string }[]> {
   return out.sort((a, b) => Number(b.task === RADAR) - Number(a.task === RADAR));
 }
 
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// The six questions a verdict scores, asked the way the Ideas page asks them, with the word for a weak
+// answer: a problem's weak spot is its lowest score of 3 or less.
+const ASKS: Record<string, { ask: string; short: string; weak: string }> = {
+  pain: { ask: "Does it hurt?", short: "Hurts", weak: "Mild pain" },
+  pay: { ask: "Do they pay?", short: "They pay", weak: "Few pay" },
+  gap: { ask: "Is there room?", short: "Room left", weak: "Crowded" },
+  build: { ask: "Can I build it?", short: "Buildable", weak: "Hard to build alone" },
+  reach: { ask: "Can I reach them?", short: "Reachable", weak: "Hard to reach" },
+  size: { ask: "Is it big enough?", short: "Size", weak: "Small market" },
+};
+
+export type Ask = { key: string; ask: string; short: string; score: number; why: string };
 export type ProblemItem = {
   id: number;
   /** The radar it belongs to. */
@@ -46,6 +61,14 @@ export type ProblemItem = {
   last: string;
   /** Mentions per week, oldest first, the last one this week. */
   weeks: number[];
+  /** The latest verdict's six answers in QUESTIONS order; null when it has none. */
+  asks: Ask[] | null;
+  /** The six scores summed, out of 30. */
+  fit: number | null;
+  /** Its lowest score when that is 3 or less, said plainly ("Crowded: Chaser, Jobber"), and the verdict's reason. */
+  weak: { label: string; score: number; why: string } | null;
+  /** The verdict's smallest test. */
+  test: string;
 };
 export type IdeaView = {
   name: string;
@@ -54,7 +77,7 @@ export type IdeaView = {
   risk: string;
   first: string;
   best: boolean;
-  /** The category it came from, for the best bets on the home page. */
+  /** The category it came from. */
   category: { slug: string; name: string };
   problems: { id: number; name: string }[];
 };
@@ -70,8 +93,17 @@ export type OverviewState = {
   lastRun: { failed: boolean; text: string; href: string } | null;
 };
 export type RadarTab = { task: string; label: string };
-export type Show = Verdict | "starred" | "killed" | "unjudged";
-type Board = {
+/** The sets of problems the brief's list can show. */
+export type Show = "top" | "unjudged" | "pass" | "starred" | "killed" | "oneoffs";
+/** The problem that leads the brief: the overview's pick, else the best judged, else the one most people raised. */
+export type BestBet = {
+  why: "overview" | "judged" | "people";
+  idea: IdeaView | null;
+  problem: ProblemItem;
+  quotes: { text: string; where: string; day: string; url: string }[];
+};
+export type BoardColumn = { key: string; label: string; hint: string; items: ProblemItem[]; total: number; more?: Show };
+export type IdeasPage = {
   nav: Nav;
   radar: string;
   radars: RadarTab[];
@@ -79,45 +111,34 @@ type Board = {
   muted: number;
   /** Null for a radar without an overview task. */
   overview: OverviewState | null;
-};
-export type CategoryCard = {
-  slug: string;
-  name: string;
-  /** Raised by more than one person, or judged or starred. */
-  problems: number;
-  /** Raised by one person so far, not killed. */
-  oneOffs: number;
-  people: number;
-  worth: number;
-  watch: number;
-  ideas: number;
-  take: string | null;
-};
-// The home of a radar: the overview's summary and best bets, then a card per category.
-export type IdeasHome = Board & {
-  kind: "home";
+  view: IdeasView;
+  /** The reader's default view: their cookie, else the brief. */
+  defaultView: IdeasView;
+  /** What every link on the page keeps: the radar, the category and the view, each only when not the default. */
+  query: { radar?: string; category?: string; view?: IdeasView };
+  /** Whether the radar has a judge, so verdicts. */
+  judges: boolean;
+  categories: { slug: string; name: string; count: number }[];
+  /** The category the page is filtered to, with what the overview made of it. */
+  category: { slug: string; name: string; take: string | null; ideas: IdeaView[] } | null;
+  /** The overview's summary of the whole board, or of the category. */
   summary: string | null;
-  best: IdeaView[];
-  categories: CategoryCard[];
-  /** The reader's starred problems, whatever their category. */
-  starred: ProblemItem[];
-  totals: { posts: number; sorted: number; raising: number; problems: number; waiting: number };
+  headline: string;
+  sub: string | null;
+  /** From posts to verdicts, for the whole radar. */
+  funnel: { collected: number; kept: number; problems: number; multi: number; judged: number; worth: number; watch: number; pass: number };
+  best: BestBet | null;
+  /** First seen in the last 7 days, not judged yet. */
+  fresh: ProblemItem[];
+  /** What the next judge run takes. */
+  tonight: ProblemItem[];
+  brief?: { show: Show; shows: { show: Show; label: string; count: number }[]; list: ProblemItem[]; leadIn: boolean };
+  map?: { dots: ProblemItem[]; passed: number; withPassed: boolean; selected: number | null };
+  board?: { week: { problems: number; verdicts: number; posts: number | null }; columns: BoardColumn[]; passed: { items: ProblemItem[]; total: number }; unjudged: number };
+  totals: { posts: number; sorted: number; problems: number; waiting: number };
   lastSort?: string;
   sources: TaskSources;
 };
-// One category: what the overview made of it, then its problems.
-export type IdeasCategory = Board & {
-  kind: "category";
-  category: { slug: string; name: string; take: string | null; summary: string | null; ideas: IdeaView[] };
-  categories: { slug: string; name: string; count: number }[];
-  show?: Show;
-  shows: { show: Show; label: string; count: number }[];
-  all: boolean;
-  problems: ProblemItem[];
-  /** Problems left out of the default view, raised by one person so far. */
-  oneOffs: number;
-};
-export type IdeasPage = IdeasHome | IdeasCategory;
 export type VerdictView = {
   verdict: Verdict;
   label: string;
@@ -159,7 +180,22 @@ function gate(next: string) {
   setResponseHeader("cache-control", "private, no-store");
 }
 
+function asksOf(v: VerdictRow): Ask[] {
+  return Object.keys(QUESTIONS).map((key) => ({ key, ask: ASKS[key].ask, short: ASKS[key].short, score: v.scores[key]?.score ?? 0, why: v.scores[key]?.why ?? "" }));
+}
+
+// The lowest score, the first of equals in QUESTIONS order, when it is 3 or less. A low gap names what
+// already exists.
+function weakOf(v: VerdictRow, asks: Ask[]): ProblemItem["weak"] {
+  const low = asks.reduce((a, b) => (b.score < a.score ? b : a));
+  if (low.score > 3) return null;
+  const names = v.competitors.slice(0, 2).map((c) => c.name);
+  const label = low.key === "gap" && names.length ? `${ASKS.gap.weak}: ${names.join(", ")}` : ASKS[low.key].weak;
+  return { label, score: low.score, why: low.why };
+}
+
 function item(p: ProblemRow, s: ProblemStats, v?: VerdictRow): ProblemItem {
+  const asks = v ? asksOf(v) : null;
   return {
     id: p.id,
     task: p.task,
@@ -180,6 +216,10 @@ function item(p: ProblemRow, s: ProblemStats, v?: VerdictRow): ProblemItem {
     first: formatDay(s.first),
     last: formatDay(s.last),
     weeks: [...s.weeks].reverse(),
+    asks,
+    fit: asks?.reduce((n, a) => n + a.score, 0) ?? null,
+    weak: v && asks ? weakOf(v, asks) : null,
+    test: v?.test ?? "",
   };
 }
 
@@ -208,42 +248,60 @@ async function overviewState(radar: string, latest: OverviewRow | null): Promise
   };
 }
 
-// The order of a category's problems: starred first, then by verdict (worth testing, watch, not judged
-// yet, pass), then the most people, the busiest this week, the latest.
-const RANK: Record<string, number> = { worth: 0, watch: 1, none: 2, pass: 3 };
 type Row = { p: ProblemRow; s: ProblemStats; v?: VerdictRow };
-const byEvidence = (a: Row, b: Row) =>
-  Number(b.p.status === "starred") - Number(a.p.status === "starred") ||
-  RANK[a.v?.verdict ?? "none"] - RANK[b.v?.verdict ?? "none"] ||
-  b.s.people - a.s.people ||
-  b.s.weeks[0] - a.s.weeks[0] ||
-  b.s.last.localeCompare(a.s.last);
+const fitOf = (r: Row) => (r.v ? Object.keys(QUESTIONS).reduce((n, k) => n + (r.v!.scores[k]?.score ?? 0), 0) : 0);
+// Judged worth a look: Worth testing before Watch, then the six scores summed, then the most people.
+const byFit = (a: Row, b: Row) => Number(b.v?.verdict === "worth") - Number(a.v?.verdict === "worth") || fitOf(b) - fitOf(a) || b.s.people - a.s.people;
+// Everything else: the most people, the busiest this week, the latest.
+const byPeople = (a: Row, b: Row) => b.s.people - a.s.people || b.s.weeks[0] - a.s.weeks[0] || b.s.last.localeCompare(a.s.last);
 
-const SHOWS: Record<Show, { label: string; has: (r: Row) => boolean }> = {
-  worth: { label: VERDICTS.worth, has: (r) => r.v?.verdict === "worth" && r.p.status !== "killed" },
-  watch: { label: VERDICTS.watch, has: (r) => r.v?.verdict === "watch" && r.p.status !== "killed" },
-  unjudged: { label: "Not judged", has: (r) => !r.v && r.p.status !== "killed" },
-  pass: { label: VERDICTS.pass, has: (r) => r.v?.verdict === "pass" && r.p.status !== "killed" },
-  starred: { label: "Starred", has: (r) => r.p.status === "starred" },
-  killed: { label: "Killed", has: (r) => r.p.status === "killed" },
-};
-
-// Shown by default: raised by more than one person, or judged, or starred. A one-off waits for a second.
+const looked = (r: Row) => r.v?.verdict === "worth" || r.v?.verdict === "watch";
+// On the board: raised by more than one person, or judged, or starred. A one-off waits for a second.
 const onBoard = (r: Row) => r.s.people > 1 || !!r.v || r.p.status === "starred";
+const live = (r: Row) => r.p.status !== "killed";
+const SHOWS: Record<Show, { label: string; has: (r: Row) => boolean; order: (a: Row, b: Row) => number }> = {
+  top: { label: "Worth a look", has: (r) => live(r) && looked(r), order: byFit },
+  unjudged: { label: "Not judged", has: (r) => live(r) && !r.v && onBoard(r), order: byPeople },
+  pass: { label: "Passed", has: (r) => live(r) && r.v?.verdict === "pass", order: byPeople },
+  starred: { label: "Starred", has: (r) => r.p.status === "starred", order: byFit },
+  killed: { label: "Killed", has: (r) => r.p.status === "killed", order: byPeople },
+  oneoffs: { label: "One-offs", has: (r) => live(r) && !onBoard(r), order: byPeople },
+};
+// Links from before the views kept one verdict each.
+const LEGACY_SHOWS: Record<string, Show> = { worth: "top", watch: "top" };
 
-// A radar's Ideas page. Without a category, its home: the nightly overview's summary of the whole board
-// and the ideas it would start with, then a card per category with its counts and the overview's one
-// line. With one, the category: what the overview made of it, the businesses one person could build
-// from it, then its problems, counted by code (src/ideas.ts), the one-offs behind a link.
+const WEEK = 7 * 86_400_000;
+const recentlyJudged = (r: Row) => !!r.v && Date.now() - Date.parse(r.v.createdAt) < WEEK;
+
+// The posts that say it best: up to two quotes of some length, those naming a cost or saying it recurs first.
+function quotesOf(problemId: number): BestBet["quotes"] {
+  return problemMentions(problemId)
+    .filter((m) => m.quote.length >= 40)
+    .sort((a, b) => Number(!!b.cost || b.recurring) - Number(!!a.cost || a.recurring))
+    .slice(0, 2)
+    .map((m) => ({ text: m.quote, where: m.post.community, day: formatDay(m.post.postedAt), url: m.post.url }));
+}
+
+// A radar's Ideas page in one of its three views. Every view starts from the same rows: the radar's
+// problems with their counts (src/ideas.ts) and latest verdicts, never-show matches left out, filtered
+// to ?category= when there is one. The brief leads with one problem and a sentence on the board, then a
+// ranked list (?show= picks the set); the map places the judged problems by demand and by how winnable
+// they are (?passed=true adds the passed ones, ?selected= the one opened); the board puts them in a
+// column per stage.
 export const getIdeasPage = createServerFn({ method: "GET" })
-  .validator((data: { radar?: string; category?: string; all?: boolean; show?: string }) => data)
+  .validator((data: { radar?: string; category?: string; view?: string; show?: string; passed?: boolean; selected?: number }) => data)
   .handler(async ({ data }): Promise<IdeasPage> => {
-    const query = new URLSearchParams(Object.entries({ radar: data.radar, category: data.category }).filter((e): e is [string, string] => !!e[1])).toString();
-    gate(`/ideas${query ? `?${query}` : ""}`);
+    const search = new URLSearchParams(Object.entries({ radar: data.radar, category: data.category, view: data.view }).filter((e): e is [string, string] => !!e[1])).toString();
+    gate(`/ideas${search ? `?${search}` : ""}`);
     const { configs: _, ...sidebar } = await nav();
     const all = await radars();
     const TASK = data.radar ?? RADAR;
     if (!all.some((r) => r.task === TASK)) throw notFound();
+    const chosen = getCookie(ideasViewCookieName);
+    const defaultView: IdeasView = isIdeasView(chosen) ? chosen : "brief";
+    if (data.view && !isIdeasView(data.view)) throw notFound();
+    const view: IdeasView = isIdeasView(data.view) ? data.view : defaultView;
+    const tasks = await listTasks();
     const config = await loadTask(TASK).then((t) => t.config, () => ({}) as TaskConfig);
     const names = categoriesOf(config);
     const stats = problemStats(TASK);
@@ -253,7 +311,6 @@ export const getIdeasPage = createServerFn({ method: "GET" })
     const problems = listProblems(TASK);
     const counted: Row[] = problems.flatMap((p) => (stats.has(p.id) ? [{ p, s: stats.get(p.id)!, v: verdicts.get(p.id) }] : []));
     const unmuted = counted.filter(({ p }) => !isMuted(p));
-    const live = unmuted.filter((r) => r.p.status !== "killed");
     const latest = latestOverview(TASK);
     const problemNames = new Map(problems.map((p) => [p.id, p.name]));
     const ideasOf = (c: OverviewRow["categories"][number]): IdeaView[] =>
@@ -262,67 +319,152 @@ export const getIdeasPage = createServerFn({ method: "GET" })
         category: { slug: slug(c.category), name: c.category },
         problems: i.problems.filter((id) => problemNames.has(id)).map((id) => ({ id, name: problemNames.get(id)! })),
       }));
-    const board: Board = {
+
+    const categoryName = data.category ? names.find((n) => slug(n) === data.category) : undefined;
+    if (data.category && !categoryName) throw notFound();
+    const rows = categoryName ? unmuted.filter((r) => r.p.category === categoryName) : unmuted;
+    const o = categoryName ? latest?.categories.find((c) => c.category === categoryName) : undefined;
+    const ideas = (categoryName ? (o ? [o] : []) : (latest?.categories ?? [])).flatMap(ideasOf);
+    const JUDGE = judgeOf(TASK);
+    const judges = tasks.includes(JUDGE);
+    const toItem = ({ p, s, v }: Row) => item(p, s, v);
+
+    // The lead: the overview's best idea with a problem still on the board that the judge has not passed,
+    // else the best judged, else the problem most people raised.
+    const byId = new Map(rows.map((r) => [r.p.id, r]));
+    const pick = ideas
+      .filter((i) => i.best)
+      .map((idea) => ({ idea, row: idea.problems.map((p) => byId.get(p.id)).filter((r): r is Row => !!r && live(r) && r.v?.verdict !== "pass").sort(byPeople)[0] }))
+      .find((x) => x.row);
+    const judgedTop = rows.filter(SHOWS.top.has).sort(byFit)[0];
+    const mostRaised = rows.filter((r) => live(r) && onBoard(r)).sort(byPeople)[0];
+    const lead: { why: BestBet["why"]; idea: IdeaView | null; row: Row } | undefined = pick
+      ? { why: "overview", idea: pick.idea, row: pick.row! }
+      : judgedTop
+      ? { why: "judged", idea: ideas.find((i) => i.problems.some((p) => p.id === judgedTop.p.id)) ?? null, row: judgedTop }
+      : mostRaised && { why: "people", idea: null, row: mostRaised };
+    const best: BestBet | null = lead ? { why: lead.why, idea: lead.idea, problem: toItem(lead.row), quotes: quotesOf(lead.row.p.id) } : null;
+
+    // The sentence on top, from the counts.
+    const worth = rows.filter((r) => live(r) && r.v?.verdict === "worth").length;
+    const watch = rows.filter((r) => live(r) && r.v?.verdict === "watch").length;
+    const leadName = lead ? (lead.idea?.name ?? lead.row.p.name) : "";
+    const where = categoryName ? ` in ${categoryName}` : "";
+    const leadIs = lead?.why === "overview" ? "The overview's pick" : lead?.why === "judged" ? "Closest" : "Raised most";
+    const headline = !lead
+      ? `Nothing raised by more than one person${where} yet.`
+      : worth
+      ? `${plural(worth, "problem")} worth testing${where}. Start with: ${leadName}.`
+      : watch
+      ? `No clear build${where} yet. Closest: ${leadName}.`
+      : rows.some((r) => r.v)
+      ? `Everything judged${where} so far is a Pass. ${leadIs}: ${leadName}.`
+      : `No verdicts${where} yet${judges ? "" : ": this radar only collects and counts"}. ${leadIs}: ${leadName}.`;
+    const crowded = rows.filter((r) => live(r) && looked(r) && (r.v!.scores.gap?.score ?? 5) <= 2).length;
+    const looking = worth + watch;
+    const sub = !crowded
+      ? null
+      : crowded === looking
+      ? `${looking === 1 ? "The one problem" : `All ${looking} problems`} worth a look ${looking === 1 ? "has" : "have"} little room left: tools already do it.`
+      : `${crowded} of the ${looking} problems worth a look ${crowded === 1 ? "has" : "have"} little room left: tools already do it.`;
+
+    const totals = radarTotals(TASK);
+    const whole = unmuted.filter(live);
+    const fresh = rows.filter((r) => live(r) && !r.v && r.p.status !== "starred" && r.s.trend === "new").sort(byPeople);
+    const max = judges ? ((await loadTask(JUDGE).then((t) => t.config.judge as { maxProblems?: number } | undefined, () => undefined))?.maxProblems ?? 5) : 0;
+    const tonight = judges ? toJudge(TASK, max, muted).filter(({ p }) => !categoryName || p.category === categoryName) : [];
+    const queued = new Set(tonight.map(({ p }) => p.id));
+    const notLead = (id: number) => id !== lead?.row.p.id;
+    const lastSort = listRuns(TASK).find((r) => r.status === "ok" && r.costUsd !== undefined);
+    const radarParam = all[0] && TASK !== all[0].task ? TASK : undefined;
+    const page: IdeasPage = {
       nav: sidebar,
       radar: TASK,
       radars: all.length > 1 ? all : [],
       muted: counted.length - unmuted.length,
       overview: await overviewState(TASK, latest),
+      view,
+      defaultView,
+      query: { radar: radarParam, category: data.category, view: view === defaultView ? undefined : view },
+      judges,
+      categories: names
+        .map((n) => ({ slug: slug(n), name: n, count: unmuted.filter((r) => r.p.category === n && live(r) && onBoard(r)).length }))
+        .filter((c) => c.name === categoryName || unmuted.some((r) => r.p.category === c.name)),
+      category: categoryName ? { slug: slug(categoryName), name: categoryName, take: o?.take || null, ideas } : null,
+      summary: (categoryName ? o?.summary : latest?.summary) || null,
+      headline,
+      sub,
+      funnel: {
+        collected: totals.collected,
+        kept: totals.posts,
+        problems: whole.length,
+        multi: whole.filter((r) => r.s.people > 1).length,
+        judged: whole.filter((r) => r.v).length,
+        worth: whole.filter((r) => r.v?.verdict === "worth").length,
+        watch: whole.filter((r) => r.v?.verdict === "watch").length,
+        pass: whole.filter((r) => r.v?.verdict === "pass").length,
+      },
+      best,
+      fresh: fresh.filter((r) => !queued.has(r.p.id) && notLead(r.p.id)).map(toItem),
+      tonight: tonight.filter(({ p }) => notLead(p.id)).map(({ p, s, last }) => item(p, s, last)),
+      totals: { posts: totals.posts, sorted: totals.sorted, problems: totals.problems, waiting: totals.posts - totals.sorted },
+      lastSort: lastSort && ago(lastSort.finishedAt ?? lastSort.startedAt),
+      sources: await taskSources(TASK, config),
     };
 
-    if (!data.category) {
-      const lastSort = listRuns(TASK).find((r) => r.status === "ok" && r.costUsd !== undefined);
-      const totals = radarTotals(TASK);
-      return {
-        ...board,
-        kind: "home",
-        summary: latest?.summary ?? null,
-        best: (latest?.categories ?? []).flatMap(ideasOf).filter((i) => i.best),
-        categories: names
-          .map((name) => {
-            const here = live.filter((r) => r.p.category === name && onBoard(r));
-            const o = latest?.categories.find((c) => c.category === name);
-            return {
-              slug: slug(name),
-              name,
-              problems: here.length,
-              oneOffs: live.filter((r) => r.p.category === name && !onBoard(r)).length,
-              people: here.reduce((n, r) => n + r.s.people, 0),
-              worth: here.filter((r) => r.v?.verdict === "worth").length,
-              watch: here.filter((r) => r.v?.verdict === "watch").length,
-              ideas: o?.ideas.length ?? 0,
-              take: o?.take || null,
-            };
-          })
-          // Every category with a problem, so one with only one-offs or killed problems can still be opened.
-          .filter((c) => unmuted.some((r) => r.p.category === c.name)),
-        starred: unmuted.filter((r) => r.p.status === "starred").sort(byEvidence).map(({ p, s, v }) => item(p, s, v)),
-        totals: { ...totals, waiting: totals.posts - totals.sorted },
-        lastSort: lastSort && ago(lastSort.finishedAt ?? lastSort.startedAt),
-        sources: await taskSources(TASK, config),
+    if (view === "brief") {
+      const asked = data.show ? (LEGACY_SHOWS[data.show] ?? data.show) : undefined;
+      if (asked && !(asked in SHOWS)) throw notFound();
+      // The best bet is shown above the list, so no set counts it.
+      const inSet = (k: Show) => rows.filter((r) => SHOWS[k].has(r) && r.p.id !== lead?.row.p.id);
+      const show = (asked as Show | undefined) ?? (inSet("top").length ? "top" : "unjudged");
+      const list = inSet(show).sort(SHOWS[show].order);
+      page.brief = {
+        show,
+        shows: (Object.keys(SHOWS) as Show[]).map((k) => ({ show: k, label: SHOWS[k].label, count: inSet(k).length })),
+        list: list.map(toItem),
+        leadIn: !!lead && SHOWS[show].has(lead.row),
+      };
+    } else if (view === "map") {
+      const judged = rows.filter((r) => live(r) && r.v);
+      const dots = judged.filter((r) => data.passed || looked(r) || r.p.status === "starred");
+      const chosen = dots.find((r) => r.p.id === data.selected)?.p.id;
+      page.map = {
+        dots: dots.sort(byFit).map(toItem),
+        passed: judged.length - judged.filter((r) => looked(r) || r.p.status === "starred").length,
+        withPassed: !!data.passed,
+        selected: chosen ?? (best && dots.some((r) => r.p.id === best.problem.id) ? best.problem.id : (dots[0]?.p.id ?? null)),
+      };
+    } else {
+      // A problem sits in one column only, the furthest stage it has reached: Testing (starred), then Worth
+      // a look, then Judged next (the judge also takes judged problems again), then New or Raised most.
+      const CAP = 8;
+      const column = (key: string, label: string, hint: string, list: Row[], more?: Show): BoardColumn => ({ key, label, hint, items: list.slice(0, CAP).map(toItem), total: list.length, more });
+      const starred = (r: Row) => r.p.status === "starred";
+      const testing = rows.filter(SHOWS.starred.has).sort(byFit);
+      const watching = rows.filter((r) => SHOWS.top.has(r) && !starred(r)).sort(byFit);
+      const next = tonight.map(({ p }) => byId.get(p.id)).filter((r): r is Row => !!r && !starred(r) && !looked(r));
+      const newOnes = fresh.filter((r) => !queued.has(r.p.id));
+      const unjudged = rows.filter((r) => SHOWS.unjudged.has(r) && !starred(r));
+      const columns = [
+        column("new", "New this week", "First raised in the last 7 days", newOnes, "unjudged"),
+        judges
+          ? column("tonight", "Judged next", "The next judge run takes these", next)
+          : column("raised", "Raised most", "Not judged: this radar has no judge yet", unjudged.filter((r) => r.s.trend !== "new").sort(byPeople), "unjudged"),
+        column("watch", "Worth a look", "Judged Worth testing or Watch", watching, "top"),
+        column("testing", "Testing", "Starred: what you are trying", testing, "starred"),
+      ];
+      const passed = rows.filter((r) => (SHOWS.pass.has(r) || SHOWS.killed.has(r)) && !starred(r)).sort(byPeople);
+      page.board = {
+        // The posts are the radar's: a post has no category until the sort gives it a problem.
+        week: { problems: fresh.length, verdicts: rows.filter(recentlyJudged).length, posts: categoryName ? null : totals.recent },
+        columns,
+        passed: { items: passed.slice(0, 5).map(toItem), total: passed.length },
+        // Without a judge every unjudged problem is in Raised most already.
+        unjudged: judges ? unjudged.filter((r) => !queued.has(r.p.id) && !newOnes.includes(r)).length : 0,
       };
     }
-
-    const category = names.find((n) => slug(n) === data.category);
-    if (!category) throw notFound();
-    const show = data.show && data.show in SHOWS ? (data.show as Show) : undefined;
-    if (data.show && !show) throw notFound();
-    const inCategory = unmuted.filter((r) => r.p.category === category);
-    // Killed problems only under their own chip.
-    const shown = inCategory.filter((r) => (show ? SHOWS[show].has(r) : r.p.status !== "killed"));
-    const visible = shown.filter((r) => data.all || onBoard(r)).sort(byEvidence);
-    const o = latest?.categories.find((c) => c.category === category);
-    return {
-      ...board,
-      kind: "category",
-      category: { slug: slug(category), name: category, take: o?.take || null, summary: o?.summary || null, ideas: o ? ideasOf(o) : [] },
-      categories: names.map((n) => ({ slug: slug(n), name: n, count: live.filter((r) => r.p.category === n && onBoard(r)).length })).filter((c) => c.name === category || unmuted.some((r) => r.p.category === c.name)),
-      show,
-      shows: (Object.keys(SHOWS) as Show[]).map((k) => ({ show: k, label: SHOWS[k].label, count: inCategory.filter((r) => SHOWS[k].has(r)).length })),
-      all: !!data.all,
-      problems: visible.map(({ p, s, v }) => item(p, s, v)),
-      oneOffs: data.all ? 0 : shown.length - visible.length,
-    };
+    return page;
   });
 
 // One problem with every post that raised it, newest first.

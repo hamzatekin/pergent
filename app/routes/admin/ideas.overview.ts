@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { RADAR, overviewOf } from "#src/ideas.ts";
 import { listTasks } from "#src/runner.ts";
 import { startRun } from "#src/scheduler.ts";
+import { ideasPath } from "../../ideas-view.ts";
 import { guardPost, seeOther } from "../../server/admin.ts";
 
 // Refresh on the Ideas page: starts the radar's overview run (tasks/ideas-overview, tasks/gym-overview),
@@ -21,9 +22,8 @@ export const Route = createFileRoute("/admin/ideas/overview")({
         if (!/^[a-z0-9-]+$/.test(radar) || !(await listTasks()).includes(task)) return new Response("no overview task", { status: 404 });
         startRun(task);
         await new Promise((done) => setTimeout(done, 300)); // let the run's row land before the redirect
-        const category = String(form.get("category") ?? "");
-        const query = new URLSearchParams(Object.entries({ radar: radar === RADAR ? "" : radar, category }).filter(([, v]) => /^[a-z0-9-]+$/.test(v))).toString();
-        return seeOther(`/ideas${query ? `?${query}` : ""}`);
+        if (radar === RADAR) form.delete("radar");
+        return seeOther(ideasPath(form));
       },
     },
   },
