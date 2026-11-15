@@ -10,11 +10,13 @@ import { join } from "node:path";
 import {
   getProblem,
   latestOverview,
+  latestResearch,
   latestVerdicts,
   listProblems,
   mentionFacts,
   problemMentions,
   saveOverview,
+  saveResearch,
   saveSort,
   saveVerdicts,
   unsortedPosts,
@@ -22,6 +24,9 @@ import {
   type OverviewCategory,
   type PostRow,
   type ProblemRow,
+  type ResearchApproach,
+  type ResearchProduct,
+  type ResearchRow,
   type Score,
   type VerdictRow,
 } from "./db.ts";
@@ -30,13 +35,14 @@ import type { TaskConfig } from "./runner.ts";
 
 // The task that collects and sorts; its never-show list is the radar's. A radar is the task that
 // collects and sorts its posts: ideas (small businesses) and gym (gym and fitness apps) share the
-// tables, each row carrying its task. Its judge and overview are the tasks named after it (ideas-judge,
-// ideas-overview): the name is the only link, so the page that starts a judge run and the run itself
-// cannot disagree about whose problems it judges.
+// tables, each row carrying its task. Its judge, research and overview are the tasks named after it
+// (ideas-judge, ideas-research, ideas-overview): the name is the only link, so the page that starts a
+// judge run and the run itself cannot disagree about whose problems it judges.
 export const RADAR = "ideas";
 export const judgeOf = (radar: string) => `${radar}-judge`;
+export const researchOf = (radar: string) => `${radar}-research`;
 export const overviewOf = (radar: string) => `${radar}-overview`;
-export const radarOf = (task: string) => task.replace(/-(judge|overview)$/, "");
+export const radarOf = (task: string) => task.replace(/-(judge|research|overview)$/, "");
 
 // Who has the problem. Fixed, so the page can filter by it and counts stay comparable; a task can set
 // its own under "categories". The last one takes whatever fits nowhere else.
@@ -353,29 +359,35 @@ export function judgeSchema() {
   };
 }
 
+// A problem as the judge and the research read it: its counts, any lines the caller adds, and the posts
+// behind it, newest first.
+function problemBlock(p: ProblemRow, s: ProblemStats, more: string[], mentionsEach: number, bodyChars: number): string {
+  const facts = [
+    `${s.people} people, ${s.mentions} mentions, from ${s.sources.join(", ")} (${s.communities.slice(0, 6).join(", ")})`,
+    `${s.recurring} say it recurs, ${s.costed} name a cost, ${s.workarounds} describe a workaround`,
+    s.jobs ? `${s.jobs} paid job posts, budgets: ${[...new Set(s.budgets)].slice(0, 6).join("; ")}` : "no paid job posts",
+    `first seen ${s.first.slice(0, 10)}, last ${s.last.slice(0, 10)}${s.trend ? `, ${s.trend}` : ""}`,
+    ...more,
+  ];
+  const posts = problemMentions(p.id)
+    .slice(0, mentionsEach)
+    .map((m) => {
+      const body = m.post.body.length > bodyChars ? `${m.post.body.slice(0, bodyChars)}…` : m.post.body;
+      const by = [m.post.community, m.post.postedAt.slice(0, 10), m.post.budget && `budget ${m.post.budget}`].filter(Boolean).join(" · ");
+      const read = [m.recurring && "recurs", m.cost && `cost: ${m.cost}`, m.workaround && `today: ${m.workaround}`].filter(Boolean).join("; ");
+      return `- ${by}\n  ${m.post.title}${body ? `\n  ${body.replace(/\n+/g, " ")}` : ""}${read ? `\n  (${read})` : ""}`;
+    });
+  return `## Problem ${p.id}: ${p.name}\n\nCategory: ${p.category}. ${p.summary}\n\n${facts.map((f) => `- ${f}`).join("\n")}\n\nThe posts, newest first:\n\n${posts.join("\n")}`;
+}
+
 // Writes problems.md: each problem to judge with its counts and the posts behind it. False when there is
 // nothing to judge.
 export async function prepareJudge(radar: string, dir: string, config: TaskConfig, muted: string[]): Promise<{ problems: number }> {
   const { maxProblems = 5, mentionsEach = 15, bodyChars = 400 } = (config.judge ?? {}) as { maxProblems?: number; mentionsEach?: number; bodyChars?: number };
   const picked = toJudge(radar, maxProblems, muted);
-  const blocks = picked.map(({ p, s, last }) => {
-    const facts = [
-      `${s.people} people, ${s.mentions} mentions, from ${s.sources.join(", ")} (${s.communities.slice(0, 6).join(", ")})`,
-      `${s.recurring} say it recurs, ${s.costed} name a cost, ${s.workarounds} describe a workaround`,
-      s.jobs ? `${s.jobs} paid job posts, budgets: ${[...new Set(s.budgets)].slice(0, 6).join("; ")}` : "no paid job posts",
-      `first seen ${s.first.slice(0, 10)}, last ${s.last.slice(0, 10)}${s.trend ? `, ${s.trend}` : ""}`,
-      ...(last ? [`judged before on ${last.createdAt.slice(0, 10)} at ${last.mentions} mentions: ${VERDICTS[last.verdict]}`] : []),
-    ];
-    const posts = problemMentions(p.id)
-      .slice(0, mentionsEach)
-      .map((m) => {
-        const body = m.post.body.length > bodyChars ? `${m.post.body.slice(0, bodyChars)}…` : m.post.body;
-        const by = [m.post.community, m.post.postedAt.slice(0, 10), m.post.budget && `budget ${m.post.budget}`].filter(Boolean).join(" · ");
-        const read = [m.recurring && "recurs", m.cost && `cost: ${m.cost}`, m.workaround && `today: ${m.workaround}`].filter(Boolean).join("; ");
-        return `- ${by}\n  ${m.post.title}${body ? `\n  ${body.replace(/\n+/g, " ")}` : ""}${read ? `\n  (${read})` : ""}`;
-      });
-    return `## Problem ${p.id}: ${p.name}\n\nCategory: ${p.category}. ${p.summary}\n\n${facts.map((f) => `- ${f}`).join("\n")}\n\nThe posts, newest first:\n\n${posts.join("\n")}`;
-  });
+  const blocks = picked.map(({ p, s, last }) =>
+    problemBlock(p, s, last ? [`judged before on ${last.createdAt.slice(0, 10)} at ${last.mentions} mentions: ${VERDICTS[last.verdict]}`] : [], mentionsEach, bodyChars),
+  );
   await writeFile(join(dir, "problems.md"), `# Problems to judge (${picked.length})\n\n${blocks.join("\n\n")}\n`);
   await writeFile(join(dir, "judge.json"), JSON.stringify(picked.map(({ p, s }) => ({ id: p.id, mentions: s.mentions }))));
   return { problems: picked.length };
@@ -412,15 +424,152 @@ export async function saveJudgeOutput(runId: string, output: unknown, dir: strin
   ].join("\n") + "\n";
 }
 
-// The overview (tasks/ideas-overview, tasks/gym-overview), written each night after the judge and when
-// the page's Refresh asks: the whole board summed up for one reader, a developer based in the UK who
-// builds alone with AI, and per category what business they could build from it. prepareOverview
-// writes board.md: every problem raised by more than one person, or judged or starred, by category, with
-// its counts, the costs people name, what they do about it today and its verdict, all from the tables;
-// the model only says what it makes of them. A board the same as the last overview's ends the run
-// without claude.
-const MAX_IDEAS = 3;
-const MAX_BEST = 3;
+// The research (tasks/ideas-research), each night after the judge: for problems the judge rated Worth
+// testing or Watch, and any the page asks for, the model works the way a founder would before building
+// rather than pitching an idea: three ways to solve it, the products that already do, how big each is,
+// what their reviewers like and dislike, whether one person should compete, and only then a better
+// solution. A problem is researched once, again when its verdict changes, and whenever the page asks.
+const fitOf = (v: VerdictRow | undefined) => (v ? Object.values(v.scores).reduce((n, x) => n + x.score, 0) : 0);
+
+export function toResearch(task: string, max: number, muted: string[], now = Date.now()): { p: ProblemRow; s: ProblemStats; v?: VerdictRow; r?: ResearchRow }[] {
+  const stats = problemStats(task, now);
+  const verdicts = latestVerdicts();
+  const research = latestResearch();
+  const looked = (v?: VerdictRow) => v?.verdict === "worth" || v?.verdict === "watch";
+  // Research this goes through whatever the problem's state: the reader asked for it.
+  return listProblems(task)
+    .filter((p) => stats.has(p.id) && (p.researchAsked || (p.status !== "killed" && !muted.some((m) => mentions(`${p.name}\n${p.summary}`, m)))))
+    .map((p) => ({ p, s: stats.get(p.id)!, v: verdicts.get(p.id), r: research.get(p.id) }))
+    .filter(({ p, v, r }) => p.researchAsked || (looked(v) && (!r || r.verdict !== v!.verdict)))
+    .sort((a, b) => Number(!!b.p.researchAsked) - Number(!!a.p.researchAsked) || Number(b.v?.verdict === "worth") - Number(a.v?.verdict === "worth") || fitOf(b.v) - fitOf(a.v) || b.s.people - a.s.people)
+    .slice(0, max);
+}
+
+export function researchSchema() {
+  const text = (description: string) => ({ type: "string", description });
+  const object = (properties: Record<string, unknown>) => ({ type: "object", required: Object.keys(properties), additionalProperties: false, properties });
+  return object({
+    research: {
+      type: "array",
+      description: "One per problem of research.md, in any order.",
+      items: object({
+        problem: { type: "integer", description: "The problem's number." },
+        approaches: {
+          type: "array",
+          description: "Exactly three different kinds of solution, not three versions of one: say an add-on to a tool they already use, a standalone app for one trade, a done-for-you service run with automation.",
+          items: object({
+            name: text("The approach in a few plain words."),
+            how: text("How it would solve the problem, in one or two sentences."),
+            exists: text("Which of the products you found already solve it this way, by name, or \"Nothing found\"."),
+          }),
+        },
+        products: {
+          type: "array",
+          description: "Up to five products that already solve this problem, the ones these people would meet first. Empty when the search found none.",
+          items: object({
+            name: text("Its name."),
+            url: text("Its site, as found."),
+            price: text("Its price for a small business, as its page shows it, or \"Not shown\"."),
+            who: text("Who it is for, in a few words."),
+            share: text("How big it is, an estimate from what you saw (review counts, \"used by N businesses\", pricing tiers, funding), naming the signal and saying it is an estimate."),
+            does: text("What it does about this problem, in one or two sentences."),
+            liked: text("What its users praise, from reviews you read, in their words where you can, or \"No reviews found\"."),
+            disliked: text("What its users complain about, from reviews you read, in their words where you can, or \"No reviews found\"."),
+            reviews: { type: "array", items: { type: "string" }, description: "The URLs of the review pages or threads you read for it." },
+          }),
+        },
+        worth: { type: "boolean", description: "Whether one person should build a competitor: true only when the products that exist are too dear, too complex, too general or disliked for something the posts care about, and one person could build the alternative in weeks and reach these people." },
+        worth_why: text("Why, in two to four sentences naming the products and what the posts and reviews say."),
+        better_name: text("When worth is true: the better solution in a few plain words, not a brand name. Otherwise \"\"."),
+        better_pitch: text("When worth is true: what it does and for whom, in one or two sentences. Otherwise \"\"."),
+        better_edge: text("When worth is true: what it does better than the products you found, tied to what their reviewers dislike and what the posts ask for, in two or three sentences. Otherwise \"\"."),
+        better_first: text("When worth is true: the first thing to do this week to find out whether people would pay, in one sentence. Otherwise \"\"."),
+      }),
+    },
+  });
+}
+
+// Writes research.md: each problem with its counts, its verdict and what the judge's search found, and
+// the posts behind it; research.json is what saveResearchOutput checks the answer against.
+export async function prepareResearch(radar: string, dir: string, config: TaskConfig, muted: string[]): Promise<{ problems: number }> {
+  const { maxProblems = 3, mentionsEach = 10, bodyChars = 400 } = (config.research ?? {}) as { maxProblems?: number; mentionsEach?: number; bodyChars?: number };
+  const picked = toResearch(radar, maxProblems, muted);
+  const blocks = picked.map(({ p, s, v, r }) => {
+    const more = v
+      ? [
+          `the judge's verdict on ${v.createdAt.slice(0, 10)}: ${VERDICTS[v.verdict]}${v.hardNo ? `, hard no: ${v.hardNo}` : ""}`,
+          ...Object.entries(v.scores).map(([k, x]) => `${QUESTIONS[k]?.label ?? k} ${x.score}/5: ${x.why}`),
+          ...(v.competitors.length ? [`the tools the judge's quick search named (a first look only; search beyond them): ${v.competitors.map((c) => `${c.name}${c.url ? ` (${c.url})` : ""}: ${c.note}`).join("; ")}`] : []),
+          `the judge's reason: ${v.reason}`,
+        ]
+      : ["not judged yet"];
+    if (r) more.push(`researched before on ${r.createdAt.slice(0, 10)}: ${r.worth ? `worth competing, ${r.better?.name ?? ""}` : "not worth competing"}`);
+    return problemBlock(p, s, more, mentionsEach, bodyChars);
+  });
+  await writeFile(join(dir, "research.md"), `# Problems to research (${picked.length})\n\n${blocks.join("\n\n")}\n`);
+  await writeFile(join(dir, "research.json"), JSON.stringify(picked.map(({ p, v }) => ({ id: p.id, verdict: v?.verdict ?? "none" }))));
+  return { problems: picked.length };
+}
+
+type ResearchOutput = {
+  research: { problem: number; approaches: Partial<ResearchApproach>[]; products: Partial<ResearchProduct>[]; worth: boolean; worth_why: string; better_name: string; better_pitch: string; better_edge: string; better_first: string }[];
+};
+
+// Stores the research of every problem the answer covers, once each, checked against research.json.
+// A better solution is kept only when the answer says it is worth competing. Returns output.md.
+export async function saveResearchOutput(runId: string, output: unknown, dir: string): Promise<string | null> {
+  const out = output as ResearchOutput | undefined;
+  if (!out || !Array.isArray(out.research)) return null;
+  const picked = JSON.parse(await readFile(join(dir, "research.json"), "utf8")) as { id: number; verdict: string }[];
+  const verdictOfPicked = new Map(picked.map((p) => [p.id, p.verdict]));
+  const clean = (x: unknown) => String(x ?? "").trim();
+  const link = (x: unknown) => (/^https?:\/\//.test(clean(x)) ? clean(x) : "");
+  const rows: Omit<ResearchRow, "id" | "createdAt">[] = [];
+  for (const a of out.research) {
+    if (!verdictOfPicked.has(a?.problem) || rows.some((r) => r.problemId === a.problem)) continue;
+    const approaches = (Array.isArray(a.approaches) ? a.approaches : []).slice(0, 3).map((x) => ({ name: clean(x?.name), how: clean(x?.how), exists: clean(x?.exists) })).filter((x) => x.name);
+    const products = (Array.isArray(a.products) ? a.products : []).slice(0, 5).map((x) => ({
+      name: clean(x?.name),
+      url: link(x?.url),
+      price: clean(x?.price),
+      who: clean(x?.who),
+      share: clean(x?.share),
+      does: clean(x?.does),
+      liked: clean(x?.liked),
+      disliked: clean(x?.disliked),
+      reviews: (Array.isArray(x?.reviews) ? x.reviews : []).map(link).filter(Boolean).slice(0, 6),
+    })).filter((x) => x.name);
+    const worth = a.worth === true;
+    const better = worth && clean(a.better_name) ? { name: clean(a.better_name), pitch: clean(a.better_pitch), edge: clean(a.better_edge), first: clean(a.better_first) } : null;
+    rows.push({ problemId: a.problem, verdict: verdictOfPicked.get(a.problem)!, approaches, products, worth, worthWhy: clean(a.worth_why), better });
+  }
+  if (!rows.length) return null;
+  saveResearch(runId, rows);
+  return [
+    `# Research, ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    ...rows.flatMap((r) => [
+      "",
+      `## ${r.problemId}: ${getProblem(r.problemId)?.name ?? "?"}`,
+      "",
+      ...r.approaches.map((x) => `- ${x.name}: ${x.how} (${x.exists})`),
+      "",
+      ...r.products.map((x) => `- **${x.name}** ${x.url} · ${x.price} · ${x.share}\n  Liked: ${x.liked}\n  Disliked: ${x.disliked}`),
+      "",
+      `${r.worth ? "Worth competing" : "Not worth competing"}: ${r.worthWhy}`,
+      ...(r.better ? ["", `**${r.better.name}**: ${r.better.pitch}`, "", `Better because: ${r.better.edge}`, "", `First: ${r.better.first}`] : []),
+    ]),
+    ...(picked.length > rows.length ? ["", `${picked.length - rows.length} problems were left out of the answer and wait for the next run.`] : []),
+  ].join("\n") + "\n";
+}
+
+// The overview (tasks/ideas-overview, tasks/gym-overview), written each night after the judge and the
+// research, and when the page's Refresh asks: the whole board summed up for one reader, a developer based
+// in the UK who builds alone with AI. prepareOverview writes board.md: every problem raised by more than
+// one person, or judged or starred, by category, with its counts, the costs people name, what they do
+// about it today, its verdict and its research, all from the tables; the model only says what it makes of
+// them. It no longer makes up business ideas (the reader's call on 2026-11-15: ideas pitched from the
+// board alone were forced): the solutions the page offers come from the research. A board the same as
+// the last overview's ends the run without claude.
 
 export function overviewSchema(categories: string[]) {
   const text = (description: string) => ({ type: "string", description });
@@ -429,36 +578,18 @@ export function overviewSchema(categories: string[]) {
     required: ["summary", "categories"],
     additionalProperties: false,
     properties: {
-      summary: text("The whole board in three to five plain sentences: where the best openings for one person are and why, which categories are mostly noise, and what is new or starred if it matters. Lead with the strongest thing."),
+      summary: text("The whole board in three to five plain sentences: where the best openings for one person are and why, what the research found where there is any, which categories are mostly noise, and what is new or starred if it matters. Lead with the strongest thing."),
       categories: {
         type: "array",
         description: "One per category of board.md that has problems, in its order.",
         items: {
           type: "object",
-          required: ["category", "take", "summary", "ideas"],
+          required: ["category", "take", "summary"],
           additionalProperties: false,
           properties: {
             category: { type: "string", enum: categories, description: "The category, as board.md heads it." },
             take: text("One sentence of at most 25 words for the category's card on the home page: what people here keep running into, and whether one person could build a business on it."),
-            summary: text("Three to five sentences: what people in this category keep running into, what they do about it today and what it costs them, and where one person could fit in, or why nobody could. Counts from board.md only; name problems in words, never by number."),
-            ideas: {
-              type: "array",
-              description: `Up to ${MAX_IDEAS} businesses one person could build from this category's problems, strongest first. None when the evidence is thin, or every problem needs a big platform replaced, a licence or a team.`,
-              items: {
-                type: "object",
-                required: ["name", "pitch", "why", "risk", "first", "problems", "best"],
-                additionalProperties: false,
-                properties: {
-                  name: text("The business in a few plain words, like \"Rent arrears chaser for small landlords\". Not a brand name."),
-                  pitch: text("What it does and for whom, in one or two sentences."),
-                  why: text("Why it could work for one person based in the UK, in two or three sentences: the evidence from board.md (people, paid jobs, costs named, what they pay for today), the gap, and where the first customers gather. Name problems in words, never by number: the page links them under the idea."),
-                  risk: text("The main reason it might not work, in one sentence."),
-                  first: text("The first thing to do this week to find out whether people would pay, in one sentence."),
-                  problems: { type: "array", items: { type: "integer" }, description: "The numbers of the problems in board.md it answers, the main one first." },
-                  best: { type: "boolean", description: `True for at most ${MAX_BEST} ideas across the whole board: the ones to start with.` },
-                },
-              },
-            },
+            summary: text("Three to five sentences: what people in this category keep running into, what they do about it today and what it costs them, what the research found where there is any, and where one person could fit in, or why nobody could. Counts from board.md only; name problems in words, never by number."),
           },
         },
       },
@@ -472,6 +603,7 @@ export function overviewSchema(categories: string[]) {
 export async function prepareOverview(radar: string, dir: string, radarConfig: TaskConfig, muted: string[], now = Date.now()): Promise<{ problems: number; unchanged: boolean }> {
   const stats = problemStats(radar, now);
   const verdicts = latestVerdicts();
+  const research = latestResearch();
   const said = new Map<number, { costs: Set<string>; workarounds: Set<string> }>();
   for (const f of mentionFacts(radar)) {
     const s = said.get(f.problemId) ?? { costs: new Set(), workarounds: new Set() };
@@ -498,6 +630,7 @@ export async function prepareOverview(radar: string, dir: string, radarConfig: T
       v
         ? `- Verdict ${VERDICTS[v.verdict]} on ${v.createdAt.slice(0, 10)} (${Object.entries(v.scores).map(([k, x]) => `${k} ${x.score}`).join(", ")}).${v.hardNo ? ` Hard no: ${v.hardNo}` : ""} ${v.reason}${v.test ? ` Smallest test: ${v.test}` : ""}${v.competitors.length ? ` What exists: ${v.competitors.map((x) => `${x.name} (${x.note})`).join("; ")}.` : ""}`
         : "- Not judged yet.",
+      ...researchLines(research.get(p.id), v?.verdict ?? "none"),
     ];
     return lines.join("\n");
   };
@@ -522,37 +655,33 @@ export async function prepareOverview(radar: string, dir: string, radarConfig: T
   return { problems: ids.length, unchanged };
 }
 
-type OverviewOutput = {
-  summary: string;
-  categories: { category: string; take: string; summary: string; ideas: { name: string; pitch: string; why: string; risk: string; first: string; problems: number[]; best: boolean }[] }[];
-};
+// What the research found, for board.md, saying so when it was made at another verdict than the one the
+// problem has now (the brief leaves such research out).
+function researchLines(r: ResearchRow | undefined, verdict: string): string[] {
+  if (!r) return [];
+  const products = r.products.map((x) => `${x.name} (${[x.price, x.share].filter(Boolean).join("; ")}; liked: ${x.liked}; disliked: ${x.disliked})`).join("; ");
+  const then = r.verdict === verdict ? "" : r.verdict === "none" ? ", before it was judged, so out of date" : `, when the verdict was ${VERDICTS[r.verdict as Verdict] ?? r.verdict}, so out of date`;
+  return [
+    `- Researched on ${r.createdAt.slice(0, 10)}${then}: ${r.worth ? "worth competing" : "not worth competing"}. ${r.worthWhy}`,
+    ...(products ? [`- What exists: ${products}`] : []),
+    ...(r.better ? [`- The better solution: ${r.better.name}: ${r.better.pitch} ${r.better.edge}`] : []),
+  ];
+}
 
-// Stores the overview: the categories board.md had, once each, their ideas with problem numbers checked
-// against overview.json, and at most three ideas marked best, the first ones the answer marked. Returns
-// output.md, or null when the answer is not an overview.
+type OverviewOutput = { summary: string; categories: { category: string; take: string; summary: string }[] };
+
+// Stores the overview: the categories board.md had, once each, in its order, with no ideas (older
+// overviews keep theirs; the page reads none). Returns output.md, or null when the answer is not an
+// overview.
 export async function saveOverviewOutput(runId: string, output: unknown, dir: string): Promise<string | null> {
   const out = output as OverviewOutput | undefined;
   if (!out || typeof out.summary !== "string" || !out.summary.trim() || !Array.isArray(out.categories)) return null;
-  const { task, hash, categories: names, problems } = JSON.parse(await readFile(join(dir, "overview.json"), "utf8")) as { task: string; hash: string; categories: string[]; problems: number[] };
-  const known = new Set(problems);
+  const { task, hash, categories: names } = JSON.parse(await readFile(join(dir, "overview.json"), "utf8")) as { task: string; hash: string; categories: string[] };
   const clean = (s: unknown) => String(s ?? "").trim();
-  let best = 0;
   const categories: OverviewCategory[] = [];
   for (const c of out.categories) {
     if (!names.includes(c?.category) || categories.some((x) => x.category === c.category)) continue;
-    const ideas = (Array.isArray(c.ideas) ? c.ideas : [])
-      .filter((i) => clean(i?.name) && clean(i.pitch))
-      .slice(0, MAX_IDEAS)
-      .map((i) => ({
-        name: clean(i.name),
-        pitch: clean(i.pitch),
-        why: clean(i.why),
-        risk: clean(i.risk),
-        first: clean(i.first),
-        problems: [...new Set((Array.isArray(i.problems) ? i.problems : []).filter((n) => known.has(n)))],
-        best: i.best === true && best++ < MAX_BEST,
-      }));
-    categories.push({ category: c.category, take: clean(c.take), summary: clean(c.summary), ideas });
+    categories.push({ category: c.category, take: clean(c.take), summary: clean(c.summary), ideas: [] });
   }
   categories.sort((a, b) => names.indexOf(a.category) - names.indexOf(b.category));
   saveOverview(task, runId, { summary: out.summary.trim(), categories, inputHash: hash });
@@ -560,12 +689,6 @@ export async function saveOverviewOutput(runId: string, output: unknown, dir: st
     `# Overview, ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
     "",
     out.summary.trim(),
-    ...categories.flatMap((c) => [
-      "",
-      `## ${c.category}`,
-      "",
-      c.summary,
-      ...c.ideas.flatMap((i) => ["", `### ${i.best ? "★ " : ""}${i.name}`, "", i.pitch, "", `Why: ${i.why}`, "", `Risk: ${i.risk}`, "", `First: ${i.first}`, "", `Problems: ${i.problems.join(", ") || "none"}`]),
-    ]),
+    ...categories.flatMap((c) => ["", `## ${c.category}`, "", c.summary]),
   ].join("\n") + "\n";
 }

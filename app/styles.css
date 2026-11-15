@@ -1219,11 +1219,7 @@ a.chip:active {
 .trend[data-trend="fading"] {
   @apply text-faint;
 }
-/* The overview's ideas for a category, each with the problems it answers, and the line under every view
-   with when the overview was written and Refresh. */
-.overview {
-  @apply rounded-xl bg-surface p-4 shadow-border md:px-5;
-}
+/* Section headings, and the line under every view with when the overview was written and Refresh. */
 .overview-h {
   @apply mb-2 mt-4 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted;
 }
@@ -1238,43 +1234,6 @@ a.chip:active {
 }
 .overview-foot .note[data-old] {
   @apply text-warn;
-}
-.ideas {
-  @apply flex flex-col divide-y divide-line;
-}
-.idea {
-  @apply py-3.5 first:pt-0 last:pb-0;
-  scroll-margin-top: 4.5rem;
-}
-.idea-head {
-  @apply flex flex-wrap items-center gap-2;
-}
-.idea-name {
-  @apply text-[14.5px] font-semibold text-ink text-pretty;
-}
-.best-badge {
-  @apply rounded-full bg-accent/10 px-2 text-[11.5px] font-medium leading-[19px] whitespace-nowrap text-accent;
-}
-.idea-pitch {
-  @apply mt-1 max-w-[72ch] text-[14px] leading-[1.55] text-ink text-pretty;
-}
-.idea-facts {
-  @apply mt-2 flex flex-col gap-1.5;
-}
-.idea-facts div {
-  @apply grid gap-x-3 md:grid-cols-[8.5rem_minmax(0,1fr)];
-}
-.idea-facts dt {
-  @apply text-[12.5px] font-medium leading-[1.55] text-muted;
-}
-.idea-facts dd {
-  @apply max-w-[72ch] text-[13.5px] leading-[1.55] text-soft text-pretty;
-}
-.idea-from {
-  @apply mt-2.5 flex flex-wrap gap-1.5;
-}
-.idea-from a {
-  @apply inline-block rounded-md bg-inset px-2 py-0.5 text-[12px] leading-[1.45] text-soft hover:text-ink;
 }
 .ideas-foot {
   @apply mt-8;
@@ -1794,6 +1753,67 @@ a.stamp {
 }
 .competitors a {
   @apply font-medium text-ink underline decoration-black/20 underline-offset-[3px] hover:decoration-black/60;
+}
+/* The research (tasks/ideas-research) on a problem's page and, compact, on the brief's lead: the
+   better solution, the three ways to solve it, and each product with what its users like and dislike. */
+.research-better {
+  @apply mt-3 border-t border-line pt-3;
+}
+.research-better h4 {
+  @apply text-[11px] font-semibold uppercase tracking-[0.04em] text-muted;
+}
+.research-better p {
+  @apply mt-1 max-w-[72ch] text-[14px] leading-[1.55] text-ink text-pretty;
+}
+.research-better .research-better-name {
+  @apply text-[15px] font-semibold;
+}
+.approaches {
+  @apply mt-1 flex list-decimal flex-col gap-1.5 pl-5 text-[13.5px] leading-[1.55] text-ink;
+}
+.approaches strong {
+  @apply block font-medium;
+}
+.approach-exists {
+  @apply text-[12.5px] text-muted;
+}
+.products {
+  @apply mt-1.5 flex flex-col divide-y divide-line border-y border-line;
+}
+.product {
+  @apply py-2.5;
+}
+.product-head {
+  @apply flex flex-wrap items-baseline gap-x-2 text-[13.5px] leading-[1.5];
+}
+.product-head a,
+.product-head strong {
+  @apply font-medium text-ink;
+}
+.product-head a {
+  @apply underline decoration-black/20 underline-offset-[3px] hover:decoration-black/60;
+}
+.product-price {
+  @apply text-[12.5px] text-muted;
+}
+.verdict-part .product-line,
+.product-line {
+  @apply mt-0.5 grid max-w-[80ch] grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 text-[13px] leading-[1.5] text-soft text-pretty;
+}
+.product-k {
+  @apply text-[12px] font-medium text-muted;
+}
+.product-k[data-k="liked"] {
+  @apply text-good;
+}
+.product-k[data-k="disliked"] {
+  @apply text-failed;
+}
+.product-reviews {
+  @apply mt-1 flex flex-wrap gap-x-3 text-[12px] text-muted;
+}
+.product-reviews a {
+  @apply hover:text-ink;
 }
 .weeks rect {
   fill: var(--color-faint);

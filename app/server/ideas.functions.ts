@@ -1,8 +1,8 @@
 import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setResponseHeader } from "@tanstack/react-start/server";
-import { getProblem, getRun, latestOverview, latestVerdicts, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type OverviewRow, type ProblemRow, type VerdictRow } from "#src/db.ts";
-import { QUESTIONS, RADAR, VERDICTS, categoriesOf, judgeBar, judgeOf, overviewOf, problemStats, toJudge, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
+import { getProblem, getRun, latestOverview, latestResearch, latestVerdicts, listMutes, listProblems, problemMentions, problemVerdicts, radarTotals, type OverviewRow, type ProblemRow, type ResearchRow, type VerdictRow } from "#src/db.ts";
+import { QUESTIONS, RADAR, VERDICTS, categoriesOf, judgeBar, judgeOf, overviewOf, problemStats, researchOf, toJudge, type ProblemStats, type Trend, type Verdict } from "#src/ideas.ts";
 import { mentions } from "#src/mute.ts";
 import { listRuns, listTasks, loadTask, type TaskConfig } from "#src/runner.ts";
 import { isRunning, isWaiting } from "#src/scheduler.ts";
@@ -12,8 +12,9 @@ import { PASSWORD, loggedIn } from "./admin.ts";
 import { ago, formatDate, formatDay } from "./format.ts";
 import { nav, type Nav } from "./nav.ts";
 
-// A radar is the task whose runs collect and sort its posts (tasks/ideas, tasks/gym); its judge and its
-// overview, when it has them, are the tasks named after it (judgeOf and overviewOf in src/ideas.ts).
+// A radar is the task whose runs collect and sort its posts (tasks/ideas, tasks/gym); its judge, research
+// and overview, when it has them, are the tasks named after it (judgeOf, researchOf and overviewOf in
+// src/ideas.ts).
 
 // Every radar, the small business one first: the tasks that sort posts, with the name the page shows.
 async function radars(): Promise<{ task: string; label: string }[]> {
@@ -70,17 +71,8 @@ export type ProblemItem = {
   /** The verdict's smallest test. */
   test: string;
 };
-export type IdeaView = {
-  name: string;
-  pitch: string;
-  why: string;
-  risk: string;
-  first: string;
-  best: boolean;
-  /** The category it came from. */
-  category: { slug: string; name: string };
-  problems: { id: number; name: string }[];
-};
+/** A problem's newest research (src/ideas.ts): the three ways, what exists, worth competing, the better solution. */
+export type ResearchView = Pick<ResearchRow, "approaches" | "products" | "worth" | "worthWhy" | "better"> & { day: string; madeAt: string | null };
 export type OverviewState = {
   /** When the newest overview was written; null before the first. */
   when: string | null;
@@ -95,10 +87,14 @@ export type OverviewState = {
 export type RadarTab = { task: string; label: string };
 /** The sets of problems the brief's list can show. */
 export type Show = "top" | "unjudged" | "pass" | "starred" | "killed" | "oneoffs";
-/** The problem that leads the brief: the overview's pick, else the best judged, else the one most people raised. */
+/**
+ * The problem that leads the brief: researched and worth competing on (the only best bet), else the best
+ * judged not researched yet, else the best judged the research found not worth it, else the one most
+ * people raised.
+ */
 export type BestBet = {
-  why: "overview" | "judged" | "people";
-  idea: IdeaView | null;
+  why: "researched" | "judged" | "rejected" | "people";
+  research: ResearchView | null;
   problem: ProblemItem;
   quotes: { text: string; where: string; day: string; url: string }[];
 };
@@ -116,17 +112,18 @@ export type IdeasPage = {
   defaultView: IdeasView;
   /** What every link on the page keeps: the radar, the category and the view, each only when not the default. */
   query: { radar?: string; category?: string; view?: IdeasView };
-  /** Whether the radar has a judge, so verdicts. */
+  /** Whether the radar has a judge, so verdicts, and a research run. */
   judges: boolean;
+  researches: boolean;
   categories: { slug: string; name: string; count: number }[];
-  /** The category the page is filtered to, with what the overview made of it. */
-  category: { slug: string; name: string; take: string | null; ideas: IdeaView[] } | null;
+  /** The category the page is filtered to, with the overview's one-line take on it. */
+  category: { slug: string; name: string; take: string | null } | null;
   /** The overview's summary of the whole board, or of the category. */
   summary: string | null;
   headline: string;
   sub: string | null;
   /** From posts to verdicts, for the whole radar. */
-  funnel: { collected: number; kept: number; problems: number; multi: number; judged: number; worth: number; watch: number; pass: number };
+  funnel: { collected: number; kept: number; problems: number; multi: number; judged: number; worth: number; watch: number; pass: number; researched: number; better: number };
   best: BestBet | null;
   /** First seen in the last 7 days, not judged yet. */
   fresh: ProblemItem[];
@@ -166,6 +163,12 @@ export type ProblemPage = {
   /** Whether the problem has the evidence the nightly run waits for. */
   overBar: boolean;
   canJudge: boolean;
+  research: ResearchView | null;
+  /** Research this was pressed and no research run has answered yet; `researching` while one is going. */
+  researchAsked: boolean;
+  researching: boolean;
+  /** Whether the radar has a research task. */
+  canResearch: boolean;
   mergeTargets: { id: number; name: string }[];
   mentions: { id: string; url: string; title: string; community: string; day: string; author: string; budget: string | null; quote: string; cost: string; workaround: string; recurring: boolean; body: string }[];
 };
@@ -273,6 +276,18 @@ const LEGACY_SHOWS: Record<string, Show> = { worth: "top", watch: "top" };
 const WEEK = 7 * 86_400_000;
 const recentlyJudged = (r: Row) => !!r.v && Date.now() - Date.parse(r.v.createdAt) < WEEK;
 
+// A research as the page shows it; given the problem's verdict now, `madeAt` says when the research was
+// made at another.
+const researchView = (r: ResearchRow, now?: string): ResearchView => ({
+  day: formatDay(r.createdAt),
+  madeAt: now === undefined || r.verdict === now ? null : r.verdict === "none" ? "before it was judged" : `when it was ${VERDICTS[r.verdict as Verdict] ?? r.verdict}`,
+  approaches: r.approaches,
+  products: r.products,
+  worth: r.worth,
+  worthWhy: r.worthWhy,
+  better: r.better,
+});
+
 // The posts that say it best: up to two quotes of some length, those naming a cost or saying it recurs first.
 function quotesOf(problemId: number): BestBet["quotes"] {
   return problemMentions(problemId)
@@ -312,54 +327,57 @@ export const getIdeasPage = createServerFn({ method: "GET" })
     const counted: Row[] = problems.flatMap((p) => (stats.has(p.id) ? [{ p, s: stats.get(p.id)!, v: verdicts.get(p.id) }] : []));
     const unmuted = counted.filter(({ p }) => !isMuted(p));
     const latest = latestOverview(TASK);
-    const problemNames = new Map(problems.map((p) => [p.id, p.name]));
-    const ideasOf = (c: OverviewRow["categories"][number]): IdeaView[] =>
-      c.ideas.map((i) => ({
-        ...i,
-        category: { slug: slug(c.category), name: c.category },
-        problems: i.problems.filter((id) => problemNames.has(id)).map((id) => ({ id, name: problemNames.get(id)! })),
-      }));
-
     const categoryName = data.category ? names.find((n) => slug(n) === data.category) : undefined;
     if (data.category && !categoryName) throw notFound();
     const rows = categoryName ? unmuted.filter((r) => r.p.category === categoryName) : unmuted;
     const o = categoryName ? latest?.categories.find((c) => c.category === categoryName) : undefined;
-    const ideas = (categoryName ? (o ? [o] : []) : (latest?.categories ?? [])).flatMap(ideasOf);
     const JUDGE = judgeOf(TASK);
     const judges = tasks.includes(JUDGE);
+    const researches = tasks.includes(researchOf(TASK));
+    // Research counts only when it was made at the problem's current verdict: one made before the judge
+    // changed its mind is out of date (the research run takes a Worth testing or Watch problem again; a
+    // Pass only when the reader asks).
+    const research = new Map([...latestResearch()].filter(([id, r]) => r.verdict === (verdicts.get(id)?.verdict ?? "none")));
     const toItem = ({ p, s, v }: Row) => item(p, s, v);
 
-    // The lead: the overview's best idea with a problem still on the board that the judge has not passed,
-    // else the best judged, else the problem most people raised.
+    // The lead: a problem the research found worth competing on, the only best bet; else the best judged
+    // problem the research has not taken yet, Worth testing first; else the best judged it found not
+    // worth competing on; else the problem most people raised.
     const byId = new Map(rows.map((r) => [r.p.id, r]));
-    const pick = ideas
-      .filter((i) => i.best)
-      .map((idea) => ({ idea, row: idea.problems.map((p) => byId.get(p.id)).filter((r): r is Row => !!r && live(r) && r.v?.verdict !== "pass").sort(byPeople)[0] }))
-      .find((x) => x.row);
-    const judgedTop = rows.filter(SHOWS.top.has).sort(byFit)[0];
+    const worthIt = (r: Row) => !!research.get(r.p.id)?.worth;
+    const researchRank = (r: Row) => (worthIt(r) ? 0 : research.has(r.p.id) ? 2 : 1);
+    const verdictRank = (r: Row) => (r.v?.verdict === "worth" ? 0 : 1);
+    const judgedTop = rows
+      .filter((r) => live(r) && (SHOWS.top.has(r) || worthIt(r)))
+      .sort((a, b) => researchRank(a) - researchRank(b) || verdictRank(a) - verdictRank(b) || byFit(a, b))[0];
     const mostRaised = rows.filter((r) => live(r) && onBoard(r)).sort(byPeople)[0];
-    const lead: { why: BestBet["why"]; idea: IdeaView | null; row: Row } | undefined = pick
-      ? { why: "overview", idea: pick.idea, row: pick.row! }
-      : judgedTop
-      ? { why: "judged", idea: ideas.find((i) => i.problems.some((p) => p.id === judgedTop.p.id)) ?? null, row: judgedTop }
-      : mostRaised && { why: "people", idea: null, row: mostRaised };
-    const best: BestBet | null = lead ? { why: lead.why, idea: lead.idea, problem: toItem(lead.row), quotes: quotesOf(lead.row.p.id) } : null;
+    const lead: { why: BestBet["why"]; row: Row } | undefined = judgedTop
+      ? { why: worthIt(judgedTop) ? "researched" : research.has(judgedTop.p.id) ? "rejected" : "judged", row: judgedTop }
+      : mostRaised && { why: "people", row: mostRaised };
+    const leadResearch = lead && research.get(lead.row.p.id);
+    const best: BestBet | null = lead ? { why: lead.why, research: leadResearch ? researchView(leadResearch) : null, problem: toItem(lead.row), quotes: quotesOf(lead.row.p.id) } : null;
 
     // The sentence on top, from the counts.
     const worth = rows.filter((r) => live(r) && r.v?.verdict === "worth").length;
     const watch = rows.filter((r) => live(r) && r.v?.verdict === "watch").length;
-    const leadName = lead ? (lead.idea?.name ?? lead.row.p.name) : "";
+    const leadName = lead ? (leadResearch?.better?.name ?? lead.row.p.name) : "";
     const where = categoryName ? ` in ${categoryName}` : "";
-    const leadIs = lead?.why === "overview" ? "The overview's pick" : lead?.why === "judged" ? "Closest" : "Raised most";
+    // Only a researched solution is a best bet: the rest of the leads say what they are.
     const headline = !lead
       ? `Nothing raised by more than one person${where} yet.`
-      : worth
-      ? `${plural(worth, "problem")} worth testing${where}. Start with: ${leadName}.`
-      : watch
-      ? `No clear build${where} yet. Closest: ${leadName}.`
+      : lead.why === "researched"
+      ? `Worth building${where}, the research says: ${leadName}.`
+      : lead.why === "rejected"
+      ? `The research found nothing worth competing on${where} yet. Closest: ${leadName}.`
+      : lead.why === "judged"
+      ? researches
+        ? `No researched build${where} yet. Next to research: ${leadName}.`
+        : worth
+        ? `${plural(worth, "problem")} worth testing${where}. Start with: ${leadName}.`
+        : `No clear build${where} yet. Closest: ${leadName}.`
       : rows.some((r) => r.v)
-      ? `Everything judged${where} so far is a Pass. ${leadIs}: ${leadName}.`
-      : `No verdicts${where} yet${judges ? "" : ": this radar only collects and counts"}. ${leadIs}: ${leadName}.`;
+      ? `Everything judged${where} so far is a Pass. Raised most: ${leadName}.`
+      : `No verdicts${where} yet${judges ? "" : ": this radar only collects and counts"}. Raised most: ${leadName}.`;
     const crowded = rows.filter((r) => live(r) && looked(r) && (r.v!.scores.gap?.score ?? 5) <= 2).length;
     const looking = worth + watch;
     const sub = !crowded
@@ -387,10 +405,11 @@ export const getIdeasPage = createServerFn({ method: "GET" })
       defaultView,
       query: { radar: radarParam, category: data.category, view: view === defaultView ? undefined : view },
       judges,
+      researches,
       categories: names
         .map((n) => ({ slug: slug(n), name: n, count: unmuted.filter((r) => r.p.category === n && live(r) && onBoard(r)).length }))
         .filter((c) => c.name === categoryName || unmuted.some((r) => r.p.category === c.name)),
-      category: categoryName ? { slug: slug(categoryName), name: categoryName, take: o?.take || null, ideas } : null,
+      category: categoryName ? { slug: slug(categoryName), name: categoryName, take: o?.take || null } : null,
       summary: (categoryName ? o?.summary : latest?.summary) || null,
       headline,
       sub,
@@ -403,6 +422,8 @@ export const getIdeasPage = createServerFn({ method: "GET" })
         worth: whole.filter((r) => r.v?.verdict === "worth").length,
         watch: whole.filter((r) => r.v?.verdict === "watch").length,
         pass: whole.filter((r) => r.v?.verdict === "pass").length,
+        researched: whole.filter((r) => research.has(r.p.id)).length,
+        better: whole.filter((r) => research.get(r.p.id)?.better).length,
       },
       best,
       fresh: fresh.filter((r) => !queued.has(r.p.id) && notLead(r.p.id)).map(toItem),
@@ -480,7 +501,10 @@ export const getProblemPage = createServerFn({ method: "GET" })
     const stats = problem && all.get(problem.id);
     if (!problem || !stats) throw notFound();
     const JUDGE = judgeOf(problem.task);
+    const RESEARCH = researchOf(problem.task);
+    const tasks = await listTasks();
     const tabs = await radars();
+    const researched = latestResearch().get(problem.id);
     const [latest, ...older] = problemVerdicts(problem.id);
     const day = (v: VerdictRow) => formatDay(v.createdAt);
     return {
@@ -504,7 +528,11 @@ export const getProblemPage = createServerFn({ method: "GET" })
       asked: !!problem.judgeAsked,
       judging: !!problem.judgeAsked && (isRunning(JUDGE) || isWaiting(JUDGE)),
       overBar: judgeBar(stats),
-      canJudge: (await listTasks()).includes(JUDGE),
+      canJudge: tasks.includes(JUDGE),
+      research: researched ? researchView(researched, latest?.verdict ?? "none") : null,
+      researchAsked: !!problem.researchAsked,
+      researching: !!problem.researchAsked && (isRunning(RESEARCH) || isWaiting(RESEARCH)),
+      canResearch: tasks.includes(RESEARCH),
       mergeTargets: listProblems(problem.task)
         .filter((p) => p.id !== problem.id && p.category === problem.category && all.has(p.id))
         .map((p) => ({ id: p.id, name: p.name }))
